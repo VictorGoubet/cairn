@@ -1,4 +1,4 @@
-# AGENTS.md — cairn
+# AGENTS.md - cairn
 
 Stable knowledge for humans and AI agents working on this repo. The README covers what the
 app does; this file covers how it works inside and the hard-won gotchas. The code is the
@@ -13,20 +13,20 @@ free services (tile-grid caching, debouncing, LRU).
 
 ## Commands
 
-- `npm run dev` / `npm run build` — dev server / static build in `dist/`
-- `make check` — the quality gate: lint (biome) + typecheck (tsc) + build
-- `make format` — auto-fix formatting + lint before committing
+- `npm run dev` / `npm run build`: dev server / static build in `dist/`
+- `make check`: the quality gate (lint biome + typecheck tsc + build)
+- `make format`: auto-fix formatting + lint before committing
 - e2e (ad-hoc): `npm i --no-save playwright-core`, write a throwaway `.mjs` script using
   `chromium.launch({ channel: 'chrome', headless: true })`, delete it afterwards.
   In dev builds the map instance is exposed as `window.__map` for tests.
 
 ## Architecture
 
-- `src/store.ts` — zustand store: anchors + legs model, history (undo/redo), drag logic,
+- `src/store.ts`: zustand store; anchors + legs model, history (undo/redo), drag logic,
   import/share/save actions. One `LegSlot` between each pair of anchors.
-- `src/components/MapView.tsx` — all MapLibre wiring: layers, overlays, markers, terrain,
+- `src/components/MapView.tsx`: all MapLibre wiring; layers, overlays, markers, terrain,
   drag interactions.
-- `src/lib/` — pure logic, one module per concern: `brouter` (routing), `share` (link
+- `src/lib/`: pure logic, one module per concern; `brouter` (routing), `share` (link
   encoding), `gpx` + `exportFormats` (GPX/KML/TCX), `routeSplice` (insert point in trace),
   `demElevation` (client-side DEM reads), `storage` (localStorage + migrations),
   `hiddenTrails` / `refugesInfo` (on-the-fly overlays), `tileGrid` (per-cell caching).
@@ -52,7 +52,7 @@ free services (tile-grid caching, debouncing, LRU).
   Routed legs travel as anchors only (recomputed on open); frozen legs travel as a polyline
   (Google algorithm, lat/lon at 1e-5, elevation at 0.1 m). `''` = manual leg still computing
   at share time. Opening a link pushes the current draft to history (one undo away).
-- **Adaptive 3D exaggeration** (`MapView.tsx`): classic cartography rule (Imhof) — flat
+- **Adaptive 3D exaggeration** (`MapView.tsx`): classic cartography rule (Imhof), flat
   terrain needs 2-3x, alpine reads at ~1x. On map idle, sample a viewport grid via
   `queryTerrainElevation` (zero network) and target relief ≈ 5% of viewport width,
   clamped to [1.1, 3].
@@ -70,7 +70,7 @@ free services (tile-grid caching, debouncing, LRU).
   `maplibre-gl-shared.mjs`, so a plain `?url` asset 404s/dies in production (blank map,
   UI fine, no console error). Keep the `?worker&url` import + `setWorkerUrl(...)` in
   `MapView.tsx`. Symptom to recognize: worker created then immediately closed.
-- `setTerrain` needs its **own raster-dem source** — sharing the hillshade source degrades
+- `setTerrain` needs its **own raster-dem source**: sharing the hillshade source degrades
   rendering (see `terrain-3d` vs `terrain-dem` sources).
 - `queryTerrainElevation` returns **exaggerated** elevations: divide by the applied
   exaggeration before doing math.
@@ -78,13 +78,15 @@ free services (tile-grid caching, debouncing, LRU).
   `store.ts#toggleOverlay` is order-sensitive.
 - Vite HMR must **full-reload on store changes** (`import.meta.hot.invalidate()` in
   `store.ts`), otherwise components keep references to a dead store ("undo stops working").
-- The IGN vector style is patched at load in `buildStyle()` (MapView) — layer visibility is
+- The IGN vector style is patched at load in `buildStyle()` (MapView): layer visibility is
   driven per-layer, contours and hybrid mode depend on it.
 
 ## Conventions
 
 - UI is bilingual: every user-facing string goes through `src/lib/i18n.ts` (fr + en keys).
 - Comments and docs describe the present, not the journey; keep them one line when possible.
+- Writing style: no em dashes anywhere (code, docs, UI copy), and no emojis in docs or UI
+  text; the only emoji lives in the brand header (⛰️ cairn).
 - Commits: English, short, lowercase, imperative-ish (`fix: …`, `chore: …`, `roadmap: …`).
   No `Co-authored-by` trailers.
 - Lean and YAGNI: no route variants, no speculative options. New overlays follow the
@@ -94,6 +96,6 @@ free services (tile-grid caching, debouncing, LRU).
 
 - Auto-deployed to Vercel (project `victorgoubet1s-projects/cairn`) on every push to `main`;
   production alias: https://cairn-swart-gamma.vercel.app
-- Pure static output — no env vars, no rewrites (share links live in the URL fragment).
+- Pure static output: no env vars, no rewrites (share links live in the URL fragment).
 - Vercel Hobby limits: 100 GB/month bandwidth, non-commercial only. Migration candidate if
   traffic grows or monetization appears: Cloudflare Pages (unlimited bandwidth, commercial OK).

@@ -70,7 +70,9 @@ export function TopBar() {
 
   return (
     <header className="topbar">
-      <span className="brand">⛰️ cairn</span>
+      <a className="brand" href={import.meta.env.BASE_URL}>
+        ⛰️ cairn
+      </a>
       <SearchBox />
 
       <div className="topbar-group topbar-right">
