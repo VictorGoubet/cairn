@@ -1,5 +1,14 @@
 import type { GeoJSONSource, LayerSpecification, StyleSpecification } from 'maplibre-gl';
-import { GeolocateControl, Map as MapLibreMap, Marker, NavigationControl, Popup, ScaleControl } from 'maplibre-gl';
+import {
+  GeolocateControl,
+  Map as MapLibreMap,
+  Marker,
+  NavigationControl,
+  Popup,
+  ScaleControl,
+  setWorkerUrl,
+} from 'maplibre-gl';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {
@@ -38,6 +47,10 @@ const TERRAIN_EXAGGERATION_MAX = 3;
 const TERRAIN_RELIEF_TARGET = 0.05;
 /** en dessous de cet écart, on garde l'exagération en place (évite les à-coups) */
 const TERRAIN_EXAGGERATION_STEP = 0.25;
+
+// une fois bundlé, maplibre ne sait plus localiser son worker (import relatif vers
+// maplibre-gl-shared.mjs): on fait bundler le worker par Vite et on fournit son URL
+setWorkerUrl(maplibreWorkerUrl);
 
 registerSlopeProtocol();
 
