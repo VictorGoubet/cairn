@@ -37,7 +37,8 @@ npm run build   # sortie statique dans dist/, déployable partout (Vercel, nginx
 - [x] Création d'itinéraire sur fonds IGN, profil altimétrique, waypoints, export GPX
 - [x] Planner complet : recherche, undo/redo, insertion sur trace, aller-retour/boucle, mode hors sentier, bornes km, durée estimée, import GPX
 - [x] Points d'eau, sources et refuges (OSM Overpass, refuges.info), partage d'itinéraire par lien
-- [ ] Randos balisées autour de moi (relations OSM route=hiking)
+- [ ] Base solide : tout le code, commentaires et doc en anglais ; revue complète design / qualité / DRY / lean ; tests e2e et de régression
+- [ ] Randos balisées autour d'un point, style Komoot (relations OSM route=hiking)
 - [ ] PWA + cartes offline (PMTiles)
 - [ ] Bivouac finder : score pente + proximité eau + occupation du sol sur carte relief
-- [ ] Envoi direct vers montre Garmin
+- [ ] Plus tard, en option : envoi direct vers montre Garmin
