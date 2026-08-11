@@ -10,7 +10,6 @@
 
 <p align="center">
   <a href="https://cairn-swart-gamma.vercel.app">Live demo</a> •
-  <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#stack">Stack</a> •
   <a href="#deploy">Deploy</a> •
@@ -19,34 +18,16 @@
 
 <br>
 
-## Features
-
-Everything runs in your browser, on top of free and open services. No backend, no account,
-no tracking.
-
-- Routes that follow real trails: routing by [BRouter](https://brouter.de) on OpenStreetMap
-  data, with a mountain hiking profile. A free-hand mode is there when you need to leave
-  the paths.
-- Official French base maps from [IGN Géoplateforme](https://geoservices.ign.fr): vector
-  Plan IGN, SCAN 25, aerial imagery. OpenStreetMap for the rest of the world.
-- Elevation profile with gain/loss, way types and surfaces (from OSM tags), estimated
-  duration. Elevations come from IGN altimetry and open DEM tiles.
-- Typed waypoints (water, viewpoint, pass, stage end...), exported as GPX waypoints with
-  Garmin symbols so they show up on the watch.
-- Overlays from community data: GR/PR marked trails
-  ([Waymarked Trails](https://hiking.waymarkedtrails.org)), lesser-known paths (Overpass),
-  mountain huts and water points ([refuges.info](https://www.refuges.info)), slope classes,
-  hillshade, 3D terrain.
-- GPX import, GPX/KML/TCX export, and route sharing as a plain URL: the route is encoded
-  in the link itself, no server stores anything.
-- Your drafts and saved routes stay in your browser's localStorage.
-- French and English.
+Draw a hiking route that follows real trails, over official IGN maps. Elevation profile,
+typed waypoints, GPX/KML/TCX export, share by link. Built entirely on open data (IGN
+Géoplateforme, OpenStreetMap, refuges.info) and queried straight from your browser:
+no backend, no account, no tracking.
 
 ## Quick Start
 
 ```bash
-make setup   # install deps (pnpm)
-make dev     # dev server on http://localhost:5173
+make setup
+make dev
 ```
 
 Quality gate (lint + typecheck + build):
@@ -72,8 +53,10 @@ Everything is queried straight from the browser: the deployed site is pure stati
 ## Deploy
 
 ```bash
-make build   # static output in dist/, deployable anywhere
+make build
 ```
+
+Static output in `dist/`, deployable anywhere.
 
 Currently auto-deployed to [Vercel](https://cairn-swart-gamma.vercel.app) on every push to `main`.
 
