@@ -14,22 +14,22 @@ help:
 check: lint typecheck build
 
 setup:
-	npm install
+	pnpm install
 
 dev:
-	npm run dev
+	pnpm dev
 
 format:
-	npx biome check --write
+	pnpm exec biome check --write
 
 lint:
-	npx biome check
+	pnpm exec biome check
 
 typecheck:
-	npx tsc -b
+	pnpm exec tsc -b
 
 build:
-	npm run build
+	pnpm build
 
 preview:
-	npm run preview
+	pnpm preview

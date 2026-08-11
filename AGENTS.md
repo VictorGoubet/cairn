@@ -13,12 +13,16 @@ free services (tile-grid caching, debouncing, LRU).
 
 ## Commands
 
-- `npm run dev` / `npm run build`: dev server / static build in `dist/`
+The Makefile is the only dev entry point; never call npm or pnpm directly (pnpm is the
+package manager underneath, lockfile `pnpm-lock.yaml`).
+
+- `make setup` / `make dev` / `make build`: install deps / dev server / static build in `dist/`
 - `make check`: the quality gate (lint biome + typecheck tsc + build)
 - `make format`: auto-fix formatting + lint before committing
-- e2e (ad-hoc): `npm i --no-save playwright-core`, write a throwaway `.mjs` script using
-  `chromium.launch({ channel: 'chrome', headless: true })`, delete it afterwards.
-  In dev builds the map instance is exposed as `window.__map` for tests.
+- e2e (ad-hoc): `pnpm add -D playwright-core`, write a throwaway `.mjs` script using
+  `chromium.launch({ channel: 'chrome', headless: true })`, then delete the script and
+  revert `package.json` + `pnpm-lock.yaml`. In dev builds the map instance is exposed as
+  `window.__map` for tests.
 
 ## Architecture
 
