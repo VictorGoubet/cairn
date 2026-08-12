@@ -16,13 +16,22 @@ free services (tile-grid caching, debouncing, LRU).
 The Makefile is the only dev entry point; never call npm or pnpm directly (pnpm is the
 package manager underneath, lockfile `pnpm-lock.yaml`).
 
-- `make setup` / `make dev` / `make build`: install deps / dev server / static build in `dist/`
-- `make check`: the quality gate (lint biome + typecheck tsc + build)
+- `make setup` / `make dev` / `make build`: install deps + playwright browser / dev server / static build in `dist/`
+- `make check`: the quality gate (lint biome + typecheck tsc + unit tests + build)
 - `make format`: auto-fix formatting + lint before committing
-- e2e (ad-hoc): `pnpm add -D playwright-core`, write a throwaway `.mjs` script using
-  `chromium.launch({ channel: 'chrome', headless: true })`, then delete the script and
-  revert `package.json` + `pnpm-lock.yaml`. In dev builds the map instance is exposed as
-  `window.__map` for tests.
+- `make test`: unit and regression tests (vitest + jsdom, `tests/`)
+- `make test-e2e`: browser tests (playwright, `e2e/`); starts its own dev server on port 4321
+
+## Tests
+
+- `tests/**/*.test.ts`: the pure modules, where regressions hurt most. Storage and share
+  migrations are covered kind by kind, since a rename there silently breaks saved routes.
+- `e2e/planner.spec.ts`: the critical paths (draw, insert on trace, undo/redo including the
+  mouse back button, POIs, overlays, 3D, save and reload, click-outside, language switch).
+  Every past regression gets a test here, that is the point of the file.
+- e2e drive the app through `window.__planner` and `window.__map`, exposed in dev builds
+  only: clicking real pixels is projected via `map.project` (see `e2e/helpers.ts`), never
+  hardcoded. They hit live services, hence one retry and generous timeouts.
 
 ## Architecture
 
@@ -85,9 +94,27 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - The IGN vector style is patched at load in `buildStyle()` (MapView): layer visibility is
   driven per-layer, contours and hybrid mode depend on it.
 
+## Known trade-offs
+
+- **Back navigation is undo.** A stack of history sentinels turns the browser back button,
+  the trackpad gesture and the mouse thumb button into undo, and refills itself so the
+  gesture keeps working. Deliberate: it matches the mouse-button undo of desktop editors.
+  The cost is real, a visitor cannot leave the planner with the back button.
+- **Slope at DEM tile borders** is a one-sided derivative: the neighboring tile is not read,
+  so the border pixel is slightly less accurate than the interior (it used to be understated
+  by half, which read as flat ground).
+- **`MapView.tsx` is the big file** (~690 lines). The extraction candidates are known and low
+  risk: `buildStyle`, the POI overlay refresh, `adaptiveExaggeration`, the marker element
+  builders. Not done yet, on purpose, to keep this pass reviewable.
+
 ## Conventions
 
+- The codebase is English: identifiers, comments, docs, internal error messages. French
+  survives only as data: the `fr` dictionary in `src/lib/i18n.ts`, department names, and the
+  literal keys of French APIs (refuges.info types, IGN categories).
 - UI is bilingual: every user-facing string goes through `src/lib/i18n.ts` (fr + en keys).
+- Point kinds are stored in saved routes and share links: renaming one means teaching
+  `parseKind` (`src/lib/points.ts`) the old spelling, never dropping it.
 - Comments and docs describe the present, not the journey; keep them one line when possible.
 - Writing style: no em dashes anywhere (code, docs, UI copy), and no emojis in docs or UI
   text; the only emoji lives in the brand header (⛰️ cairn).

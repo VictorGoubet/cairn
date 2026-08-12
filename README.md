@@ -30,10 +30,16 @@ make setup
 make dev
 ```
 
-Quality gate (lint + typecheck + build):
+Quality gate (lint + typecheck + unit tests + build):
 
 ```bash
 make check
+```
+
+Browser tests:
+
+```bash
+make test-e2e
 ```
 
 ## Stack
@@ -47,6 +53,7 @@ make check
 | Geocoding and elevation | IGN Géoplateforme APIs |
 | Terrain (3D, slopes, client-side elevations) | Terrarium DEM tiles (AWS Open Data) |
 | POIs and hidden trails | refuges.info API, Overpass API |
+| Tests | vitest + jsdom (unit), playwright (e2e) |
 
 Everything is queried straight from the browser: the deployed site is pure static files.
 
@@ -65,10 +72,10 @@ Currently auto-deployed to [Vercel](https://cairn-swart-gamma.vercel.app) on eve
 - [x] Route planner: IGN maps, elevation profile, search, undo/redo, insert-on-trace, out-and-back, loop, manual mode, km markers, GPX import
 - [x] Typed waypoints, multi-format export (GPX/KML/TCX), share by link
 - [x] Overlays: slopes, GR/PR, hidden trails, huts and water points, adaptive 3D
-- [ ] Solid foundation: English codebase, full quality pass, e2e and regression tests
+- [x] Solid foundation: English codebase, full quality pass, e2e and regression tests
+- [ ] Mobile-first responsive interface: plan and follow a hike from a phone
 - [ ] Marked hikes around a point, Komoot style (OSM route=hiking relations)
 - [ ] PWA + offline maps (PMTiles)
-- [ ] Bivouac finder: slope score + water proximity + land cover
 - [ ] Later, optional: direct upload to Garmin watches
 
 ## Data and credits
