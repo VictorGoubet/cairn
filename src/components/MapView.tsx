@@ -19,7 +19,7 @@ import {
   SLOPES_TILES,
   TERRARIUM_TILES,
 } from '../config/layers';
-import { startFlyover } from '../lib/flyover';
+import { FLYOVER_EXAGGERATION, startFlyover } from '../lib/flyover';
 import { cumulativeDistancesM, kmMarkerPoints, nearestIndex } from '../lib/geo';
 import { fetchHiddenTrails, HIDDEN_TRAILS_MIN_ZOOM } from '../lib/hiddenTrails';
 import { tNow } from '../lib/i18n';
@@ -291,13 +291,17 @@ export function MapView() {
     map.setLayoutProperty('overlay-gr', 'visibility', overlays.gr ? 'visible' : 'none');
     map.setLayoutProperty('overlay-hidden', 'visibility', overlays.hidden ? 'visible' : 'none');
     map.setLayoutProperty('overlay-refuges', 'visibility', overlays.refuges ? 'visible' : 'none');
-    map.setTerrain(overlays.terrain3d ? { source: 'terrain-3d', exaggeration: terrainExagRef.current } : null);
-  }, [overlays, mapReady]);
+    map.setTerrain(
+      overlays.terrain3d
+        ? { source: 'terrain-3d', exaggeration: flyover ? FLYOVER_EXAGGERATION : terrainExagRef.current }
+        : null,
+    );
+  }, [overlays, flyover, mapReady]);
 
   // exaggeration adapted to the relief on screen, re-evaluated once the map settles
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || !overlays.terrain3d) return;
+    if (!map || !mapReady || !overlays.terrain3d || flyover) return;
     const update = () => {
       const next = adaptiveExaggeration(map, terrainExagRef.current);
       if (next === null || Math.abs(next - terrainExagRef.current) < TERRAIN_EXAGGERATION_STEP) return;
@@ -308,7 +312,7 @@ export function MapView() {
     return () => {
       map.off('idle', update);
     };
-  }, [overlays.terrain3d, mapReady]);
+  }, [overlays.terrain3d, flyover, mapReady]);
 
   // both on-the-fly overlays keep their data in sync with the viewport while they are active
   useEffect(() => {
@@ -500,12 +504,18 @@ export function MapView() {
     // along, without which a snow-white IGN map in 3D reads as a blank screen
     const previousOverlays = usePlanner.getState().overlays;
     usePlanner.getState().setOverlay('terrain3d', true);
+    // the flight moves the viewport every frame: client-computed slope tiles and the
+    // per-cell Overpass and refuges queries would fire continuously and stall it
+    for (const heavy of ['slopes', 'gr', 'hidden', 'refuges'] as const) {
+      if (previousOverlays[heavy]) usePlanner.getState().setOverlay(heavy, false);
+    }
 
     const handle = startFlyover(map, coords, () => usePlanner.getState().stopFlyover());
     return () => {
       handle.stop();
-      usePlanner.getState().setOverlay('terrain3d', previousOverlays.terrain3d);
-      usePlanner.getState().setOverlay('hillshade', previousOverlays.hillshade);
+      for (const [name, value] of Object.entries(previousOverlays) as [keyof typeof previousOverlays, boolean][]) {
+        usePlanner.getState().setOverlay(name, value);
+      }
       map.easeTo({ ...camera, duration: 600 });
     };
   }, [flyover, mapReady]);

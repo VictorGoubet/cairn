@@ -251,7 +251,14 @@ test.describe('reading the route', () => {
       page.evaluate(() => {
         const map = (window as unknown as TestHandles).__map;
         const center = map.getCenter();
-        return { pitch: Math.round(map.getPitch()), lng: center.lng, lat: center.lat, terrain: map.getTerrain() !== null };
+        return {
+          pitch: Math.round(map.getPitch()),
+          lng: center.lng,
+          lat: center.lat,
+          zoom: map.getZoom(),
+          bearing: map.getBearing(),
+          terrain: map.getTerrain() !== null,
+        };
       });
 
     await page.locator('[data-control="flyover"]').click();
@@ -259,10 +266,23 @@ test.describe('reading the route', () => {
     const flying = await camera();
     expect(flying.terrain).toBe(true);
 
-    await page.waitForTimeout(1500);
-    const later = await camera();
-    // the camera travels along the route rather than sitting still
-    expect(Math.abs(later.lng - flying.lng) + Math.abs(later.lat - flying.lat)).toBeGreaterThan(0);
+    // the flight waits briefly for tiles before taking off, then the view keeps evolving. On a
+    // short route the look-at point settles on the finish, so the framing moves through zoom
+    // and bearing rather than through the center alone.
+    await expect
+      .poll(
+        async () => {
+          const later = await camera();
+          return (
+            Math.abs(later.lng - flying.lng) +
+            Math.abs(later.lat - flying.lat) +
+            Math.abs(later.zoom - flying.zoom) +
+            Math.abs(later.bearing - flying.bearing)
+          );
+        },
+        { timeout: 15_000 },
+      )
+      .toBeGreaterThan(0);
 
     await page.keyboard.press('Escape');
     await expect.poll(async () => (await camera()).pitch, { timeout: 10_000 }).toBeLessThan(20);

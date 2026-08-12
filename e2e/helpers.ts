@@ -12,6 +12,7 @@ export interface TestHandles {
     getStyle(): { layers: { id: string; type: string; 'source-layer'?: string }[] };
     project(lngLat: [number, number]): { x: number; y: number };
     getCenter(): { lng: number; lat: number };
+    getMaxPitch(): number;
     getTerrain(): unknown;
     queryRenderedFeatures(options: { layers: string[] }): unknown[];
   };

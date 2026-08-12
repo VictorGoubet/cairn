@@ -1,55 +1,60 @@
 /**
- * Drone-like flight along the route, the way Strava plays a activity back.
+ * Drone-like flight along the route, the way Strava plays an activity back.
  *
- * The camera follows the track at a constant ground speed, looks ahead rather than straight
- * down, and banks smoothly instead of snapping at every vertex. 3D terrain is required for
- * the relief to read, so the caller turns it on and restores the previous state at the end.
+ * Built on the two-path technique Mapbox documents for camera paths: one path carries the
+ * camera, a second carries what it looks at, both sampled at the same progress. MapLibre has
+ * no FreeCameraOptions, but `calculateCameraOptionsFromTo` does the same job: give it a camera
+ * position with an altitude plus a target, and it derives center, zoom, pitch and bearing.
+ * Letting geometry drive the camera beats animating pitch and zoom by hand.
+ *
+ * The caller pins terrain exaggeration to 1 for the flight: MapLibre drops the closest tiles
+ * when terrain is on, and the effect grows with exaggeration (maplibre-gl-js issue 1241),
+ * which is what makes chunks of the map vanish mid-flight.
  */
 
-import type { Map as MapLibreMap } from 'maplibre-gl';
+import { LngLat, type Map as MapLibreMap } from 'maplibre-gl';
 import { cumulativeDistancesM, type LonLatEle, nearestIndex } from './geo';
 
-/** a full route plays in this many seconds, whatever its length */
-const FLIGHT_SECONDS = 60;
+/** a full route plays in about this long, whatever its length */
+const FLIGHT_SECONDS = 30;
 /**
- * Ground speed cap. Beyond roughly this, the camera outruns tile loading and flies over a
- * blank map: at zoom 14 a tile spans a few hundred meters, and vector plus DEM tiles both
- * have to arrive.
+ * Ground speed cap. The camera flies high enough to see far ahead, so a brisk pass is fine,
+ * but past this the map cannot stream tiles in time.
  */
-const MAX_SPEED_M_S = 70;
-const PITCH_DEG = 68;
-/** wide enough to keep the tile budget sane while still feeling low over the ground */
-const ZOOM = 14.2;
-/** distance looked ahead to pick the heading: shorter reads jittery, longer cuts corners */
-const LOOKAHEAD_M = 220;
-/** exponential smoothing of the bearing, per frame */
-const BEARING_SMOOTHING = 0.12;
-/** waiting forever for tiles would leave the play button stuck */
-const TAKEOFF_TIMEOUT_MS = 4000;
+const MAX_SPEED_M_S = 170;
+/**
+ * How far ahead the camera looks, and how high it flies. Together they set the pitch and the
+ * zoom MapLibre derives: measured at this latitude, looking 2300 m ahead from 850 m up lands
+ * around zoom 14.4 and pitch 70, and keeping that ratio holds the framing at any scale. Flying
+ * closer (540 m ahead, 430 m up) landed at zoom 16.9 and asked for roughly thirty times as many
+ * tiles for the same ground.
+ */
+const MAX_AHEAD_M = 2300;
+const HEIGHT_TO_AHEAD = 850 / 2300;
+/** short routes look ahead a fraction of their length, or the flight starts by staring at the end */
+const AHEAD_FRACTION = 0.4;
+const MIN_AHEAD_M = 220;
+/** exponential smoothing on the camera altitude, so a cliff does not jerk the camera */
+const ALTITUDE_SMOOTHING = 0.08;
+/** samples over the look-ahead window, to clear the relief the camera is heading into */
+const LOOKAHEAD_SAMPLES = 8;
+/** 30 frames per second is smooth enough here and halves the camera work of 60 */
+const FRAME_INTERVAL_MS = 33;
+/** terrain exaggeration during the flight, see the note above about vanishing tiles */
+export const FLYOVER_EXAGGERATION = 1;
+/** tiles are worth a short wait, but past this the flight starts anyway: pressing play and
+ * watching nothing happen reads as broken */
+const TAKEOFF_TIMEOUT_MS = 1800;
 
 export interface FlyoverHandle {
   stop(): void;
 }
 
-function bearingBetween(from: LonLatEle, to: LonLatEle): number {
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLon = toRad(to[0] - from[0]);
-  const lat1 = toRad(from[1]);
-  const lat2 = toRad(to[1]);
-  const y = Math.sin(dLon) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-  return (Math.atan2(y, x) * 180) / Math.PI;
-}
-
-/** shortest way around the circle, so the camera never spins the long way at 359 to 1 degree */
-function shortestTurn(from: number, to: number): number {
-  return ((to - from + 540) % 360) - 180;
-}
-
 function positionAt(coords: LonLatEle[], dists: number[], distanceM: number): LonLatEle {
-  const i = Math.max(1, nearestIndex(dists, distanceM));
+  const clamped = Math.min(Math.max(distanceM, 0), dists[dists.length - 1]);
+  const i = Math.max(1, nearestIndex(dists, clamped));
   const span = dists[i] - dists[i - 1];
-  const t = span > 0 ? Math.min(1, Math.max(0, (distanceM - dists[i - 1]) / span)) : 0;
+  const t = span > 0 ? Math.min(1, Math.max(0, (clamped - dists[i - 1]) / span)) : 0;
   const a = coords[i - 1];
   const b = coords[i];
   return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2])];
@@ -60,8 +65,8 @@ function positionAt(coords: LonLatEle[], dists: number[], distanceM: number): Lo
  *
  * Args:
  *   map: map to drive; its camera is taken over for the duration.
- *   coords: route geometry, at least two points.
- *   onEnd: called when the flight finishes or is stopped, once.
+ *   coords: route geometry with elevations, at least two points.
+ *   onEnd: called once, when the flight finishes or is stopped.
  *
  * Returns:
  *   A handle to stop the flight early.
@@ -70,58 +75,77 @@ export function startFlyover(map: MapLibreMap, coords: LonLatEle[], onEnd: () =>
   const dists = cumulativeDistancesM(coords);
   const totalM = dists[dists.length - 1];
   const speed = Math.min(MAX_SPEED_M_S, totalM / FLIGHT_SECONDS);
+  const aheadM = Math.max(MIN_AHEAD_M, Math.min(MAX_AHEAD_M, totalM * AHEAD_FRACTION));
+  const heightM = aheadM * HEIGHT_TO_AHEAD;
 
-  // maplibre caps the pitch at 60 by default, which is too flat to feel like a flight
+  // the pitch that comes out of the geometry runs past the default 60 degree cap
   const previousMaxPitch = map.getMaxPitch();
-  if (previousMaxPitch < PITCH_DEG) map.setMaxPitch(Math.min(85, PITCH_DEG + 2));
+  map.setMaxPitch(85);
 
   let frame = 0;
   let done = false;
   let startedAt = 0;
-  let bearing = bearingBetween(coords[0], positionAt(coords, dists, Math.min(LOOKAHEAD_M, totalM)));
+  let altitude = positionAt(coords, dists, 0)[2] + heightM;
 
-  const finish = () => {
-    if (done) return;
-    done = true;
-    cancelAnimationFrame(frame);
-    map.setMaxPitch(previousMaxPitch);
-    onEnd();
+  // the camera rides the track itself; only the target runs ahead. Trailing the camera behind
+  // the position instead would pin it to the start until the flight had covered that setback.
+  const cameraFor = (travelledM: number) => {
+    const camera = positionAt(coords, dists, travelledM);
+    const target = positionAt(coords, dists, travelledM + aheadM);
+    // clear the highest ground in the look-ahead window: on a climb the slope ahead rises above
+    // a camera held over the current point, and the derived pitch tips towards the sky
+    let ceiling = camera[2];
+    for (let i = 1; i <= LOOKAHEAD_SAMPLES; i++) {
+      const ahead = positionAt(coords, dists, travelledM + (aheadM * i) / LOOKAHEAD_SAMPLES);
+      ceiling = Math.max(ceiling, ahead[2]);
+    }
+    const wanted = ceiling + heightM;
+    altitude += (wanted - altitude) * ALTITUDE_SMOOTHING;
+    return map.calculateCameraOptionsFromTo(
+      new LngLat(camera[0], camera[1]),
+      altitude,
+      new LngLat(target[0], target[1]),
+      target[2],
+    );
   };
 
+  let lastFrameAt = 0;
   const step = (now: number) => {
     if (done) return;
     if (!startedAt) startedAt = now;
     const travelled = ((now - startedAt) / 1000) * speed;
-    const center = positionAt(coords, dists, Math.min(travelled, totalM));
-    const ahead = positionAt(coords, dists, Math.min(travelled + LOOKAHEAD_M, totalM));
-    const target = travelled + LOOKAHEAD_M >= totalM ? bearing : bearingBetween(center, ahead);
-    bearing += shortestTurn(bearing, target) * BEARING_SMOOTHING;
-
-    map.jumpTo({ center: [center[0], center[1]], zoom: ZOOM, pitch: PITCH_DEG, bearing });
+    if (now - lastFrameAt >= FRAME_INTERVAL_MS) {
+      lastFrameAt = now;
+      map.jumpTo(cameraFor(travelled));
+    }
     if (travelled >= totalM) return finish();
     frame = requestAnimationFrame(step);
   };
 
-  // frame the start and wait for its tiles: taking off immediately shows a blank map
-  map.jumpTo({
-    center: [coords[0][0], coords[0][1]],
-    zoom: ZOOM,
-    pitch: PITCH_DEG,
-    bearing,
-  });
-  const takeOff = () => {
-    if (done) return;
+  function takeOff() {
+    if (done || startedAt) return;
+    window.clearTimeout(takeOffFallback);
     frame = requestAnimationFrame(step);
-  };
+  }
+
+  function finish() {
+    if (done) return;
+    done = true;
+    cancelAnimationFrame(frame);
+    window.clearTimeout(takeOffFallback);
+    map.off('idle', takeOff);
+    map.setMaxPitch(previousMaxPitch);
+    onEnd();
+  }
+
+  // frame the start and let its tiles arrive before moving: a flight that begins over a blank
+  // map never catches up. Applied twice on purpose, the first jumpTo lands short when terrain
+  // is on (maplibre-gl-js issue 4688).
+  const start = cameraFor(0);
+  map.jumpTo(start);
+  map.jumpTo(start);
   map.once('idle', takeOff);
-  // never strand the flight if a tile request hangs
   const takeOffFallback = window.setTimeout(takeOff, TAKEOFF_TIMEOUT_MS);
 
-  return {
-    stop: () => {
-      window.clearTimeout(takeOffFallback);
-      map.off('idle', takeOff);
-      finish();
-    },
-  };
+  return { stop: finish };
 }

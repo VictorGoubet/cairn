@@ -121,11 +121,25 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   the route, so numbers and geometry always agree.
 - Points reorder by dragging their row; `reorderAnchor` recomputes the legs around both
   positions and leaves frozen legs alone.
-- The play button flies the route like a drone (`lib/flyover.ts`): constant ground speed
-  capped at 70 m/s, smoothed bearing looking ahead, and it waits for the first tiles before
-  taking off. Faster than that and the camera outruns tile loading, flying over a blank map.
-  It turns the terrain on through the store, which brings hillshading with it: 3D over a
-  snow-white IGN map with no shading reads as a blank screen. The camera is restored on exit.
+- The play button flies the route like a drone (`lib/flyover.ts`). It follows the two-path
+  technique Mapbox documents for camera paths: the camera rides the track while a second point
+  runs ahead, and `calculateCameraOptionsFromTo` derives center, zoom, pitch and bearing from
+  that geometry (MapLibre has no FreeCameraOptions). What that buys, and what it cost to learn:
+  - **Framing is calibrated, not guessed.** Looking 2300 m ahead from 850 m up lands near zoom
+    14.4 and pitch 70 at our latitudes; the height-to-lookahead ratio is kept so short routes
+    stay framed the same way. An earlier close-in camera (540 m ahead, 430 m up) derived zoom
+    16.9 and asked for roughly thirty times the tiles.
+  - **Terrain exaggeration is pinned to 1** while flying. MapLibre drops the closest tiles with
+    terrain on and it worsens sharply with exaggeration (maplibre-gl-js issue 1241), which is
+    exactly the "chunks vanishing" symptom.
+  - **The initial jump is applied twice**: the first one lands short with terrain on
+    (maplibre-gl-js issue 4688).
+  - **The camera clears the relief ahead**, not just the ground under it, or a climb pushes the
+    derived pitch towards the sky.
+  - **Heavy overlays are paused** for the flight (client-computed slope tiles, per-cell Overpass
+    and refuges queries) and restored after: they re-fire on every viewport change.
+  - Terrain goes on through the store so hillshading comes along: 3D over a snow-white IGN map
+    with no shading reads as a blank screen. Camera capped at 30 fps, restored on exit.
 - The style carries a `sky` and a `background` layer. Without the sky, everything above the
   horizon is unpainted and the page shows through as soon as the camera tilts.
 - Map control buttons carry `data-control` so tests never depend on their order or labels.
