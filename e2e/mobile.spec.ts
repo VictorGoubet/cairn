@@ -106,8 +106,8 @@ test.describe('phone layout', () => {
     await page.locator('.sheet-stop').nth(1).click();
     await page.waitForTimeout(400);
 
-    for (const index of [1, 2]) {
-      await page.locator('.mc-btn').nth(index).click();
+    for (const control of ['layers', 'options']) {
+      await page.locator(`[data-control="${control}"]`).click();
       await page.waitForTimeout(450);
       const fit = await page.evaluate(() => {
         const panel = document.querySelector('.mc-panel')?.getBoundingClientRect();
@@ -118,8 +118,8 @@ test.describe('phone layout', () => {
           clearOfSheet: panel.bottom <= sheet.top,
         };
       });
-      expect(fit, `panel ${index}`).toEqual({ insideViewport: true, clearOfSheet: true });
-      await page.locator('.mc-btn').nth(index).click();
+      expect(fit, `panel ${control}`).toEqual({ insideViewport: true, clearOfSheet: true });
+      await page.locator(`[data-control="${control}"]`).click();
       await page.waitForTimeout(250);
     }
   });

@@ -65,6 +65,9 @@ export type FlyTo = { center: LonLat; zoom: number } | { bounds: [LonLat, LonLat
 /** dimension and value highlighted on the map when hovering the legends */
 export type WayHighlight = { dim: 'category' | 'surface'; value: string };
 
+/** stretch selected on the elevation profile, in meters along the route */
+export type ProfileSelection = { fromM: number; toM: number };
+
 export interface SavedRoute {
   id: string;
   name: string;
@@ -109,6 +112,9 @@ interface PlannerState {
   manualMode: boolean;
   routingPreset: RoutingPreset;
   wayTypeHighlight: WayHighlight | null;
+  profileSelection: ProfileSelection | null;
+  /** true while the camera flies the route, see lib/flyover */
+  flyover: boolean;
   anchors: Anchor[];
   legs: LegSlot[];
   offRoutePoints: OffRoutePoint[];
@@ -132,6 +138,7 @@ interface PlannerState {
   dragAnchor: (index: number, p: LonLat) => void;
   moveAnchor: (index: number, p: LonLat) => void;
   removeAnchor: (id: string) => void;
+  reorderAnchor: (from: number, to: number) => void;
   undo: () => void;
   redo: () => void;
   clear: () => void;
@@ -155,6 +162,9 @@ interface PlannerState {
   setManualMode: (manual: boolean) => void;
   setRoutingPreset: (preset: RoutingPreset) => void;
   setWayTypeHighlight: (highlight: WayHighlight | null) => void;
+  setProfileSelection: (selection: ProfileSelection | null) => void;
+  toggleFlyover: () => void;
+  stopFlyover: () => void;
   setBaseLayerId: (id: string) => void;
   toggleOverlay: (name: keyof Overlays) => void;
   setHoverPoint: (p: LonLat | null) => void;
@@ -351,6 +361,8 @@ export const usePlanner = create<PlannerState>((set, get) => {
     manualMode: false,
     routingPreset: 'balanced' as RoutingPreset,
     wayTypeHighlight: null,
+    profileSelection: null,
+    flyover: false,
     anchors: draft?.anchors ?? [],
     legs: draft?.legs ?? [],
     offRoutePoints: draft?.offRoutePoints ?? [],
@@ -499,6 +511,23 @@ export const usePlanner = create<PlannerState>((set, get) => {
       launchLeg(slot, lonLat(anchors[index - 1]), lonLat(anchors[index + 1]));
     },
 
+    // swapping two points changes the shape of the route: every leg between them, plus the
+    // one before and after, is recomputed. Frozen legs (import, manual) keep their geometry.
+    reorderAnchor: (from, to) => {
+      const { anchors } = get();
+      if (from === to || from < 0 || to < 0 || from >= anchors.length || to >= anchors.length) return;
+      pushHistory();
+      const moved = anchors[from];
+      const nextAnchors = anchors.toSpliced(from, 1).toSpliced(to, 0, moved);
+      const firstLeg = Math.max(0, Math.min(from, to) - 1);
+      const lastLeg = Math.min(nextAnchors.length - 2, Math.max(from, to));
+      const staleLegs = get().legs.map((slot, i) =>
+        i >= firstLeg && i <= lastLeg && !slot.manual ? newSlot(get().manualMode) : slot,
+      );
+      set({ anchors: nextAnchors, legs: staleLegs, flyover: false });
+      ensureLegs();
+    },
+
     undo: () => {
       const { history } = get();
       const snapshot = history.at(-1);
@@ -533,6 +562,8 @@ export const usePlanner = create<PlannerState>((set, get) => {
         offRoutePoints: [],
         hoverPoint: null,
         editing: null,
+        profileSelection: null,
+        flyover: false,
         currentRouteId: null,
         currentRouteName: '',
       });
@@ -752,6 +783,9 @@ export const usePlanner = create<PlannerState>((set, get) => {
     },
 
     setWayTypeHighlight: wayTypeHighlight => set({ wayTypeHighlight }),
+    setProfileSelection: profileSelection => set({ profileSelection }),
+    toggleFlyover: () => set(s => ({ flyover: !s.flyover && routeCoords(s.legs).length >= 2 })),
+    stopFlyover: () => set({ flyover: false }),
 
     setBaseLayerId: baseLayerId => set({ baseLayerId }),
     toggleOverlay: name =>

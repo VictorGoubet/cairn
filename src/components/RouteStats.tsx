@@ -3,6 +3,7 @@ import { elevationStats, formatDistance } from '../lib/geo';
 import { useT } from '../lib/i18n';
 import { dateLocale } from '../lib/lang';
 import { useClickOutside } from '../lib/useClickOutside';
+import { useEscapeKey } from '../lib/useEscapeKey';
 import { routeCoords, routeDistanceM, usePlanner } from '../store';
 
 /**
@@ -23,6 +24,7 @@ export function RouteStats({ compact = false }: { compact?: boolean }) {
   const [saveName, setSaveName] = useState('');
   const saveWrapRef = useRef<HTMLDivElement>(null);
   useClickOutside(saveWrapRef, () => setSaveOpen(false), saveOpen);
+  useEscapeKey(() => setSaveOpen(false), saveOpen);
 
   const coords = useMemo(() => routeCoords(legs), [legs]);
   const gainM = useMemo(() => (coords.length ? elevationStats(coords).gainM : 0), [coords]);

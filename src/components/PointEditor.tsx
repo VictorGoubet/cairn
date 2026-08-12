@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { useT } from '../lib/i18n';
 import { kindLabelKey, POINT_KINDS } from '../lib/points';
 import { useClickOutside } from '../lib/useClickOutside';
+import { useEscapeKey } from '../lib/useEscapeKey';
 import { usePlanner } from '../store';
 
 function closeEditor() {
@@ -13,6 +14,7 @@ export function PointEditor() {
   const rootRef = useRef<HTMLDivElement>(null);
   const editing = usePlanner(s => s.editing);
   useClickOutside(rootRef, closeEditor, editing !== null);
+  useEscapeKey(closeEditor, editing !== null);
   const anchors = usePlanner(s => s.anchors);
   const offRoutePoints = usePlanner(s => s.offRoutePoints);
 

@@ -19,10 +19,11 @@ import {
   SLOPES_TILES,
   TERRARIUM_TILES,
 } from '../config/layers';
-import { ROTATE_CURSOR } from '../lib/cursors';
-import { cumulativeDistancesM, kmMarkerPoints } from '../lib/geo';
+import { startFlyover } from '../lib/flyover';
+import { cumulativeDistancesM, kmMarkerPoints, nearestIndex } from '../lib/geo';
 import { fetchHiddenTrails, HIDDEN_TRAILS_MIN_ZOOM } from '../lib/hiddenTrails';
 import { tNow } from '../lib/i18n';
+import { bindLongPress, bindMiddleDragRotate, bindRotateCursor } from '../lib/mapGestures';
 import { kindDef, type PointKind } from '../lib/points';
 import {
   fetchRefugePoints,
@@ -58,6 +59,7 @@ registerSlopeProtocol();
 const ROUTE_SOURCE = 'route';
 const DRAG_SOURCE = 'drag-line';
 const HIGHLIGHT_SOURCE = 'waytype-highlight';
+const SELECTION_SOURCE = 'profile-selection';
 const HIDDEN_TRAILS_SOURCE = 'hidden-trails';
 const REFUGES_SOURCE = 'refuge-points';
 const EMPTY_ROUTE: GeoJSON.GeoJSON = { type: 'FeatureCollection', features: [] };
@@ -83,12 +85,13 @@ export function MapView() {
   const flyTo = usePlanner(s => s.flyTo);
   const dragging = usePlanner(s => s.dragging);
   const wayTypeHighlight = usePlanner(s => s.wayTypeHighlight);
+  const profileSelection = usePlanner(s => s.profileSelection);
+  const flyover = usePlanner(s => s.flyover);
 
   useEffect(() => {
     let cancelled = false;
     let map: MapLibreMap | null = null;
-    let disposeRotateCursor: (() => void) | undefined;
-    let disposeLongPress: (() => void) | undefined;
+    let disposeGestures: (() => void)[] = [];
     buildStyle().then(bundle => {
       if (cancelled || !containerRef.current) return;
       vectorLayersRef.current = bundle.vectorLayers;
@@ -129,6 +132,15 @@ export function MapView() {
           source: HIGHLIGHT_SOURCE,
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: { 'line-color': '#2f9e44', 'line-width': 7, 'line-opacity': 0.95 },
+        });
+        // the stretch selected on the elevation profile, drawn over the route
+        map.addSource(SELECTION_SOURCE, { type: 'geojson', data: EMPTY_ROUTE });
+        map.addLayer({
+          id: 'profile-selection',
+          type: 'line',
+          source: SELECTION_SOURCE,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': '#2a78d6', 'line-width': 8, 'line-opacity': 0.55 },
         });
         // faint OSM trails + refuges.info points, loaded on the fly per cell (see tileGrid)
         map.addSource(HIDDEN_TRAILS_SOURCE, { type: 'geojson', data: EMPTY_ROUTE });
@@ -204,8 +216,15 @@ export function MapView() {
         map.on('contextmenu', e => {
           usePlanner.getState().addOffRoutePoint([e.lngLat.lng, e.lngLat.lat]);
         });
-        disposeRotateCursor = bindRotateCursor(map);
-        disposeLongPress = bindLongPressPoint(map);
+        disposeGestures = [
+          bindRotateCursor(map),
+          bindMiddleDragRotate(map),
+          bindLongPress(map, p => {
+            usePlanner.getState().addOffRoutePoint(p);
+            // the press is consumed: the finger lifting must not also append a route point
+            suppressNextTap = true;
+          }),
+        ];
         setMapReady(true);
       });
       mapRef.current = map;
@@ -215,8 +234,8 @@ export function MapView() {
     });
     return () => {
       cancelled = true;
-      disposeRotateCursor?.();
-      disposeLongPress?.();
+      for (const dispose of disposeGestures) dispose();
+      disposeGestures = [];
       map?.remove();
       mapRef.current = null;
       setMapReady(false);
@@ -238,6 +257,31 @@ export function MapView() {
       map.setLayoutProperty(layer.id, 'visibility', show ? 'visible' : 'none');
     }
   }, [baseLayerId, overlays.contours, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const source = map.getSource(SELECTION_SOURCE) as GeoJSONSource | undefined;
+    if (!source) return;
+    const coords = routeCoords(legs);
+    if (!profileSelection || coords.length < 2) {
+      source.setData(EMPTY_ROUTE);
+      return;
+    }
+    const dists = cumulativeDistancesM(coords);
+    const from = nearestIndex(dists, Math.min(profileSelection.fromM, profileSelection.toM));
+    const to = nearestIndex(dists, Math.max(profileSelection.fromM, profileSelection.toM));
+    const slice = coords.slice(from, to + 1);
+    source.setData(
+      slice.length >= 2
+        ? {
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'LineString', coordinates: slice.map(([lon, lat]) => [lon, lat]) },
+          }
+        : EMPTY_ROUTE,
+    );
+  }, [profileSelection, legs, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -446,6 +490,25 @@ export function MapView() {
   // request would otherwise be dropped for good
   useEffect(() => {
     const map = mapRef.current;
+    if (!map || !mapReady || !flyover) return;
+    const coords = routeCoords(usePlanner.getState().legs);
+    if (coords.length < 2) return;
+
+    // relief is the whole point of the flight, so terrain goes on for its duration
+    const camera = { center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() };
+    const hadTerrain = usePlanner.getState().overlays.terrain3d;
+    if (!hadTerrain) map.setTerrain({ source: 'terrain-3d', exaggeration: terrainExagRef.current });
+
+    const handle = startFlyover(map, coords, () => usePlanner.getState().stopFlyover());
+    return () => {
+      handle.stop();
+      if (!usePlanner.getState().overlays.terrain3d) map.setTerrain(null);
+      map.easeTo({ ...camera, duration: 600 });
+    };
+  }, [flyover, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
     if (!map || !mapReady || !flyTo) return;
     if ('center' in flyTo) map.flyTo({ center: flyTo.center, zoom: flyTo.zoom });
     else map.fitBounds(flyTo.bounds, { padding: 80, maxZoom: 15 });
@@ -482,90 +545,6 @@ let suppressNextTap = false;
  * Returns:
  *   A disposer for the window listener, since the button can be released outside the canvas.
  */
-const LONG_PRESS_MS = 500;
-/** a finger never lands twice on the same pixel: allow a small wobble during the press */
-const LONG_PRESS_SLOP_PX = 12;
-
-/**
- * Drops an off-route point after a long press, the touch equivalent of the right click.
- *
- * Args:
- *   map: map whose canvas receives the touch events.
- *
- * Returns:
- *   A disposer for the listeners.
- */
-function bindLongPressPoint(map: MapLibreMap): () => void {
-  const canvas = map.getCanvas();
-  let timer = 0;
-  let start: { x: number; y: number } | null = null;
-
-  const cancel = () => {
-    window.clearTimeout(timer);
-    timer = 0;
-    start = null;
-  };
-
-  const onTouchStart = (e: TouchEvent) => {
-    if (e.touches.length !== 1) {
-      cancel();
-      return;
-    }
-    const touch = e.touches[0];
-    start = { x: touch.clientX, y: touch.clientY };
-    timer = window.setTimeout(() => {
-      if (!start) return;
-      const rect = canvas.getBoundingClientRect();
-      const lngLat = map.unproject([start.x - rect.left, start.y - rect.top]);
-      usePlanner.getState().addOffRoutePoint([lngLat.lng, lngLat.lat]);
-      // the press is consumed: the finger lifting must not also append a route point
-      suppressNextTap = true;
-      cancel();
-    }, LONG_PRESS_MS);
-  };
-
-  const onTouchMove = (e: TouchEvent) => {
-    if (!start || e.touches.length !== 1) return cancel();
-    const touch = e.touches[0];
-    if (Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > LONG_PRESS_SLOP_PX) cancel();
-  };
-
-  canvas.addEventListener('touchstart', onTouchStart, { passive: true });
-  canvas.addEventListener('touchmove', onTouchMove, { passive: true });
-  canvas.addEventListener('touchend', cancel);
-  canvas.addEventListener('touchcancel', cancel);
-  return () => {
-    cancel();
-    canvas.removeEventListener('touchstart', onTouchStart);
-    canvas.removeEventListener('touchmove', onTouchMove);
-    canvas.removeEventListener('touchend', cancel);
-    canvas.removeEventListener('touchcancel', cancel);
-  };
-}
-
-function bindRotateCursor(map: MapLibreMap): () => void {
-  const canvas = map.getCanvas();
-  let previousCursor: string | null = null;
-
-  const onMouseDown = (e: MouseEvent) => {
-    if (e.button !== 2 || previousCursor !== null) return;
-    previousCursor = canvas.style.cursor;
-    canvas.style.cursor = ROTATE_CURSOR;
-  };
-  const onMouseUp = () => {
-    if (previousCursor === null) return;
-    canvas.style.cursor = previousCursor;
-    previousCursor = null;
-  };
-
-  canvas.addEventListener('mousedown', onMouseDown);
-  window.addEventListener('mouseup', onMouseUp);
-  return () => {
-    canvas.removeEventListener('mousedown', onMouseDown);
-    window.removeEventListener('mouseup', onMouseUp);
-  };
-}
-
 function adaptiveExaggeration(map: MapLibreMap, applied: number): number | null {
   const canvas = map.getCanvas();
   const width = canvas.clientWidth;

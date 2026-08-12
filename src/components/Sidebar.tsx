@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { RoutingPreset } from '../lib/brouter';
 import { type MsgKey, useT } from '../lib/i18n';
 import { kindDef, kindLabelKey } from '../lib/points';
@@ -7,6 +8,15 @@ const ROUTING_PRESETS: readonly RoutingPreset[] = ['balanced', 'avoid_roads', 'e
 
 export function Sidebar() {
   const t = useT();
+  // reordering by drag: dragIndex is the point being moved, dropIndex the slot under the cursor
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+
+  function endDrag() {
+    setDragIndex(null);
+    setDropIndex(null);
+  }
+
   const manualMode = usePlanner(s => s.manualMode);
   const routingPreset = usePlanner(s => s.routingPreset);
   const anchors = usePlanner(s => s.anchors);
@@ -113,7 +123,25 @@ export function Sidebar() {
           <h2>{t('route_points')}</h2>
           <ul className="poi-list anchor-list">
             {anchors.map((anchor, index) => (
-              <li key={anchor.id}>
+              <li
+                key={anchor.id}
+                className={dragIndex === index ? 'dragging' : dropIndex === index ? 'drop-target' : undefined}
+                draggable
+                onDragStart={() => setDragIndex(index)}
+                onDragEnd={endDrag}
+                onDragOver={e => {
+                  e.preventDefault();
+                  setDropIndex(index);
+                }}
+                onDrop={e => {
+                  e.preventDefault();
+                  if (dragIndex !== null) usePlanner.getState().reorderAnchor(dragIndex, index);
+                  endDrag();
+                }}
+              >
+                <span className="drag-handle" title={t('reorder_hint')} aria-hidden="true">
+                  ⠿
+                </span>
                 <button
                   type="button"
                   className="wp-name"

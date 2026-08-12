@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo } from 'react';
 import {
   cumulativeDistancesM,
   elevationStats,
@@ -10,13 +10,14 @@ import {
 import { type MsgKey, useT } from '../lib/i18n';
 import { aggregateBy, SURFACE_CATEGORIES, SURFACE_COLORS, sacStats, WAY_CATEGORIES, WAY_COLORS } from '../lib/waytypes';
 import { routeCoords, routeDistanceM, usePlanner, type WayHighlight } from '../store';
-import { ProfileChart, type ProfileSelection } from './ProfileChart';
+import { ProfileChart } from './ProfileChart';
 
 export function BottomPanel() {
   const t = useT();
   const legs = usePlanner(s => s.legs);
   const anchors = usePlanner(s => s.anchors);
-  const [selection, setSelection] = useState<ProfileSelection | null>(null);
+  const selection = usePlanner(s => s.profileSelection);
+  const setSelection = usePlanner(s => s.setProfileSelection);
   const coords = useMemo(() => routeCoords(legs), [legs]);
   const dists = useMemo(() => cumulativeDistancesM(coords), [coords]);
   const resolvedLegs = useMemo(() => legs.map(l => l.leg), [legs]);
@@ -28,7 +29,7 @@ export function BottomPanel() {
 
   // the selection becomes meaningless when the track changes
   // biome-ignore lint/correctness/useExhaustiveDependencies(coords): intentional trigger, not a value we read
-  useEffect(() => setSelection(null), [coords]);
+  useEffect(() => setSelection(null), [coords, setSelection]);
 
   // route POIs projected onto their cumulative distance along the itinerary
   const pois = useMemo(() => {

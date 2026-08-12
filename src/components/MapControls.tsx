@@ -3,6 +3,7 @@ import { BASE_LAYER_OPTIONS, layerThumbUrl } from '../config/layers';
 import { type MsgKey, useT } from '../lib/i18n';
 import { SLOPE_LEGEND } from '../lib/slopeTiles';
 import { useClickOutside } from '../lib/useClickOutside';
+import { useEscapeKey } from '../lib/useEscapeKey';
 import { type Overlays, usePlanner } from '../store';
 
 const OPTION_ROWS: { key: keyof Overlays; labelKey: MsgKey }[] = [
@@ -20,10 +21,13 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
   const t = useT();
   const [open, setOpen] = useState<'layers' | 'options' | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  useClickOutside(rootRef, () => setOpen(null), open !== null);
   const baseLayerId = usePlanner(s => s.baseLayerId);
   const overlays = usePlanner(s => s.overlays);
+  const flyover = usePlanner(s => s.flyover);
   const legs = usePlanner(s => s.legs);
+  useClickOutside(rootRef, () => setOpen(null), open !== null);
+  useEscapeKey(() => setOpen(null), open !== null);
+  useEscapeKey(() => usePlanner.getState().stopFlyover(), flyover);
   const hasRoute = legs.some(l => (l.leg?.coords.length ?? 0) > 0);
 
   function togglePanel(panel: 'layers' | 'options') {
@@ -38,6 +42,7 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
       <button
         type="button"
         className="mc-btn"
+        data-control="focus"
         title={t('focus_route')}
         disabled={!hasRoute}
         onClick={() => usePlanner.getState().focusRoute()}
@@ -56,7 +61,27 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
       </button>
       <button
         type="button"
+        className={flyover ? 'mc-btn active' : 'mc-btn'}
+        data-control="flyover"
+        title={flyover ? t('flyover_stop') : t('flyover')}
+        disabled={!hasRoute}
+        onClick={() => usePlanner.getState().toggleFlyover()}
+      >
+        {flyover ? (
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <rect x="6" y="5" width="4" height="14" rx="1" />
+            <rect x="14" y="5" width="4" height="14" rx="1" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M8 5.5v13l11-6.5z" />
+          </svg>
+        )}
+      </button>
+      <button
+        type="button"
         className={open === 'layers' ? 'mc-btn active' : 'mc-btn'}
+        data-control="layers"
         title={t('basemaps')}
         onClick={() => togglePanel('layers')}
       >
@@ -75,6 +100,7 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
       <button
         type="button"
         className={open === 'options' ? 'mc-btn active' : 'mc-btn'}
+        data-control="options"
         title={t('display_options')}
         onClick={() => togglePanel('options')}
       >

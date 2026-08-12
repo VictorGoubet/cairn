@@ -109,6 +109,22 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - Mobile e2e run under Chromium with touch emulation, not a webkit device preset, so
   `make setup` keeps downloading a single browser.
 
+## Interaction map
+
+- Left click or tap appends a point, clicking the track inserts one, right click or long press
+  drops an off-route point, dragging a point re-routes it live.
+- Right button or middle button held rotates and tilts (`lib/mapGestures.ts`); the middle
+  button is wired by hand since MapLibre only ships the right one.
+- Escape closes whatever floats (`lib/useEscapeKey.ts`, alongside `useClickOutside`) and stops
+  the flyover. Backspace and the mouse back button undo.
+- Selecting a stretch on the profile stores it (`profileSelection`) and the map draws it over
+  the route, so numbers and geometry always agree.
+- Points reorder by dragging their row; `reorderAnchor` recomputes the legs around both
+  positions and leaves frozen legs alone.
+- The play button flies the route like a drone (`lib/flyover.ts`): constant ground speed,
+  smoothed bearing looking ahead, terrain forced on and the camera restored on exit.
+- Map control buttons carry `data-control` so tests never depend on their order or labels.
+
 ## Known trade-offs
 
 - **Back navigation is undo.** A stack of history sentinels turns the browser back button,

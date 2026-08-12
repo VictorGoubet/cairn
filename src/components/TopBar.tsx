@@ -6,6 +6,7 @@ import type { Lang } from '../lib/lang';
 import { kindDef, kindLabelKey } from '../lib/points';
 import { buildShareUrl } from '../lib/share';
 import { useClickOutside } from '../lib/useClickOutside';
+import { useEscapeKey } from '../lib/useEscapeKey';
 import { useIsMobile } from '../lib/useMediaQuery';
 import { routeCoords, routePois, usePlanner } from '../store';
 import { RoutesPanel } from './RoutesPanel';
@@ -23,6 +24,7 @@ export function TopBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
   useClickOutside(actionsRef, () => setMenuOpen(false), isMobile && menuOpen);
+  useEscapeKey(() => setMenuOpen(false), isMobile && menuOpen);
   const lang = usePlanner(s => s.lang);
   const anchors = usePlanner(s => s.anchors);
   const legs = usePlanner(s => s.legs);
@@ -36,6 +38,8 @@ export function TopBar() {
   const [showExport, setShowExport] = useState(false);
   useClickOutside(routesWrapRef, closeRoutesPanel, showRoutes);
   useClickOutside(exportWrapRef, () => setShowExport(false), showExport);
+  useEscapeKey(closeRoutesPanel, showRoutes);
+  useEscapeKey(() => setShowExport(false), showExport);
 
   const coords = routeCoords(legs);
   const hasRoute = coords.length >= 2;

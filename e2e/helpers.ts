@@ -11,6 +11,9 @@ export interface TestHandles {
     getLayoutProperty(id: string, name: string): unknown;
     getStyle(): { layers: { id: string; type: string; 'source-layer'?: string }[] };
     project(lngLat: [number, number]): { x: number; y: number };
+    getCenter(): { lng: number; lat: number };
+    getTerrain(): unknown;
+    queryRenderedFeatures(options: { layers: string[] }): unknown[];
   };
   __planner: {
     getState(): PlannerHandle;

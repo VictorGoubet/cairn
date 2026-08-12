@@ -215,6 +215,123 @@ test.describe('saving without an account', () => {
   });
 });
 
+test.describe('reading the route', () => {
+  test('selecting a stretch on the profile highlights it on the map', async ({ page }) => {
+    await openPlanner(page);
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 1);
+
+    const highlighted = () =>
+      page.evaluate(() => (window as unknown as TestHandles).__map.queryRenderedFeatures({ layers: ['profile-selection'] }).length);
+    expect(await highlighted()).toBe(0);
+
+    const rect = page.locator('.chart-area rect[fill="transparent"]');
+    const box = await rect.boundingBox();
+    if (!box) throw new Error('no chart');
+    await page.mouse.move(box.x + box.width * 0.3, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.7, box.y + box.height / 2, { steps: 8 });
+    await page.mouse.up();
+
+    await expect(page.locator('.selection-chip')).toBeVisible();
+    await expect.poll(highlighted).toBeGreaterThan(0);
+
+    await page.locator('.selection-chip').click();
+    await expect.poll(highlighted).toBe(0);
+  });
+
+  test('the play button flies the route in 3D, escape brings the map back', async ({ page }) => {
+    await openPlanner(page);
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 1);
+
+    const camera = () =>
+      page.evaluate(() => {
+        const map = (window as unknown as TestHandles).__map;
+        const center = map.getCenter();
+        return { pitch: Math.round(map.getPitch()), lng: center.lng, lat: center.lat, terrain: map.getTerrain() !== null };
+      });
+
+    await page.locator('[data-control="flyover"]').click();
+    await expect.poll(async () => (await camera()).pitch, { timeout: 10_000 }).toBeGreaterThan(45);
+    const flying = await camera();
+    expect(flying.terrain).toBe(true);
+
+    await page.waitForTimeout(1500);
+    const later = await camera();
+    // the camera travels along the route rather than sitting still
+    expect(Math.abs(later.lng - flying.lng) + Math.abs(later.lat - flying.lat)).toBeGreaterThan(0);
+
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await camera()).pitch, { timeout: 10_000 }).toBeLessThan(20);
+    expect((await camera()).terrain).toBe(false);
+  });
+
+  test('escape closes an open panel', async ({ page }) => {
+    await openPlanner(page);
+    await page.locator('[data-control="options"]').click();
+    await expect(page.locator('.mc-panel')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.mc-panel')).toHaveCount(0);
+  });
+
+  test('the middle button rotates and tilts the camera', async ({ page }) => {
+    await openPlanner(page);
+    const box = await page.locator('.maplibregl-canvas').boundingBox();
+    if (!box) throw new Error('no canvas');
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+
+    const camera = () =>
+      page.evaluate(() => {
+        const map = (window as unknown as TestHandles).__map;
+        return { bearing: Math.round(map.getBearing()), pitch: Math.round(map.getPitch()) };
+      });
+
+    await page.mouse.move(cx, cy);
+    await page.mouse.down({ button: 'middle' });
+    // a generous drag in both axes, applied in small steps so no single move is swallowed
+    await page.mouse.move(cx + 160, cy - 140, { steps: 20 });
+    const cursor = await page.evaluate(() => document.querySelector<HTMLElement>('.maplibregl-canvas')?.style.cursor);
+    await expect.poll(async () => Math.abs((await camera()).bearing)).toBeGreaterThan(10);
+    await expect.poll(async () => (await camera()).pitch).toBeGreaterThan(10);
+    await page.mouse.up({ button: 'middle' });
+
+    expect(cursor).toContain('svg');
+  });
+
+  test('points can be reordered, and the legs around them are recomputed', async ({ page }) => {
+    await openPlanner(page);
+    for (const point of [CEILLAC, NEARBY, FURTHER]) {
+      await clickAt(page, point);
+      await page.waitForTimeout(400);
+    }
+    await waitForRouting(page, 2);
+
+    // the handle is what makes the row draggable, and it must be there
+    await expect(page.locator('.anchor-list .drag-handle').first()).toBeVisible();
+
+    const names = () =>
+      page.evaluate(() => (window as unknown as TestHandles).__planner.getState().anchors.map(a => a.id));
+    const before = await names();
+    await page.evaluate(() => {
+      const state = (window as unknown as TestHandles).__planner.getState() as unknown as {
+        reorderAnchor(from: number, to: number): void;
+      };
+      state.reorderAnchor(0, 2);
+    });
+    const after = await names();
+    expect(after).toEqual([before[1], before[2], before[0]]);
+
+    await waitForRouting(page, 2);
+    const state = await planner(page).state();
+    expect(state.anchorCount).toBe(3);
+    expect(state.legCoordCounts.every(count => count > 1)).toBe(true);
+  });
+});
+
 test.describe('language', () => {
   test('the whole interface switches between french and english', async ({ page }) => {
     await openPlanner(page);

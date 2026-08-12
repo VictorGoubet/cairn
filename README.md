@@ -12,8 +12,7 @@
   <a href="https://cairn-swart-gamma.vercel.app">Live demo</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#stack">Stack</a> •
-  <a href="#deploy">Deploy</a> •
-  <a href="#roadmap">Roadmap</a>
+  <a href="#deploy">Deploy</a>
 </p>
 
 <br>
@@ -66,17 +65,6 @@ make build
 Static output in `dist/`, deployable anywhere.
 
 Currently auto-deployed to [Vercel](https://cairn-swart-gamma.vercel.app) on every push to `main`.
-
-## Roadmap
-
-- [x] Route planner: IGN maps, elevation profile, search, undo/redo, insert-on-trace, out-and-back, loop, manual mode, km markers, GPX import
-- [x] Typed waypoints, multi-format export (GPX/KML/TCX), share by link
-- [x] Overlays: slopes, GR/PR, hidden trails, huts and water points, adaptive 3D
-- [x] Solid foundation: English codebase, full quality pass, e2e and regression tests
-- [x] Mobile-first responsive interface: plan and follow a hike from a phone
-- [ ] Marked hikes around a point, Komoot style (OSM route=hiking relations)
-- [ ] PWA + offline maps (PMTiles)
-- [ ] Later, optional: direct upload to Garmin watches
 
 ## Data and credits
 
