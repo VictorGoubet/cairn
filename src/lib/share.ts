@@ -1,16 +1,16 @@
 /**
- * Partage d'itinéraire par URL, sans serveur: la route est sérialisée, compressée
- * (deflate natif du navigateur) et encodée en base64url dans le fragment #r=.
+ * Serverless route sharing over the URL: the route is serialized, compressed (native browser
+ * deflate) and base64url-encoded into the #r= fragment.
  *
- * Seules les ancres et leurs métadonnées voyagent pour les tronçons routés, recalculés
- * à l'ouverture; les géométries figées (import GPX, tracé manuel, aller-retour) voyagent
- * en polyline compressée pour arriver à l'identique.
+ * Routed legs only carry their anchors and metadata, and are recomputed on open; frozen
+ * geometries (GPX import, manual drawing, out and back) travel as a compressed polyline so
+ * they arrive identical.
  */
 
 import { type Anchor, type LegSlot, type OffRoutePoint, usePlanner } from '../store';
 import type { RoutingPreset } from './brouter';
 import { type LonLatEle, pathDistanceM } from './geo';
-import { POINT_KINDS, type PointKind } from './points';
+import { parseKind } from './points';
 
 const SHARE_PREFIX = '#r=1.';
 const PRECISION_DEG = 1e5;
@@ -23,17 +23,17 @@ interface SharePayload {
   n: string;
   p: RoutingPreset;
   a: SharedPoint[];
-  /** une entrée par tronçon: polyline (lat, lon, ele) si géométrie figée, '' si manuel encore
-   * en calcul au moment du partage, null si à rerouter en auto */
+  /** one entry per leg: polyline (lat, lon, ele) for a frozen geometry, '' for a manual leg still
+   * being computed when sharing, null when it must be rerouted automatically */
   l: (string | null)[];
   o: SharedPoint[];
 }
 
 /**
- * URL de partage de l'itinéraire courant, à copier telle quelle.
+ * Share URL for the current route, ready to be copied as is.
  *
  * Returns:
- *   URL complète avec la route encodée dans le fragment.
+ *   Full URL with the route encoded in the fragment.
  */
 export async function buildShareUrl(): Promise<string> {
   const { anchors, legs, offRoutePoints, currentRouteName, routingPreset } = usePlanner.getState();
@@ -48,7 +48,7 @@ export async function buildShareUrl(): Promise<string> {
   return `${location.origin}${location.pathname}${SHARE_PREFIX}${data}`;
 }
 
-/** Applique la route encodée dans le fragment d'URL, s'il y en a une. */
+/** Applies the route encoded in the URL fragment, if there is one. */
 export async function loadSharedRouteFromUrl(): Promise<void> {
   if (!location.hash.startsWith(SHARE_PREFIX)) return;
   const raw = location.hash.slice(SHARE_PREFIX.length);
@@ -62,7 +62,7 @@ export async function loadSharedRouteFromUrl(): Promise<void> {
       legs: (payload.l ?? []).map(line => ({
         id: crypto.randomUUID(),
         manual: line !== null,
-        leg: line ? makeLeg(decodeTrack(line)) : null,
+        leg: line ? makeLeg(decodeValidTrack(line)) : null,
       })),
       offRoutePoints: (payload.o ?? []).map(unpackPoint),
     });
@@ -77,8 +77,7 @@ function packPoint(point: Anchor | OffRoutePoint): SharedPoint {
 
 function unpackPoint([lon, lat, kind, name]: SharedPoint): Anchor {
   if (!Number.isFinite(lon) || !Number.isFinite(lat)) throw new Error('invalid point');
-  const knownKind = POINT_KINDS.some(k => k.id === kind) ? (kind as PointKind) : 'autre';
-  return { id: crypto.randomUUID(), lon, lat, kind: knownKind, name: String(name ?? '') };
+  return { id: crypto.randomUUID(), lon, lat, kind: parseKind(kind), name: String(name ?? '') };
 }
 
 function makeLeg(coords: LonLatEle[]): LegSlot['leg'] {
@@ -89,7 +88,7 @@ function round6(value: number): number {
   return Number(value.toFixed(6));
 }
 
-// --- polyline (algorithme Google, deltas signés par dimension: lat, lon, altitude) ---
+// --- polyline (Google algorithm, signed deltas per dimension: lat, lon, elevation) ---
 
 function encodeTrack(coords: LonLatEle[]): string {
   let out = '';
@@ -102,6 +101,21 @@ function encodeTrack(coords: LonLatEle[]): string {
     }
   }
   return out;
+}
+
+/** rejects a polyline whose bytes decoded into anything but real coordinates */
+function decodeValidTrack(line: string): LonLatEle[] {
+  const coords = decodeTrack(line);
+  const usable = coords.every(
+    ([lon, lat, ele]) =>
+      Number.isFinite(lon) &&
+      Number.isFinite(lat) &&
+      Number.isFinite(ele) &&
+      Math.abs(lon) <= 180 &&
+      Math.abs(lat) <= 90,
+  );
+  if (coords.length < 2 || !usable) throw new Error('invalid shared track');
+  return coords;
 }
 
 function decodeTrack(line: string): LonLatEle[] {
@@ -135,7 +149,7 @@ function encodeValue(delta: number): string {
   return out + String.fromCharCode(v + 63);
 }
 
-// --- compression deflate + base64url ---
+// --- deflate compression + base64url ---
 
 async function deflateBase64Url(text: string): Promise<string> {
   const stream = new Blob([new TextEncoder().encode(text)]).stream().pipeThrough(new CompressionStream('deflate-raw'));

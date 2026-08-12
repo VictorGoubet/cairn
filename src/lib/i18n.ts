@@ -13,7 +13,7 @@ export const MESSAGES = {
     fmt_gpx: 'Universel (montres, applis)',
     fmt_kml: 'Google Earth / Maps',
     fmt_tcx: 'Parcours Garmin',
-    parcours: 'Parcours',
+    section_route: 'Parcours',
     trace_type: 'Type de tracé',
     auto: 'Auto',
     manual: 'Manuel',
@@ -82,13 +82,13 @@ export const MESSAGES = {
     err_storage: 'Stockage local plein, itinéraire non sauvegardé',
     err_gpx: 'Fichier GPX illisible',
     kind_checkpoint: 'Checkpoint',
-    kind_eau: "Point d'eau",
-    kind_vue: 'Point de vue',
-    kind_pause: 'Pause',
-    kind_bivouac: "Bivouac / fin d'étape",
-    kind_refuge: 'Refuge / cabane',
-    kind_sommet: 'Sommet',
-    kind_autre: 'Autre',
+    kind_water: "Point d'eau",
+    kind_viewpoint: 'Point de vue',
+    kind_break: 'Pause',
+    kind_camp: "Bivouac / fin d'étape",
+    kind_hut: 'Refuge / cabane',
+    kind_summit: 'Sommet',
+    kind_other: 'Autre',
     profile_title: 'Profil altimétrique',
     way_types: 'Types de voies',
     wt_path: 'Sentier',
@@ -121,7 +121,7 @@ export const MESSAGES = {
     fmt_gpx: 'Universal (watches, apps)',
     fmt_kml: 'Google Earth / Maps',
     fmt_tcx: 'Garmin course',
-    parcours: 'Route',
+    section_route: 'Route',
     trace_type: 'Drawing mode',
     auto: 'Auto',
     manual: 'Manual',
@@ -190,13 +190,13 @@ export const MESSAGES = {
     err_storage: 'Local storage full, route not saved',
     err_gpx: 'Unreadable GPX file',
     kind_checkpoint: 'Checkpoint',
-    kind_eau: 'Water point',
-    kind_vue: 'Viewpoint',
-    kind_pause: 'Break',
-    kind_bivouac: 'Camp / stage end',
-    kind_refuge: 'Hut / refuge',
-    kind_sommet: 'Summit',
-    kind_autre: 'Other',
+    kind_water: 'Water point',
+    kind_viewpoint: 'Viewpoint',
+    kind_break: 'Break',
+    kind_camp: 'Camp / stage end',
+    kind_hut: 'Hut / refuge',
+    kind_summit: 'Summit',
+    kind_other: 'Other',
     profile_title: 'Elevation profile',
     way_types: 'Way types',
     wt_path: 'Trail',
@@ -221,13 +221,13 @@ export const MESSAGES = {
 
 export type MsgKey = keyof (typeof MESSAGES)['fr'];
 
-/** hook réactif pour les composants */
+/** reactive hook for components */
 export function useT(): (key: MsgKey) => string {
   const lang = usePlanner(s => s.lang);
   return key => MESSAGES[lang][key];
 }
 
-/** accès hors composant React (markers DOM, exports) */
+/** access outside a React component (DOM markers, exports) */
 export function tNow(key: MsgKey): string {
   return MESSAGES[usePlanner.getState().lang][key];
 }

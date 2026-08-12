@@ -28,7 +28,7 @@ export function Sidebar() {
   return (
     <aside className="side">
       <section className="side-section">
-        <h2>{t('parcours')}</h2>
+        <h2>{t('section_route')}</h2>
         <p className="side-label">{t('trace_type')}</p>
         <div className="segmented">
           <button

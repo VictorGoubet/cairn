@@ -54,7 +54,7 @@ export function TopBar() {
     } else if (format === 'kml') {
       downloadTextFile(`${name}.kml`, 'application/vnd.google-earth.kml+xml', buildKml(name, coords, allPoints));
     } else {
-      // les repères hors tracé n'ont pas de place sur un parcours horodaté
+      // off-route markers have no place in a timestamped route
       downloadTextFile(`${name}.tcx`, 'application/vnd.garmin.tcx+xml', buildTcx(name, coords, pois));
     }
   }
@@ -101,7 +101,7 @@ export function TopBar() {
         <button type="button" disabled={!hasRoute} onClick={shareRoute}>
           {copied ? t('copied') : t('share')}
         </button>
-        <div className="routes-wrap" ref={exportWrapRef}>
+        <div className="menu-wrap" ref={exportWrapRef}>
           <button type="button" className="primary" disabled={!hasRoute} onClick={() => setShowExport(v => !v)}>
             {t('export')} ▾
           </button>

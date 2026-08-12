@@ -1,31 +1,32 @@
 /**
- * Points refuges.info: cabanes, refuges, points d'eau, sommets, passages délicats.
+ * refuges.info points: huts, shelters, water points, summits, tricky passages.
  *
- * API ouverte en lecture seule, sans clé, données CC BY-SA. Une requête par cellule z9
- * (~50 km), mémorisée pour la session.
+ * Open read-only API, no key, CC BY-SA data. One request per z9 cell (~50 km), memoized
+ * for the session.
  */
 
+import { fetchWithTimeout } from './http';
 import { type Cell, cachedFetch, cellBounds, cellsInBounds, type ViewBounds } from './tileGrid';
 
 export const REFUGES_MIN_ZOOM = 10;
 export const REFUGES_ATTRIBUTION = '© <a href="https://www.refuges.info" target="_blank">refuges.info</a>';
 
-export type RefugeCategory = 'refuge' | 'eau' | 'sommet' | 'passage' | 'autre';
+export type RefugeCategory = 'hut' | 'water' | 'summit' | 'tricky' | 'other';
 
 export const REFUGE_CATEGORY_COLORS: Record<RefugeCategory, string> = {
-  refuge: '#e8590c',
-  eau: '#1c7ed6',
-  sommet: '#7048e8',
-  passage: '#e03131',
-  autre: '#868e96',
+  hut: '#e8590c',
+  water: '#1c7ed6',
+  summit: '#7048e8',
+  tricky: '#e03131',
+  other: '#868e96',
 };
 
 export const REFUGE_CATEGORY_EMOJI: Record<RefugeCategory, string> = {
-  refuge: '🛖',
-  eau: '💧',
-  sommet: '⛰️',
-  passage: '⚠️',
-  autre: '📍',
+  hut: '🛖',
+  water: '💧',
+  summit: '⛰️',
+  tricky: '⚠️',
+  other: '📍',
 };
 
 const API_URL = 'https://www.refuges.info/api/bbox';
@@ -33,25 +34,25 @@ const CELL_ZOOM = 9;
 const MAX_CELLS_PER_VIEW = 6;
 const CACHE_MAX_CELLS = 32;
 const CATEGORY_BY_TYPE: Record<string, RefugeCategory> = {
-  'cabane non gardée': 'refuge',
-  'refuge gardé': 'refuge',
-  "gîte d'étape": 'refuge',
-  "point d'eau": 'eau',
-  lac: 'eau',
-  sommet: 'sommet',
-  'passage délicat': 'passage',
+  'cabane non gardée': 'hut',
+  'refuge gardé': 'hut',
+  "gîte d'étape": 'hut',
+  "point d'eau": 'water',
+  lac: 'water',
+  sommet: 'summit',
+  'passage délicat': 'tricky',
 };
 
 const cellCache = new Map<string, Promise<GeoJSON.Feature[]>>();
 
 /**
- * Points refuges.info couvrant la zone donnée.
+ * refuges.info points covering the given area.
  *
  * Args:
- *   bounds: emprise du viewport en degrés.
+ *   bounds: viewport extent in degrees.
  *
  * Returns:
- *   Points GeoJSON avec nom, catégorie, altitude et lien, ou liste vide si zone trop large.
+ *   GeoJSON points with name, category, elevation and link, or an empty list if the area is too wide.
  */
 export async function fetchRefugePoints(bounds: ViewBounds): Promise<GeoJSON.Feature[]> {
   const cells = cellsInBounds(bounds, CELL_ZOOM);
@@ -67,7 +68,7 @@ export async function fetchRefugePoints(bounds: ViewBounds): Promise<GeoJSON.Fea
 async function queryCell(cell: Cell): Promise<GeoJSON.Feature[]> {
   const b = cellBounds(cell, CELL_ZOOM);
   const bbox = `${b.west},${b.south},${b.east},${b.north}`;
-  const res = await fetch(`${API_URL}?bbox=${bbox}&format=geojson&type_points=all`);
+  const res = await fetchWithTimeout(`${API_URL}?bbox=${bbox}&format=geojson&type_points=all`);
   if (!res.ok) throw new Error(`refuges.info ${res.status}`);
   const data = await res.json();
   const features: GeoJSON.Feature[] = [];
@@ -79,7 +80,7 @@ async function queryCell(cell: Cell): Promise<GeoJSON.Feature[]> {
       properties: {
         nom: props.nom ?? '',
         type,
-        cat: CATEGORY_BY_TYPE[type] ?? 'autre',
+        cat: CATEGORY_BY_TYPE[type] ?? 'other',
         alt: props.coord?.alt ?? null,
         lien: props.lien ?? '',
       },

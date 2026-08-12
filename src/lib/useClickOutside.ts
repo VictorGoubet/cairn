@@ -1,6 +1,6 @@
 import { type RefObject, useEffect } from 'react';
 
-/** ferme un widget flottant dès qu'on interagit ailleurs (capture, avant les handlers de la carte) */
+/** closes a floating widget as soon as the user interacts elsewhere (capture phase, before the map handlers) */
 export function useClickOutside(ref: RefObject<HTMLElement | null>, onOutside: () => void, active: boolean): void {
   useEffect(() => {
     if (!active) return;

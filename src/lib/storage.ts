@@ -1,4 +1,5 @@
 import type { Anchor, LegSlot, OffRoutePoint, SavedRoute } from '../store';
+import { parseKind } from './points';
 
 const ROUTES_KEY = 'cairn.routes.v1';
 const DRAFT_KEY = 'cairn.draft.v1';
@@ -11,7 +12,7 @@ export interface Draft {
   currentRouteName: string;
 }
 
-// anciennes données: les points libres posés au clic droit étaient stockés sous "waypoints"
+// legacy data: free points dropped by right-click were stored under "waypoints"
 type LegacyWaypoints = { waypoints?: OffRoutePoint[] };
 
 export function loadRoutes(): SavedRoute[] {
@@ -48,30 +49,24 @@ export function persistDraft(draft: Draft): boolean {
   return writeJson(DRAFT_KEY, { ...draft, legs: compactLegs(draft.legs) });
 }
 
-// les anciens brouillons stockaient les points en tuples [lon, lat] sans métadonnées,
-// et le type "etape" a fusionné avec "bivouac"
+// oldest drafts stored points as bare [lon, lat] tuples, without metadata
 function migrateAnchors(anchors: (Anchor | [number, number])[] | undefined): Anchor[] {
   return (anchors ?? []).map(a =>
     Array.isArray(a)
       ? { id: crypto.randomUUID(), lon: a[0], lat: a[1], kind: 'checkpoint' as const, name: '' }
-      : { ...a, kind: migrateKind(a.kind) },
+      : { ...a, kind: parseKind(a.kind) },
   );
 }
 
-// les anciens "waypoints" libres sont exactement les points hors tracé d'aujourd'hui
+// the old free "waypoints" are exactly today's off-route points
 function migrateOffRoutePoints(
   points: OffRoutePoint[] | undefined,
   legacy: OffRoutePoint[] | undefined,
 ): OffRoutePoint[] {
-  return [...(points ?? []), ...(legacy ?? [])].map(w => ({ ...w, kind: migrateKind(w.kind) }));
+  return [...(points ?? []), ...(legacy ?? [])].map(w => ({ ...w, kind: parseKind(w.kind) }));
 }
 
-function migrateKind(kind: string | undefined): Anchor['kind'] {
-  if (kind === 'etape') return 'bivouac';
-  return (kind as Anchor['kind']) ?? 'autre';
-}
-
-// arrondit les coordonnées (~10 cm) pour tenir large dans le quota localStorage
+// rounds coordinates (~10 cm) to stay well within the localStorage quota
 function compactLegs(legs: LegSlot[]): LegSlot[] {
   return legs.map(slot =>
     slot.leg

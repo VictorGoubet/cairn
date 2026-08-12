@@ -6,7 +6,7 @@ import { slopeColorForDeg } from '../lib/slopeTiles';
 import { usePlanner } from '../store';
 
 const PAD = { top: 22, right: 14, bottom: 22, left: 46 };
-// fenêtre de lissage de la pente: le bruit du MNT rendrait chaque segment d'une couleur différente
+// slope smoothing window: DEM noise would give every segment a different color
 const SLOPE_WINDOW_M = 60;
 
 export interface ProfilePoi {
@@ -62,7 +62,7 @@ export function ProfileChart({
 
   const { x, y, plotW, plotH } = makeScales(size.w, size.h, totalM, eleMin, eleMax);
 
-  // pente signée lissée en chaque point (degrés)
+  // smoothed signed slope at each point (degrees)
   const slopes = useMemo(() => {
     return coords.map((_, i) => {
       const j1 = nearestIndex(dists, dists[i] - SLOPE_WINDOW_M);
@@ -73,7 +73,7 @@ export function ProfileChart({
     });
   }, [coords, dists]);
 
-  // tronçons de ligne groupés par couleur de pente + aire neutre
+  // line runs grouped by slope color, plus the neutral area below
   const { runs, areaPath } = useMemo(() => {
     const scales = makeScales(size.w, size.h, totalM, eleMin, eleMax);
     const point = (i: number) => `${scales.x(dists[i]).toFixed(1)},${scales.y(coords[i][2]).toFixed(1)}`;
@@ -124,7 +124,7 @@ export function ProfileChart({
   }
 
   function onMouseUp() {
-    // un simple clic (sans glisser) efface la sélection
+    // a plain click (no drag) clears the selection
     if (dragFromMRef.current !== null && !draggedRef.current) onSelectionChange(null);
     dragFromMRef.current = null;
   }
@@ -189,7 +189,7 @@ export function ProfileChart({
             <circle cx={hover.cx} cy={hover.cy} r={4} className="viz-dot" />
           </g>
         )}
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: survol pointeur uniquement, pur enrichissement visuel */}
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer hover only, purely visual enrichment */}
         <rect
           x={PAD.left}
           y={PAD.top}

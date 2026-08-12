@@ -1,11 +1,12 @@
 import profileTemplate from '../config/hiking-mountain.brf?raw';
 import { cumulativeDistancesM, haversineM, type LonLat, type LonLatEle } from './geo';
+import { fetchWithTimeout } from './http';
 import { parseWaySegments, type WaySegment } from './waytypes';
 
 const BROUTER_URL = 'https://brouter.de/brouter';
 const DEFAULT_PROFILE = 'hiking-mountain';
 
-/** préréglages: interrupteurs documentés du template hiking-mountain */
+/** presets: documented switches of the hiking-mountain template */
 const PRESET_PATCHES: Record<RoutingPreset, [RegExp, string][]> = {
   balanced: [],
   avoid_roads: [[/^assign {3}path_preference {10}0\.0/m, 'assign   path_preference          20.0']],
@@ -17,20 +18,20 @@ export type RoutingPreset = 'balanced' | 'avoid_roads' | 'easy_up';
 export interface RouteLeg {
   coords: LonLatEle[];
   distanceM: number;
-  /** analyse des voies empruntées; absente pour les tronçons manuels ou importés non matchés */
+  /** way analysis; missing for manual legs or imported ones without a match */
   waySegments?: WaySegment[];
 }
 
 let activePreset: RoutingPreset = 'balanced';
-// id du profil custom uploadé sur brouter.de; invalidé quand le serveur l'expire
+// id of the custom profile uploaded to brouter.de; invalidated when the server expires it
 let customProfileId: string | null = null;
 let customProfileUpload: Promise<string> | null = null;
 
 /**
- * Change le préréglage utilisé pour les prochains routages.
+ * Changes the preset used by the next routing calls.
  *
  * Args:
- *   preset: équilibré (profil standard), éviter les routes, ou limiter le dénivelé.
+ *   preset: balanced (standard profile), avoid roads, or limit elevation gain.
  */
 export function setRoutingPreset(preset: RoutingPreset): void {
   if (preset === activePreset) return;
@@ -44,25 +45,25 @@ export function getRoutingPreset(): RoutingPreset {
 }
 
 /**
- * Route un enchaînement de points en une seule requête (économe pour le serveur bénévole).
+ * Routes a chain of points in a single request (easy on the volunteer-run server).
  *
  * Args:
- *   points: au moins deux points; les intermédiaires sont des via-points snappés au réseau.
+ *   points: at least two points; the intermediate ones are via points snapped to the network.
  */
 export async function computeRoute(points: LonLat[]): Promise<RouteLeg> {
   const lonlats = points.map(p => `${p[0]},${p[1]}`).join('|');
   const profile = await resolveProfile();
-  let res = await fetch(routeUrl(lonlats, profile));
-  // un profil custom expiré côté serveur se ré-uploade une fois avant d'abandonner
+  let res = await fetchWithTimeout(routeUrl(lonlats, profile));
+  // a custom profile expired server-side is re-uploaded once before giving up
   if (!res.ok && profile !== DEFAULT_PROFILE) {
     customProfileId = null;
     customProfileUpload = null;
-    res = await fetch(routeUrl(lonlats, await resolveProfile()));
+    res = await fetchWithTimeout(routeUrl(lonlats, await resolveProfile()));
   }
   if (!res.ok) throw new Error(`brouter ${res.status}`);
   const data = await res.json();
   const feature = data.features?.[0];
-  if (!feature) throw new Error('brouter: réponse vide');
+  if (!feature) throw new Error('brouter: empty response');
   const coords = feature.geometry.coordinates as LonLatEle[];
   return {
     coords,
@@ -76,21 +77,21 @@ export async function computeLeg(from: LonLat, to: LonLat): Promise<RouteLeg> {
 }
 
 /**
- * Découpe une route multi-via en tronçons, aux points de passage snappés par le routeur.
+ * Splits a multi-via route into legs, at the via points snapped by the router.
  *
  * Args:
- *   route: réponse d'un computeRoute passant par tous les points.
- *   anchors: points demandés, dans l'ordre (au moins deux).
+ *   route: response of a computeRoute going through every point.
+ *   anchors: requested points, in order (at least two).
  *
  * Returns:
- *   Tronçons découpés + position snappée de chaque point, ou null si le découpage échoue.
+ *   The split legs plus the snapped position of each point, or null if the split fails.
  */
 export function splitRoute(route: RouteLeg, anchors: LonLat[]): { legs: RouteLeg[]; junctions: LonLat[] } | null {
   const { coords } = route;
   if (coords.length < 2 || anchors.length < 2) return null;
   const dists = cumulativeDistancesM(coords);
 
-  // point de la géométrie le plus proche de chaque via, en avançant seulement
+  // geometry point closest to each via, moving forward only
   const cuts: number[] = [0];
   for (const anchor of anchors.slice(1, -1)) {
     let best = -1;
@@ -150,7 +151,7 @@ async function resolveProfile(): Promise<string> {
     customProfileId = await customProfileUpload;
     return customProfileId;
   } catch {
-    // upload impossible: on route quand même, avec le profil standard
+    // upload failed: route anyway, with the standard profile
     customProfileUpload = null;
     return DEFAULT_PROFILE;
   }
@@ -159,11 +160,12 @@ async function resolveProfile(): Promise<string> {
 async function uploadPresetProfile(preset: RoutingPreset): Promise<string> {
   let body = profileTemplate;
   for (const [pattern, replacement] of PRESET_PATCHES[preset]) {
+    if (!pattern.test(body)) throw new Error(`brouter profile: ${preset} patch no longer matches the template`);
     body = body.replace(pattern, replacement);
   }
-  const res = await fetch(`${BROUTER_URL}/profile`, { method: 'POST', body });
+  const res = await fetchWithTimeout(`${BROUTER_URL}/profile`, { method: 'POST', body });
   if (!res.ok) throw new Error(`brouter profile ${res.status}`);
   const data = await res.json();
-  if (!data.profileid) throw new Error('brouter profile: réponse vide');
+  if (!data.profileid) throw new Error('brouter profile: empty response');
   return data.profileid as string;
 }

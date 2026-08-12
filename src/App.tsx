@@ -28,10 +28,10 @@ export default function App() {
         planner.undo();
       }
     }
-    // boutons précédent/suivant de la souris = undo/redo, quel que soit le canal par lequel
-    // ils arrivent (événement souris direct, ou navigation historique générée par l'OS/driver).
-    // Une pile de sentinelles absorbe les navigations back en série; history.go() la recharge
-    // (traversée d'entrées existantes: jamais filtrée par Chrome, contrairement à pushState).
+    // mouse back/forward buttons act as undo/redo, whatever channel they arrive through
+    // (direct mouse event, or history navigation synthesized by the OS/driver).
+    // A stack of sentinels absorbs back navigations in a row; history.go() refills it
+    // (traversing existing entries is never filtered by Chrome, unlike pushState).
     const BACK_STACK = 30;
     let expectedIdx = (history.state as { cairnIdx?: number } | null)?.cairnIdx ?? null;
     if (expectedIdx === null) {
@@ -61,7 +61,7 @@ export default function App() {
       }
       const direction = idx < (expectedIdx ?? BACK_STACK - 1) ? 'back' : 'forward';
       expectedIdx = idx;
-      // le même clic physique peut émettre l'événement souris ET la navigation: ne pas doubler
+      // the same physical click can emit both the mouse event and the navigation: do not act twice
       if (Date.now() - lastMouseNavAt > 250) act(direction);
       if (idx <= 0) {
         suppressNext++;

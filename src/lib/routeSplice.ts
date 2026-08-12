@@ -1,6 +1,6 @@
-// Insertion d'un point sur la géométrie existante d'un itinéraire: la trace est découpée
-// au sommet le plus proche, sans recalcul réseau. Partagé entre le store (insertion,
-// clic droit POI) et la migration des anciennes données locales.
+// Inserts a point into a route's existing geometry: the track is split at the nearest
+// vertex, without any network re-routing. Shared between the store (insertion, POI
+// right-click) and the migration of legacy local data.
 import type { Anchor, LegSlot } from '../store';
 import { haversineM, type LonLat, pathDistanceM } from './geo';
 
@@ -10,16 +10,16 @@ export interface SplicedRoute {
 }
 
 /**
- * Insère `anchor` dans le tracé au sommet le plus proche de `p`.
+ * Inserts `anchor` into the track at the vertex closest to `p`.
  *
  * Args:
- *   anchors: ancres actuelles de l'itinéraire.
- *   legs: tronçons actuels (une géométrie est requise pour découper).
- *   p: position demandée; l'ancre est aimantée sur la trace, jamais à côté.
- *   anchor: ancre à insérer, coordonnées recalées sur le sommet retenu.
+ *   anchors: current route anchors.
+ *   legs: current legs (a geometry is required to split).
+ *   p: requested position; the anchor snaps onto the track, never beside it.
+ *   anchor: anchor to insert, coordinates realigned on the selected vertex.
  *
  * Returns:
- *   Les nouvelles listes anchors/legs, ou null si aucun tronçon n'est découpable.
+ *   The new anchors/legs lists, or null if no leg can be split.
  */
 export function spliceIntoTrace(anchors: Anchor[], legs: LegSlot[], p: LonLat, anchor: Anchor): SplicedRoute | null {
   let bestLeg = -1;
@@ -38,7 +38,7 @@ export function spliceIntoTrace(anchors: Anchor[], legs: LegSlot[], p: LonLat, a
   });
   const leg = legs[bestLeg]?.leg;
   if (!leg) return null;
-  // pas de découpe dégénérée aux extrémités du tronçon
+  // avoid a degenerate split at the leg endpoints
   const cut = Math.min(Math.max(bestCoord, 1), leg.coords.length - 2);
   if (cut < 1) return null;
   const snapped = leg.coords[cut];

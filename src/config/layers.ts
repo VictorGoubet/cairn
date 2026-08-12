@@ -1,20 +1,20 @@
 const GEOPF_WMTS =
   'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
 
-// SCAN 25 est servi via l'endpoint "private" avec la clé publique historique ign_scan_ws
+// SCAN 25 is served through the "private" endpoint with the historical public key ign_scan_ws
 const GEOPF_WMTS_SCAN =
   'https://data.geopf.fr/private/wmts?apikey=ign_scan_ws&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
 
-// Plan IGN en tuiles vectorielles avec le style officiel: net quel que soit le DPI de l'écran
+// Plan IGN as vector tiles with the official style: sharp at any screen DPI
 export const PLAN_IGN_STYLE_URL = 'https://data.geopf.fr/annexes/ressources/vectorTiles/styles/PLAN.IGN/standard.json';
 
-// MNT mondial Terrarium (Mapzen/AWS Open Data) pour l'estompage
+// Global Terrarium DEM (Mapzen/AWS Open Data) for hillshading
 export const TERRARIUM_TILES = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 
-// tuiles de pente fines calculées côté client depuis le MNT (voir lib/slopeTiles.ts)
+// fine-grained slope tiles computed client-side from the DEM (see lib/slopeTiles.ts)
 export const SLOPES_TILES = 'slope://{z}/{x}/{y}';
 
-// sentiers balisés OSM (GR, PR) rendus par Waymarked Trails, comme Komoot
+// OSM waymarked trails (GR, PR) rendered by Waymarked Trails, like Komoot
 export const GR_TILES = 'https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png';
 
 import type { MsgKey } from '../lib/i18n';
@@ -59,7 +59,7 @@ export const BASE_LAYER_OPTIONS: { id: string; labelKey: MsgKey }[] = [
 export const DEFAULT_BASE_LAYER = 'plan-ign';
 export const FALLBACK_BASE_LAYER = 'scan25';
 
-// tuile fixe (massif des Bornes, z12) utilisée comme vignette des fonds de carte
+// fixed tile (massif des Bornes, z12) used as the thumbnail for base layers
 const THUMB_TILE = { z: 12, x: 2117, y: 1458 };
 
 export function layerThumbUrl(id: string): string {

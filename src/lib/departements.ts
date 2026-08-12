@@ -5,7 +5,7 @@ export interface Departement {
 
 export function departementFromPostcode(postcode: string): Departement | null {
   if (!/^\d{5}$/.test(postcode)) return null;
-  // Corse: 20xxx se répartit en 2A (sud) / 2B (nord), 201xx ≈ Corse-du-Sud, 202xx ≈ Haute-Corse
+  // Corsica: 20xxx splits into 2A (south) / 2B (north), 201xx is roughly Corse-du-Sud, 202xx Haute-Corse
   if (postcode.startsWith('20')) return DEPARTEMENTS[postcode[2] === '2' ? '2B' : '2A'];
   const dom = postcode.slice(0, 3);
   if (DEPARTEMENTS[dom]) return DEPARTEMENTS[dom];

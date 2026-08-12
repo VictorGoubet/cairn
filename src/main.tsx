@@ -7,7 +7,7 @@ import { loadSharedRouteFromUrl } from './lib/share.ts';
 const root = document.getElementById('root');
 if (!root) throw new Error('missing #root element');
 
-// une route encodée dans l'URL (#r=...) remplace le brouillon, récupérable par undo
+// a route encoded in the URL (#r=...) replaces the draft, recoverable with undo
 void loadSharedRouteFromUrl();
 
 createRoot(root).render(

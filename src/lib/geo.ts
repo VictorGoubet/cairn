@@ -3,7 +3,7 @@ export type LonLatEle = [number, number, number];
 
 const EARTH_RADIUS_M = 6_371_000;
 const M_PER_DEG_LAT = 111_320;
-// hystérésis pour ne pas compter le bruit du MNT dans le D+/D-
+// hysteresis so DEM noise is not counted in the elevation gain/loss
 const ELEVATION_HYSTERESIS_M = 8;
 
 export function haversineM(a: LonLat, b: LonLat): number {
@@ -40,7 +40,7 @@ export function formatDistance(meters: number): string {
   return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
 }
 
-// barème type SuisseMobile: 4,2 km/h à plat, 400 m/h en montée, 800 m/h en descente
+// SuisseMobile-style scale: 4.2 km/h on the flat, 400 m/h uphill, 800 m/h downhill
 export function hikingDurationH(distanceM: number, gainM: number, lossM: number): number {
   return distanceM / 4200 + gainM / 400 + lossM / 800;
 }
@@ -65,11 +65,11 @@ export function nearestIndex(sorted: number[], value: number): number {
 }
 
 /**
- * Ramer-Douglas-Peucker: indices des sommets qui portent la forme de la trace.
+ * Ramer-Douglas-Peucker: indices of the vertices that carry the shape of the track.
  *
  * Args:
- *   coords: trace complète.
- *   toleranceM: écart maximal toléré entre la trace et sa version simplifiée.
+ *   coords: full track.
+ *   toleranceM: maximum tolerated deviation between the track and its simplified version.
  */
 export function simplifyIndices(coords: LonLatEle[], toleranceM: number): number[] {
   if (coords.length <= 2) return coords.map((_, i) => i);
@@ -94,10 +94,10 @@ export function simplifyIndices(coords: LonLatEle[], toleranceM: number): number
 }
 
 /**
- * Longueur totale d'une polyligne, en mètres.
+ * Total length of a polyline, in meters.
  *
  * Args:
- *   coords: points successifs du chemin.
+ *   coords: successive points of the path.
  */
 export function pathDistanceM(coords: LonLatEle[]): number {
   let total = 0;
@@ -108,11 +108,11 @@ export function pathDistanceM(coords: LonLatEle[]): number {
 }
 
 /**
- * Distance minimale d'un point à une polyligne, en mètres.
+ * Minimum distance from a point to a polyline, in meters.
  *
  * Args:
- *   point: point à situer.
- *   path: polyligne d'au moins deux points.
+ *   point: point to locate.
+ *   path: polyline of at least two points.
  */
 export function pointToPathDistanceM(point: LonLatEle, path: LonLatEle[]): number {
   let best = Number.POSITIVE_INFINITY;
@@ -143,7 +143,7 @@ export function kmMarkerPoints(
   return out;
 }
 
-// projection plane locale: sur quelques kilomètres l'erreur est négligeable devant la tolérance
+// local planar projection: over a few kilometers the error is negligible against the tolerance
 function perpendicularDistanceM(point: LonLatEle, from: LonLatEle, to: LonLatEle): number {
   const metersPerDegLon = M_PER_DEG_LAT * Math.cos((((from[1] + to[1]) / 2) * Math.PI) / 180);
   const px = (point[0] - from[0]) * metersPerDegLon;

@@ -3,7 +3,7 @@ import { demTileElevations, DEM_TILE_SIZE as SIZE } from './demElevation';
 
 const EQUATOR_M_PER_PX = 156543.03392;
 
-// classes pensées bivouac: le vert est posable, quelques degrés de plus se sentent sous la tente
+// classes designed for bivouacking: green is pitchable, a few degrees more are felt inside the tent
 const SLOPE_CLASSES: { maxDeg: number; color: [number, number, number, number] }[] = [
   { maxDeg: 3, color: [46, 160, 67, 80] },
   { maxDeg: 6, color: [255, 213, 0, 80] },
@@ -27,7 +27,7 @@ export function slopeColorForDeg(deg: number): string {
 
 let registered = false;
 
-// tuiles de pente calculées dans le navigateur depuis le MNT Terrarium (dérivées centrales par pixel)
+// slope tiles computed in the browser from the Terrarium DEM
 export function registerSlopeProtocol(): void {
   if (registered) return;
   registered = true;
@@ -39,9 +39,7 @@ export function registerSlopeProtocol(): void {
     const out = new ImageData(SIZE, SIZE);
     for (let py = 0; py < SIZE; py++) {
       for (let px = 0; px < SIZE; px++) {
-        const dzdx = (at(elevations, px + 1, py) - at(elevations, px - 1, py)) / (2 * metersPerPixel);
-        const dzdy = (at(elevations, px, py + 1) - at(elevations, px, py - 1)) / (2 * metersPerPixel);
-        const deg = (Math.atan(Math.hypot(dzdx, dzdy)) * 180) / Math.PI;
+        const deg = slopeDegAt(elevations, px, py, metersPerPixel);
         const cls = SLOPE_CLASSES.find(c => deg <= c.maxDeg) ?? SLOPE_CLASSES[SLOPE_CLASSES.length - 1];
         const i = (py * SIZE + px) * 4;
         out.data[i] = cls.color[0];
@@ -53,17 +51,37 @@ export function registerSlopeProtocol(): void {
 
     const canvas = new OffscreenCanvas(SIZE, SIZE);
     const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('canvas 2d indisponible');
+    if (!ctx) throw new Error('2d canvas unavailable');
     ctx.putImageData(out, 0, 0);
     const blob = await canvas.convertToBlob({ type: 'image/png' });
     return { data: await blob.arrayBuffer() };
   });
 }
 
+/**
+ * Slope in degrees at one pixel, from the elevation gradient.
+ *
+ * On a tile border one neighbor is missing, so the derivative is one-sided: dividing by the
+ * actual pixel span, not always by two, otherwise the border reads as half its real slope
+ * and a steep strip would look tent-friendly.
+ *
+ * Args:
+ *   elevations: decoded tile, row major.
+ *   px, py: pixel coordinates inside the tile.
+ *   metersPerPixel: ground resolution at this latitude.
+ */
+function slopeDegAt(elevations: Float32Array, px: number, py: number, metersPerPixel: number): number {
+  const x1 = Math.max(0, px - 1);
+  const x2 = Math.min(SIZE - 1, px + 1);
+  const y1 = Math.max(0, py - 1);
+  const y2 = Math.min(SIZE - 1, py + 1);
+  const dzdx = (at(elevations, x2, py) - at(elevations, x1, py)) / ((x2 - x1) * metersPerPixel);
+  const dzdy = (at(elevations, px, y2) - at(elevations, px, y1)) / ((y2 - y1) * metersPerPixel);
+  return (Math.atan(Math.hypot(dzdx, dzdy)) * 180) / Math.PI;
+}
+
 function at(elevations: Float32Array, x: number, y: number): number {
-  const cx = Math.min(SIZE - 1, Math.max(0, x));
-  const cy = Math.min(SIZE - 1, Math.max(0, y));
-  return elevations[cy * SIZE + cx];
+  return elevations[y * SIZE + x];
 }
 
 function tileCenterLatRad(z: number, y: number): number {

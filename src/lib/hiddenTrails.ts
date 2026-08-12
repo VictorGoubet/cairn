@@ -1,14 +1,15 @@
 /**
- * Sentes discrètes d'OpenStreetMap: sentiers non officiels (informal=yes) ou à visibilité
- * dégradée (trail_visibility), récupérés via l'API Overpass, une requête par cellule z11.
+ * Faint OpenStreetMap trails: unofficial paths (informal=yes) or paths with degraded
+ * visibility (trail_visibility), fetched through the Overpass API, one request per z11 cell.
  */
 
+import { fetchWithTimeout } from './http';
 import { type Cell, cachedFetch, cellBounds, cellsInBounds, type ViewBounds } from './tileGrid';
 
 export const HIDDEN_TRAILS_MIN_ZOOM = 12;
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
-// cellules z11 (~15 km de côté): un viewport zoomé tient en 1-4 requêtes
+// z11 cells (~15 km per side): a zoomed viewport fits in 1-4 requests
 const CELL_ZOOM = 11;
 const MAX_CELLS_PER_VIEW = 6;
 const CACHE_MAX_CELLS = 64;
@@ -17,13 +18,13 @@ const LOW_VISIBILITY = 'intermediate|bad|horrible|no';
 const cellCache = new Map<string, Promise<GeoJSON.Feature[]>>();
 
 /**
- * Sentes discrètes couvrant la zone donnée.
+ * Faint trails covering the given area.
  *
  * Args:
- *   bounds: emprise du viewport en degrés.
+ *   bounds: viewport extent in degrees.
  *
  * Returns:
- *   Lignes GeoJSON, ou liste vide si la zone est trop large (zoom insuffisant).
+ *   GeoJSON lines, or an empty list if the area is too wide (zoom too low).
  */
 export async function fetchHiddenTrails(bounds: ViewBounds): Promise<GeoJSON.Feature[]> {
   const cells = cellsInBounds(bounds, CELL_ZOOM);
@@ -44,7 +45,7 @@ async function queryOverpass(cell: Cell): Promise<GeoJSON.Feature[]> {
     `way["highway"~"^(path|footway)$"]["informal"="yes"](${bbox});` +
     `way["highway"~"^(path|footway)$"]["trail_visibility"~"^(${LOW_VISIBILITY})$"](${bbox});` +
     `);out geom 600;`;
-  const res = await fetch(OVERPASS_URL, { method: 'POST', body: `data=${encodeURIComponent(query)}` });
+  const res = await fetchWithTimeout(OVERPASS_URL, { method: 'POST', body: `data=${encodeURIComponent(query)}` });
   if (!res.ok) throw new Error(`overpass ${res.status}`);
   const data = await res.json();
   const features: GeoJSON.Feature[] = [];

@@ -1,34 +1,35 @@
 /**
- * Altitudes lues côté client dans le MNT Terrarium (AWS Open Data).
+ * Elevations read client-side from the Terrarium DEM (AWS Open Data).
  *
- * Zéro appel à une API d'altimétrie: les tuiles sont les mêmes que celles déjà utilisées
- * pour le relief 3D et les pentes, décodées dans le navigateur et mises en cache.
+ * Zero calls to an elevation API: the tiles are the same ones already used for 3D relief
+ * and slopes, decoded in the browser and cached.
  */
 
 import type { LonLat } from './geo';
+import { fetchWithTimeout } from './http';
 
 export const DEM_TILE_SIZE = 256;
 
 const TERRARIUM_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium';
-// ~19 m/pixel à 45° de latitude: du même ordre que la précision d'un MNT mondial
+// ~19 m/pixel at 45° latitude: same order as the accuracy of a global DEM
 const SAMPLING_ZOOM = 13;
 const CACHE_MAX_TILES = 64;
 
 const tileCache = new Map<string, Promise<Float32Array>>();
 
 /**
- * Récupère et décode une tuile Terrarium en grille d'altitudes (mètres), avec cache LRU.
+ * Fetches and decodes a Terrarium tile into an elevation grid (meters), with an LRU cache.
  *
  * Args:
- *   z: niveau de zoom de la tuile.
- *   x: colonne de la tuile.
- *   y: ligne de la tuile.
+ *   z: tile zoom level.
+ *   x: tile column.
+ *   y: tile row.
  */
 export function demTileElevations(z: number, x: number, y: number): Promise<Float32Array> {
   const key = `${z}/${x}/${y}`;
   const cached = tileCache.get(key);
   if (cached) {
-    // rafraîchit la position LRU
+    // refresh the LRU position
     tileCache.delete(key);
     tileCache.set(key, cached);
     return cached;
@@ -46,13 +47,13 @@ export function demTileElevations(z: number, x: number, y: number): Promise<Floa
 }
 
 /**
- * Altitudes interpolées (bilinéaire) pour une liste de points.
+ * Bilinearly interpolated elevations for a list of points.
  *
  * Args:
- *   points: positions lon/lat.
+ *   points: lon/lat positions.
  *
  * Returns:
- *   Une altitude en mètres par point, dans le même ordre.
+ *   One elevation in meters per point, in the same order.
  */
 export async function sampleElevations(points: LonLat[]): Promise<number[]> {
   const n = 2 ** SAMPLING_ZOOM;
@@ -78,7 +79,7 @@ export async function sampleElevations(points: LonLat[]): Promise<number[]> {
 }
 
 async function fetchTile(z: number, x: number, y: number): Promise<Float32Array> {
-  const res = await fetch(`${TERRARIUM_URL}/${z}/${x}/${y}.png`);
+  const res = await fetchWithTimeout(`${TERRARIUM_URL}/${z}/${x}/${y}.png`);
   if (!res.ok) throw new Error(`terrarium ${res.status}`);
   const bitmap = await createImageBitmap(await res.blob());
   const canvas = new OffscreenCanvas(DEM_TILE_SIZE, DEM_TILE_SIZE);
@@ -93,7 +94,7 @@ async function fetchTile(z: number, x: number, y: number): Promise<Float32Array>
   return elevations;
 }
 
-// interpolation bilinéaire entre les 4 pixels voisins, bornée dans la tuile
+// bilinear interpolation between the 4 neighboring pixels, clamped inside the tile
 function bilinear(grid: Float32Array, px: number, py: number): number {
   const clamp = (v: number) => Math.min(DEM_TILE_SIZE - 1, Math.max(0, v));
   const x0 = clamp(Math.floor(px - 0.5));

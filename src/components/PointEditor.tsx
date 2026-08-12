@@ -20,13 +20,13 @@ export function PointEditor() {
   const point = anchors.find(a => a.id === editing) ?? offRoutePoints.find(w => w.id === editing);
   if (!point) return null;
 
-  // départ et arrivée sont des rôles de position (1er/dernier point), reflétés ici sans être des types stockés
+  // start and end are positional roles (first/last point), reflected here without being stored kinds
   const anchorIndex = anchors.findIndex(a => a.id === editing);
   const isOffRoute = anchorIndex < 0;
   const isStart = anchorIndex === 0;
   const isEnd = anchorIndex === anchors.length - 1 && anchors.length > 1;
 
-  // un repère hors tracé n'est jamais un checkpoint du parcours
+  // an off-route marker is never a checkpoint of the route
   const kinds = (isOffRoute ? POINT_KINDS.filter(k => k.id !== 'checkpoint') : POINT_KINDS).map(k => {
     const label = t(kindLabelKey(k.id));
     if (k.id !== 'checkpoint') return { ...k, label };

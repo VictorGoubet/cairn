@@ -29,9 +29,9 @@ import { loadDraft, loadRoutes, persistDraft, persistRoutes } from './lib/storag
 const HISTORY_LIMIT = 50;
 const MAX_IMPORT_ANCHORS = 40;
 const IMPORT_ANCHOR_TOLERANCE_M = 25;
-// au-delà de cette distance à la trace, un <wpt> importé reste un repère hors tracé
+// beyond this distance from the trace, an imported <wpt> stays an off-route marker
 const IMPORT_WPT_SNAP_M = 100;
-// adoption du routage d'un tronçon importé: il doit coller à la trace d'origine
+// adopting the routing of an imported leg: it must stick to the original trace
 const MATCH_MAX_DEVIATION_M = 30;
 const MATCH_MIN_FRACTION = 0.85;
 const MATCH_MAX_LENGTH_RATIO = 0.2;
@@ -44,7 +44,7 @@ export interface Anchor {
   name: string;
 }
 
-/** repère libre posé au clic droit (source, vue...): informatif, sans influence sur l'itinéraire */
+/** free marker dropped on right click (spring, viewpoint...): informative, no influence on the route */
 export interface OffRoutePoint {
   id: string;
   lon: number;
@@ -55,14 +55,14 @@ export interface OffRoutePoint {
 
 export interface LegSlot {
   id: string;
-  /** comment calculer ce tronçon s'il reste à calculer; sans effet sur une géométrie déjà figée (import, aller-retour) */
+  /** how to compute this leg if it still needs computing, no effect on an already frozen geometry (import, out-and-back) */
   manual: boolean;
   leg: RouteLeg | null;
 }
 
 export type FlyTo = { center: LonLat; zoom: number } | { bounds: [LonLat, LonLat] };
 
-/** dimension et valeur mises en surbrillance sur la carte au survol des légendes */
+/** dimension and value highlighted on the map when hovering the legends */
 export type WayHighlight = { dim: 'category' | 'surface'; value: string };
 
 export interface SavedRoute {
@@ -82,7 +82,7 @@ interface Snapshot {
   offRoutePoints: OffRoutePoint[];
 }
 
-/** route décodée depuis un lien de partage (voir lib/share.ts) */
+/** route decoded from a share link (see lib/share.ts) */
 export interface SharedRouteInput {
   name: string;
   preset?: RoutingPreset;
@@ -118,14 +118,16 @@ interface PlannerState {
   currentRouteId: string | null;
   currentRouteName: string;
   showRoutes: boolean;
-  /** id du point (ancre ou hors tracé) en cours d'édition dans le panneau de métadonnées */
+  /** id of the point (anchor or off-route) being edited in the metadata panel */
   editing: string | null;
+  /** true while an anchor is being dragged: heavy map work waits for the drop */
+  dragging: boolean;
   hoverPoint: LonLat | null;
   flyTo: FlyTo | null;
   error: MsgKey | null;
   setLang: (lang: Lang) => void;
   addAnchor: (p: LonLat) => void;
-  insertAnchor: (p: LonLat) => void;
+  insertAnchor: (p: LonLat) => boolean;
   beginDragAnchor: () => void;
   dragAnchor: (index: number, p: LonLat) => void;
   moveAnchor: (index: number, p: LonLat) => void;
@@ -162,11 +164,13 @@ interface PlannerState {
 
 const inFlight = new Set<string>();
 let editingDirty = false;
-// drag "latest-wins": une seule requête de routage en vol, toujours relancée sur la dernière position
+// "latest-wins" drag: a single routing request in flight, always relaunched on the latest position
+// dragSession discards the answers of a drag that is over, whatever its leg index became
+let dragSession = 0;
 let draggingAnchor = false;
 let dragBusy = false;
 let dragNextPos: { index: number; p: LonLat } | null = null;
-// invalide les re-routages de préréglage devenus obsolètes
+// invalidates preset reroutes that have become obsolete
 let rerouteToken = 0;
 
 export const usePlanner = create<PlannerState>((set, get) => {
@@ -178,9 +182,9 @@ export const usePlanner = create<PlannerState>((set, get) => {
     return { id: crypto.randomUUID(), lon: p[0], lat: p[1], kind, name: '' };
   }
 
-  // chaque tronçon a un id: une réponse réseau qui arrive après un undo/clear ne trouve plus son slot.
-  // snap: le routeur recale les extrémités sur le sentier le plus proche; l'ancre concernée est
-  // aimantée sur la géométrie calculée pour ne jamais rester flottante à côté de sa propre trace
+  // each leg has an id: a network response arriving after an undo/clear no longer finds its slot.
+  // snap: the router realigns the endpoints onto the nearest trail, the anchor involved is
+  // magnetized onto the computed geometry so it never stays floating next to its own trace
   function launchLeg(slot: LegSlot, from: LonLat, to: LonLat, snap?: { anchorId: string; end: 'start' | 'end' }) {
     if (inFlight.has(slot.id)) return;
     inFlight.add(slot.id);
@@ -192,17 +196,22 @@ export const usePlanner = create<PlannerState>((set, get) => {
         });
     promise
       .then(leg => {
-        set(s => ({ legs: s.legs.map(l => (l.id === slot.id ? { ...l, leg } : l)) }));
-        if (!snap || slot.manual || leg.coords.length === 0) return;
-        const p = snap.end === 'start' ? leg.coords[0] : leg.coords[leg.coords.length - 1];
-        set(s => ({
-          anchors: s.anchors.map(a => (a.id === snap.anchorId ? { ...a, lon: p[0], lat: p[1] } : a)),
-        }));
+        set(s => {
+          // stale answer: the slot was replaced by an undo, a clear or a drag meanwhile
+          if (!s.legs.some(l => l.id === slot.id)) return {};
+          const legs = s.legs.map(l => (l.id === slot.id ? { ...l, leg } : l));
+          if (!snap || slot.manual || leg.coords.length === 0) return { legs };
+          const p = snap.end === 'start' ? leg.coords[0] : leg.coords[leg.coords.length - 1];
+          return {
+            legs,
+            anchors: s.anchors.map(a => (a.id === snap.anchorId ? { ...a, lon: p[0], lat: p[1] } : a)),
+          };
+        });
       })
       .finally(() => inFlight.delete(slot.id));
   }
 
-  // segment en ligne droite, altitudes lues dans le MNT côté client (API IGN en secours)
+  // straight-line segment, elevations read from the client-side DEM (IGN API as fallback)
   async function computeManualLeg(from: LonLat, to: LonLat): Promise<RouteLeg> {
     const distanceM = haversineM(from, to);
     const sampling = Math.min(100, Math.max(2, Math.round(distanceM / 100)));
@@ -217,18 +226,18 @@ export const usePlanner = create<PlannerState>((set, get) => {
     return { coords, distanceM };
   }
 
-  // route l'itinéraire complet en une seule requête multi-via puis remplace tous les tronçons.
-  // ne touche pas aux itinéraires contenant des tronçons manuels ou importés non matchés:
-  // le préréglage s'appliquera à leurs prochaines modifications
+  // routes the full itinerary in a single multi-via request, then replaces every leg.
+  // leaves alone itineraries containing manual or unmatched imported legs:
+  // the preset will apply to their next edits
   async function rerouteWithPreset() {
     const { anchors, legs } = get();
     if (anchors.length < 2 || legs.some(l => l.manual || !l.leg)) return;
     const token = ++rerouteToken;
-    const anchorIds = anchors.map(a => a.id).join();
+    const fingerprint = routeFingerprint(anchors);
     const route = await computeRoute(anchors.map(lonLat)).catch(() => null);
     if (!route || token !== rerouteToken) return;
     const current = get();
-    if (current.anchors.map(a => a.id).join() !== anchorIds) return;
+    if (routeFingerprint(current.anchors) !== fingerprint) return;
     const split = splitRoute(route, current.anchors.map(lonLat));
     if (!split || split.legs.length !== current.legs.length) return;
     pushHistory();
@@ -238,17 +247,17 @@ export const usePlanner = create<PlannerState>((set, get) => {
     }));
   }
 
-  // après un import GPX: une seule requête multi-via par toutes les ancres, puis chaque tronçon
-  // dont le routage colle à la trace d'origine adopte la version routée (avec analyse des voies).
-  // les tronçons qui divergent (sentier absent d'OSM…) gardent la géométrie importée
+  // after a GPX import: a single multi-via request through all anchors, then every leg
+  // whose routing sticks to the original trace adopts the routed version (with way analysis).
+  // legs that diverge (trail missing from OSM...) keep the imported geometry
   async function matchImportedRoute() {
     const { anchors } = get();
     if (anchors.length < 2) return;
-    const anchorIds = anchors.map(a => a.id).join();
+    const fingerprint = routeFingerprint(anchors);
     const route = await computeRoute(anchors.map(lonLat)).catch(() => null);
     if (!route) return;
     const current = get();
-    if (current.anchors.map(a => a.id).join() !== anchorIds) return;
+    if (routeFingerprint(current.anchors) !== fingerprint) return;
     const split = splitRoute(route, current.anchors.map(lonLat));
     if (!split || split.legs.length !== current.legs.length) return;
 
@@ -263,8 +272,8 @@ export const usePlanner = create<PlannerState>((set, get) => {
         legs: s.legs.map((slot, i) =>
           adopted[i] ? { id: crypto.randomUUID(), manual: false, leg: adopted[i] } : slot,
         ),
-        // une ancre n'est aimantée sur le réseau que si tous ses tronçons voisins sont adoptés,
-        // sinon elle se détacherait de la géométrie importée conservée
+        // an anchor is magnetized onto the network only if all its neighboring legs are adopted,
+        // otherwise it would detach from the imported geometry we keep
         anchors: s.anchors.map((a, i) => {
           const leftAdopted = i === 0 || adopted[i - 1] !== null;
           const rightAdopted = i === s.anchors.length - 1 || adopted[i] !== null;
@@ -285,16 +294,18 @@ export const usePlanner = create<PlannerState>((set, get) => {
     }));
   }
 
-  // pompe de routage du drag: au plus une requête en vol, relancée avec la dernière position (latest-wins)
+  // drag routing pump: at most one request in flight, relaunched with the latest position (latest-wins)
   async function pumpDragRoute() {
     if (dragBusy || !dragNextPos || !draggingAnchor) return;
     dragBusy = true;
+    const session = dragSession;
     const { index, p } = dragNextPos;
     dragNextPos = null;
     const { anchors, legs, manualMode } = get();
     const jobs: Promise<void>[] = [];
     for (const legIndex of [index - 1, index]) {
       if (legIndex < 0 || legIndex >= legs.length) continue;
+      const slotId = legs[legIndex].id;
       const from = legIndex === index - 1 ? lonLat(anchors[legIndex]) : p;
       const to = legIndex === index - 1 ? p : lonLat(anchors[legIndex + 1]);
       const promise = manualMode
@@ -302,8 +313,10 @@ export const usePlanner = create<PlannerState>((set, get) => {
         : computeLeg(from, to).catch(() => straightLeg(from, to));
       jobs.push(
         promise.then(leg => {
-          if (!draggingAnchor) return;
-          set(s => ({ legs: s.legs.map((l, i) => (i === legIndex ? { ...l, id: crypto.randomUUID(), leg } : l)) }));
+          // the drag ended or another one started: this answer belongs to nobody.
+          // writing by slot id, never by index, which says nothing about identity
+          if (session !== dragSession) return;
+          set(s => ({ legs: s.legs.map(l => (l.id === slotId ? { ...l, leg } : l)) }));
         }),
       );
     }
@@ -312,7 +325,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
     pumpDragRoute();
   }
 
-  // relance les tronçons perdus après un undo/redo (réponse arrivée entre-temps sur un autre slot)
+  // relaunches the legs lost after an undo/redo (response arrived meanwhile on another slot)
   function ensureLegs() {
     const { anchors, legs } = get();
     legs.forEach((slot, i) => {
@@ -347,6 +360,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
     currentRouteId: draft?.currentRouteId ?? null,
     currentRouteName: draft?.currentRouteName ?? '',
     showRoutes: false,
+    dragging: false,
     editing: null,
     hoverPoint: null,
     flyTo: null,
@@ -365,20 +379,21 @@ export const usePlanner = create<PlannerState>((set, get) => {
       launchLeg(slot, lonLat(previous), p, { anchorId: anchor.id, end: 'end' });
     },
 
-    // insère un checkpoint en découpant la géométrie existante au point le plus proche:
-    // le tracé (routé ou importé) est préservé à l'identique, sans recalcul réseau
+    // inserts a checkpoint by splitting the existing geometry at the nearest point:
+    // the trace (routed or imported) is preserved identically, with no network recomputation
     insertAnchor: p => {
       const spliced = spliceIntoTrace(get().anchors, get().legs, p, newAnchor(p));
-      if (!spliced) return;
+      if (!spliced) return false;
       pushHistory();
       set(spliced);
+      return true;
     },
 
-    // clic droit: repère informatif hors tracé (une source, une vue... qu'on veut connaître
-    // sans forcément y passer); pour un POI du parcours, on clique sur la trace
-    // route reçue par lien de partage: le brouillon en cours reste à un undo de distance
+    // right click: informative off-route marker (a spring, a viewpoint... we want to know about
+    // without necessarily passing by), for a POI on the route we click on the trace
+    // route received through a share link: the current draft stays one undo away
     applySharedRoute: ({ name, preset, anchors, legs, offRoutePoints }) => {
-      if (anchors.length === 0 || legs.length !== anchors.length - 1) throw new Error('route partagée invalide');
+      if (anchors.length === 0 || legs.length !== anchors.length - 1) throw new Error('invalid shared route');
       pushHistory();
       if (preset && preset !== get().routingPreset) setBrouterPreset(preset);
       const lons = anchors.map(a => a.lon);
@@ -406,9 +421,9 @@ export const usePlanner = create<PlannerState>((set, get) => {
 
     addOffRoutePoint: p => {
       pushHistory();
-      const point: OffRoutePoint = { id: crypto.randomUUID(), lon: p[0], lat: p[1], kind: 'autre', name: '' };
+      const point: OffRoutePoint = { id: crypto.randomUUID(), lon: p[0], lat: p[1], kind: 'other', name: '' };
       set(s => ({ offRoutePoints: [...s.offRoutePoints, point], editing: point.id }));
-      // la configuration initiale dans l'éditeur fait partie de la même action que la création
+      // the initial setup in the editor is part of the same action as the creation
       editingDirty = true;
     },
 
@@ -428,20 +443,24 @@ export const usePlanner = create<PlannerState>((set, get) => {
     },
 
     beginDragAnchor: () => {
+      dragSession++;
       draggingAnchor = true;
+      set({ dragging: true });
       pushHistory();
     },
 
-    // pendant le drag on ne montre jamais de ligne droite: le dernier chemin routé reste affiché
-    // jusqu'à l'arrivée du suivant, calculé sur la dernière position connue du curseur
+    // during the drag we never show a straight line: the last routed path stays displayed
+    // until the next one arrives, computed on the last known cursor position
     dragAnchor: (index, p) => {
       dragNextPos = { index, p };
       pumpDragRoute();
     },
 
-    // l'historique du déplacement est poussé par beginDragAnchor au début du drag
+    // the move history is pushed by beginDragAnchor at the start of the drag
     moveAnchor: (index, p) => {
+      dragSession++;
       draggingAnchor = false;
+      set({ dragging: false });
       dragNextPos = null;
       set(s => ({ anchors: s.anchors.map((a, i) => (i === index ? { ...a, lon: p[0], lat: p[1] } : a)) }));
       const { anchors, legs, manualMode } = get();
@@ -470,7 +489,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
         }));
         return;
       }
-      // point intermédiaire: les deux tronçons voisins fusionnent en un seul recalculé
+      // intermediate point: the two neighboring legs merge into a single recomputed one
       const slot = newSlot(manualMode);
       set(s => ({
         anchors: s.anchors.toSpliced(index, 1),
@@ -537,8 +556,8 @@ export const usePlanner = create<PlannerState>((set, get) => {
       const { anchors, legs } = get();
       const coords = routeCoords(legs);
       if (coords.length < 2) return;
-      // sur un parcours déjà fermé (boucle ou aller-retour), retracer le tout à l'envers
-      // n'apporte rien et empile des ancres superposées au départ
+      // on an already closed route (loop or out-and-back), retracing everything backwards
+      // brings nothing and stacks overlapping anchors at the start
       if (isClosedRoute(anchors)) return;
       pushHistory();
       const returnLeg: RouteLeg = {
@@ -566,11 +585,11 @@ export const usePlanner = create<PlannerState>((set, get) => {
     importRoute: (coords, waypoints) => {
       if (coords.length < 2) return;
       pushHistory();
-      // la trace importée est découpée en tronçons entre ancres: déplacer une ancre ne recalcule
-      // que ses deux voisins, au lieu d'effacer la moitié du GPX
+      // the imported trace is split into legs between anchors: moving an anchor only recomputes
+      // its two neighbors, instead of erasing half the GPX
       const cuts = importAnchorIndices(coords);
-      // un <wpt> proche de la trace est un POI du parcours (ancre aimantée dessus);
-      // éloigné, c'est un repère hors tracé (parking, source à côté du sentier...)
+      // a <wpt> close to the trace is a POI on the route (anchor magnetized onto it),
+      // far away, it is an off-route marker (parking, spring next to the trail...)
       const poiCuts = new Map<number, { name: string; kind: PointKind }>();
       const offRoutePoints: OffRoutePoint[] = [];
       for (const w of waypoints) {
@@ -625,7 +644,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
       set({ editing });
     },
 
-    // un seul cran d'undo par session d'édition, pas un par frappe clavier
+    // a single undo step per editing session, not one per keystroke
     updateEditingPoint: (kind, name) => {
       const { editing } = get();
       if (!editing) return;
@@ -738,7 +757,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
     toggleOverlay: name =>
       set(s => {
         const overlays = { ...s.overlays, [name]: !s.overlays[name] };
-        // la 3D sans estompage est illisible: activer le terrain allume aussi le relief
+        // 3D without hillshading is unreadable: turning on the terrain also turns on the relief
         if (name === 'terrain3d' && overlays.terrain3d) overlays.hillshade = true;
         return { overlays };
       }),
@@ -748,33 +767,55 @@ export const usePlanner = create<PlannerState>((set, get) => {
   };
 });
 
-// brouillon auto: l'itinéraire en cours survit au refresh, sans compte ni serveur
+// auto draft: the current itinerary survives a refresh, with no account and no server
+const DRAFT_DEBOUNCE_MS = 400;
 let draftTimer = 0;
-usePlanner.subscribe(s => {
+
+function writeDraft() {
   window.clearTimeout(draftTimer);
-  draftTimer = window.setTimeout(() => {
-    persistDraft({
-      anchors: s.anchors,
-      legs: s.legs,
-      offRoutePoints: s.offRoutePoints,
-      currentRouteId: s.currentRouteId,
-      currentRouteName: s.currentRouteName,
-    });
-  }, 400);
+  draftTimer = 0;
+  const s = usePlanner.getState();
+  const written = persistDraft({
+    anchors: s.anchors,
+    legs: s.legs,
+    offRoutePoints: s.offRoutePoints,
+    currentRouteId: s.currentRouteId,
+    currentRouteName: s.currentRouteName,
+  });
+  // silence here would let a full quota eat the work; the guard keeps the error from
+  // re-triggering this very subscriber in a loop
+  if (!written && s.error !== 'err_storage') usePlanner.setState({ error: 'err_storage' });
+}
+
+usePlanner.subscribe(() => {
+  window.clearTimeout(draftTimer);
+  draftTimer = window.setTimeout(writeDraft, DRAFT_DEBOUNCE_MS);
 });
 
-// relance les tronçons du brouillon restauré qui n'avaient pas fini de se calculer
+// the debounce restarts on every change, so a tab closing or reloading right after an edit
+// would drop it: flush while the page is still alive
+window.addEventListener('pagehide', writeDraft);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') writeDraft();
+});
+
+// relaunches the restored draft's legs that had not finished computing
 setTimeout(() => usePlanner.getState().retryLegs(), 0);
 
-// singleton à état: un hot-reload recréerait un second store (UI sur l'un, carte sur l'autre),
-// donc tout changement ici recharge la page entière
+// stateful singleton: a hot reload would recreate a second store (UI on one, map on the other),
+// so any change here reloads the whole page
 if (import.meta.hot) import.meta.hot.accept(() => import.meta.hot?.invalidate());
 
 export function lonLat(anchor: Anchor): LonLat {
   return [anchor.lon, anchor.lat];
 }
 
-// ancres d'un GPX importé: les sommets qui portent la forme, plafonnés pour rester manipulables
+/** anchors identity plus position: a drag keeps the ids, so ids alone cannot prove freshness */
+function routeFingerprint(anchors: Anchor[]): string {
+  return anchors.map(a => `${a.id}:${a.lon},${a.lat}`).join('|');
+}
+
+// anchors of an imported GPX: the vertices that carry the shape, capped to stay manageable
 function importAnchorIndices(coords: LonLatEle[]): number[] {
   let toleranceM = IMPORT_ANCHOR_TOLERANCE_M;
   let indices = simplifyIndices(coords, toleranceM);
@@ -785,7 +826,7 @@ function importAnchorIndices(coords: LonLatEle[]): number[] {
   return indices;
 }
 
-// le tronçon routé est adopté si sa longueur et son tracé restent proches de la trace importée
+// the routed leg is adopted if its length and its path stay close to the imported trace
 function legMatchesImport(routed: RouteLeg, imported: RouteLeg): boolean {
   if (imported.distanceM <= 0 || imported.coords.length < 2) return false;
   if (Math.abs(routed.distanceM - imported.distanceM) / imported.distanceM > MATCH_MAX_LENGTH_RATIO) return false;
@@ -799,8 +840,8 @@ function legMatchesImport(routed: RouteLeg, imported: RouteLeg): boolean {
   return total > 0 && close / total >= MATCH_MIN_FRACTION;
 }
 
-// cache par identité du tableau legs: chaque composant appelant routeCoords dans son render
-// réutilise la même passe d'aplatissement au lieu de rebalayer toute la trace
+// cache keyed by the identity of the legs array: every component calling routeCoords in its render
+// reuses the same flattening pass instead of rescanning the whole trace
 const coordsCache = new WeakMap<LegSlot[], LonLatEle[]>();
 
 export function routeCoords(legs: LegSlot[]): LonLatEle[] {
@@ -819,7 +860,7 @@ export function routePois(anchors: Anchor[]): Anchor[] {
   return anchors.filter(a => a.kind !== 'checkpoint');
 }
 
-/** vrai si le parcours revient exactement à son point de départ (boucle ou aller-retour) */
+/** true if the route comes back exactly to its starting point (loop or out-and-back) */
 export function isClosedRoute(anchors: Anchor[]): boolean {
   const first = anchors[0];
   const last = anchors.at(-1);

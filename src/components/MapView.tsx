@@ -19,6 +19,7 @@ import {
   SLOPES_TILES,
   TERRARIUM_TILES,
 } from '../config/layers';
+import { ROTATE_CURSOR } from '../lib/cursors';
 import { cumulativeDistancesM, kmMarkerPoints } from '../lib/geo';
 import { fetchHiddenTrails, HIDDEN_TRAILS_MIN_ZOOM } from '../lib/hiddenTrails';
 import { tNow } from '../lib/i18n';
@@ -35,21 +36,21 @@ import { registerSlopeProtocol } from '../lib/slopeTiles';
 import { SURFACE_COLORS, type SurfaceCategory, WAY_COLORS, type WayCategory } from '../lib/waytypes';
 import { routeCoords, usePlanner } from '../store';
 
-// cadence standard de recalcul pendant un drag (cf. routeDragInterval de Leaflet Routing Machine)
+// standard reroute cadence while dragging (see Leaflet Routing Machine's routeDragInterval)
 const DRAG_REROUTE_MS = 450;
 const CONTOUR_SOURCE_LAYER = 'oro_courbe';
 
-// exagération du terrain 3D adaptée au relief visible: règle cartographique classique (Imhof),
-// la plaine a besoin de 2-3x pour se lire, la haute montagne est déjà spectaculaire vers 1x
+// 3D terrain exaggeration adapted to the visible relief: classic cartographic rule (Imhof),
+// flatland needs 2-3x to read, high mountains are already spectacular around 1x
 const TERRAIN_EXAGGERATION_MIN = 1.1;
 const TERRAIN_EXAGGERATION_MAX = 3;
-/** le relief visible doit occuper environ cette fraction de la largeur du viewport */
+/** the visible relief should span roughly this fraction of the viewport width */
 const TERRAIN_RELIEF_TARGET = 0.05;
-/** en dessous de cet écart, on garde l'exagération en place (évite les à-coups) */
+/** below this delta, the exaggeration already in place is kept (avoids jerky jumps) */
 const TERRAIN_EXAGGERATION_STEP = 0.25;
 
-// une fois bundlé, maplibre ne sait plus localiser son worker (import relatif vers
-// maplibre-gl-shared.mjs): on fait bundler le worker par Vite et on fournit son URL
+// once bundled, maplibre can no longer locate its worker (relative import to
+// maplibre-gl-shared.mjs): let Vite bundle the worker and hand maplibre its URL
 setWorkerUrl(maplibreWorkerUrl);
 
 registerSlopeProtocol();
@@ -80,11 +81,13 @@ export function MapView() {
   const offRoutePoints = usePlanner(s => s.offRoutePoints);
   const hoverPoint = usePlanner(s => s.hoverPoint);
   const flyTo = usePlanner(s => s.flyTo);
+  const dragging = usePlanner(s => s.dragging);
   const wayTypeHighlight = usePlanner(s => s.wayTypeHighlight);
 
   useEffect(() => {
     let cancelled = false;
     let map: MapLibreMap | null = null;
+    let disposeRotateCursor: (() => void) | undefined;
     buildStyle().then(bundle => {
       if (cancelled || !containerRef.current) return;
       vectorLayersRef.current = bundle.vectorLayers;
@@ -117,7 +120,7 @@ export function MapView() {
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: { 'line-color': '#e34948', 'line-width': 4 },
         });
-        // surbrillance des segments correspondant à la légende survolée (types de voies, surfaces)
+        // highlights the segments matching the hovered legend entry (way types, surfaces)
         map.addSource(HIGHLIGHT_SOURCE, { type: 'geojson', data: EMPTY_ROUTE });
         map.addLayer({
           id: 'waytype-highlight',
@@ -126,7 +129,7 @@ export function MapView() {
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: { 'line-color': '#2f9e44', 'line-width': 7, 'line-opacity': 0.95 },
         });
-        // sentes discrètes OSM + points refuges.info, chargés à la volée par cellule (voir tileGrid)
+        // faint OSM trails + refuges.info points, loaded on the fly per cell (see tileGrid)
         map.addSource(HIDDEN_TRAILS_SOURCE, { type: 'geojson', data: EMPTY_ROUTE });
         map.addLayer(
           {
@@ -167,7 +170,7 @@ export function MapView() {
         map.on('mouseleave', 'overlay-refuges', () => {
           if (map) map.getCanvas().style.cursor = 'crosshair';
         });
-        // ligne élastique voisin → curseur → voisin, seule à suivre la souris pendant un drag
+        // elastic line neighbor → cursor → neighbor, the only one following the mouse during a drag
         map.addSource(DRAG_SOURCE, { type: 'geojson', data: EMPTY_ROUTE });
         map.addLayer({
           id: 'drag-line',
@@ -177,12 +180,12 @@ export function MapView() {
           paint: { 'line-color': '#e34948', 'line-width': 2.5, 'line-opacity': 0.85, 'line-dasharray': [1, 2] },
         });
 
-        // curseur par défaut = poser un point; sur la trace = insérer
+        // default cursor = drop a point; over the track = insert
         map.getCanvas().style.cursor = 'crosshair';
-        // le clic sur la trace insère un point dans le bon tronçon, sans en ajouter à la fin
+        // clicking the track inserts a point into the right leg instead of appending one at the end
+        // a leg too short to split cannot take an insertion: let the click append a point instead
         map.on('click', 'route-line', e => {
-          e.preventDefault();
-          usePlanner.getState().insertAnchor([e.lngLat.lng, e.lngLat.lat]);
+          if (usePlanner.getState().insertAnchor([e.lngLat.lng, e.lngLat.lat])) e.preventDefault();
         });
         map.on('mouseenter', 'route-line', () => {
           if (map) map.getCanvas().style.cursor = 'copy';
@@ -196,6 +199,7 @@ export function MapView() {
         map.on('contextmenu', e => {
           usePlanner.getState().addOffRoutePoint([e.lngLat.lng, e.lngLat.lat]);
         });
+        disposeRotateCursor = bindRotateCursor(map);
         setMapReady(true);
       });
       mapRef.current = map;
@@ -205,6 +209,7 @@ export function MapView() {
     });
     return () => {
       cancelled = true;
+      disposeRotateCursor?.();
       map?.remove();
       mapRef.current = null;
       setMapReady(false);
@@ -218,7 +223,7 @@ export function MapView() {
       map.setLayoutProperty(layer.id, 'visibility', layer.id === baseLayerId ? 'visible' : 'none');
     }
     const planVisible = baseLayerId === 'plan-ign';
-    // mode satellite hybride: la photo garde les toponymes, routes et sentiers du plan vectoriel
+    // hybrid satellite mode: the imagery keeps the toponyms, roads and trails of the vector plan
     const hybrid = baseLayerId === 'ortho';
     for (const layer of vectorLayersRef.current) {
       const inBase = planVisible || (hybrid && (layer.type === 'symbol' || layer.type === 'line'));
@@ -238,7 +243,7 @@ export function MapView() {
     map.setTerrain(overlays.terrain3d ? { source: 'terrain-3d', exaggeration: terrainExagRef.current } : null);
   }, [overlays, mapReady]);
 
-  // exagération adaptée au relief à l'écran, réévaluée quand la carte se stabilise
+  // exaggeration adapted to the relief on screen, re-evaluated once the map settles
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || !overlays.terrain3d) return;
@@ -254,7 +259,7 @@ export function MapView() {
     };
   }, [overlays.terrain3d, mapReady]);
 
-  // les données des deux overlays à la volée suivent le viewport tant qu'ils sont actifs
+  // both on-the-fly overlays keep their data in sync with the viewport while they are active
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || (!overlays.hidden && !overlays.refuges)) return;
@@ -286,7 +291,8 @@ export function MapView() {
       m.remove();
     });
     kmMarkersRef.current = [];
-    if (overlays.km && coords.length >= 2) {
+    // rebuilding every badge on each reroute tick of a drag janks a long route for nothing
+    if (overlays.km && !dragging && coords.length >= 2) {
       const dists = cumulativeDistancesM(coords);
       const stepM = dists[dists.length - 1] > 30_000 ? 5_000 : 1_000;
       kmMarkersRef.current = kmMarkerPoints(coords, dists, stepM).map(pt => {
@@ -296,7 +302,7 @@ export function MapView() {
         return new Marker({ element: el }).setLngLat([pt.lon, pt.lat]).addTo(map);
       });
     }
-  }, [legs, mapReady, overlays.km]);
+  }, [legs, mapReady, overlays.km, dragging]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -307,7 +313,7 @@ export function MapView() {
       source.setData(EMPTY_ROUTE);
       return;
     }
-    // spans contigus de la trace correspondant à la valeur survolée, fusionnés quand adjacents
+    // contiguous spans of the track matching the hovered value, merged when adjacent
     const lines: [number, number][][] = [];
     for (const slot of legs) {
       const leg = slot.leg;
@@ -337,7 +343,7 @@ export function MapView() {
     );
   }, [wayTypeHighlight, legs, mapReady]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies(lang): les titres des marqueurs (tNow) doivent suivre la langue
+  // biome-ignore lint/correctness/useExhaustiveDependencies(lang): the marker titles (tNow) must follow the language
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -351,7 +357,7 @@ export function MapView() {
           : pointElement(anchor.kind, anchor.name);
       attachEditOnClick(el, anchor.id);
       const marker = new Marker({ element: el, draggable: true }).setLngLat([anchor.lon, anchor.lat]).addTo(map);
-      // pendant le drag: ligne élastique à chaque frame + recalcul routé throttlé; au drop: routage définitif
+      // during the drag: elastic line on every frame + throttled route recompute; on drop: final routing
       const setDragLine = (cursor: [number, number] | null) => {
         const source = map.getSource(DRAG_SOURCE) as GeoJSONSource | undefined;
         if (!source) return;
@@ -398,7 +404,7 @@ export function MapView() {
     });
   }, [anchors, mapReady, lang]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies(lang): les titres des marqueurs (tNow) doivent suivre la langue
+  // biome-ignore lint/correctness/useExhaustiveDependencies(lang): the marker titles (tNow) must follow the language
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -429,39 +435,73 @@ export function MapView() {
     else hoverMarkerRef.current.remove();
   }, [hoverPoint]);
 
+  // mapReady matters: a shared link sets flyTo before the style finishes loading, and the
+  // request would otherwise be dropped for good
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !flyTo) return;
+    if (!map || !mapReady || !flyTo) return;
     if ('center' in flyTo) map.flyTo({ center: flyTo.center, zoom: flyTo.zoom });
     else map.fitBounds(flyTo.bounds, { padding: 80, maxZoom: 15 });
     usePlanner.getState().setFlyTo(null);
-  }, [flyTo]);
+  }, [flyTo, mapReady]);
 
   return <div ref={containerRef} className="map" />;
 }
 
-// wrapper indispensable: maplibre positionne le marqueur via transform sur l'élément racine,
-// le scale au survol doit donc vivre sur un enfant
-// dernier rafraîchissement lancé gagne: un setData tardif d'un ancien viewport est ignoré
+// the wrapper is required: maplibre positions the marker via a transform on the root element,
+// so the hover scale has to live on a child
+// last refresh started wins: a late setData from a stale viewport is ignored
 let poiRefreshToken = 0;
 
 /**
- * Exagération souhaitable pour le relief actuellement à l'écran, ou null si le MNT n'est pas prêt.
+ * Desirable exaggeration for the relief currently on screen, or null if the DEM is not ready.
  *
- * Échantillonne l'altitude sur une grille de points du viewport (tuiles de terrain déjà chargées,
- * aucune requête), puis vise un relief apparent d'environ TERRAIN_RELIEF_TARGET de la largeur
- * visible, borné entre TERRAIN_EXAGGERATION_MIN et MAX.
+ * Samples elevation over a grid of viewport points (terrain tiles already loaded, no request),
+ * then targets an apparent relief of about TERRAIN_RELIEF_TARGET of the visible width, clamped
+ * between TERRAIN_EXAGGERATION_MIN and MAX.
  *
  * Args:
- *   map: carte avec le terrain 3D actif.
- *   applied: exagération en place, car queryTerrainElevation renvoie des altitudes déjà exagérées.
+ *   map: map with 3D terrain active.
+ *   applied: exaggeration in place, since queryTerrainElevation returns already exaggerated elevations.
  */
+/**
+ * Shows the rotation cursor while the right button is held, and restores the previous one.
+ *
+ * Args:
+ *   map: map whose canvas carries the cursor.
+ *
+ * Returns:
+ *   A disposer for the window listener, since the button can be released outside the canvas.
+ */
+function bindRotateCursor(map: MapLibreMap): () => void {
+  const canvas = map.getCanvas();
+  let previousCursor: string | null = null;
+
+  const onMouseDown = (e: MouseEvent) => {
+    if (e.button !== 2 || previousCursor !== null) return;
+    previousCursor = canvas.style.cursor;
+    canvas.style.cursor = ROTATE_CURSOR;
+  };
+  const onMouseUp = () => {
+    if (previousCursor === null) return;
+    canvas.style.cursor = previousCursor;
+    previousCursor = null;
+  };
+
+  canvas.addEventListener('mousedown', onMouseDown);
+  window.addEventListener('mouseup', onMouseUp);
+  return () => {
+    canvas.removeEventListener('mousedown', onMouseDown);
+    window.removeEventListener('mouseup', onMouseUp);
+  };
+}
+
 function adaptiveExaggeration(map: MapLibreMap, applied: number): number | null {
   const canvas = map.getCanvas();
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   const elevations: number[] = [];
-  // grille sur les deux tiers inférieurs de l'écran: en vue inclinée, le haut est le ciel
+  // grid over the lower two thirds of the screen: in a tilted view, the top is sky
   for (let col = 0; col <= 4; col++) {
     for (let row = 0; row <= 4; row++) {
       const point = map.unproject([(width * col) / 4, height * (0.35 + (0.65 * row) / 4)]);
@@ -499,7 +539,7 @@ async function refreshPoiOverlays(map: MapLibreMap, hidden: boolean, refuges: bo
   }
 }
 
-// pastille dessinée en 2x (pixelRatio 2): disque blanc, anneau couleur catégorie, pictogramme
+// badge drawn at 2x (pixelRatio 2): white disc, category-colored ring, pictogram
 function refugeBadgeImage(cat: RefugeCategory): ImageData {
   const size = 44;
   const canvas = document.createElement('canvas');
@@ -522,7 +562,7 @@ function refugeBadgeImage(cat: RefugeCategory): ImageData {
   return ctx.getImageData(0, 0, size, size);
 }
 
-// contenu construit en DOM (pas de HTML injecté): les textes viennent d'une API externe
+// content built in the DOM (no injected HTML): the texts come from an external API
 function refugePopupContent(props: Record<string, unknown>): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'refuge-pop';
@@ -584,7 +624,7 @@ interface StyleBundle {
   vectorLayers: { id: string; type: string; isContour: boolean; visible: boolean }[];
 }
 
-// fond vectoriel Plan IGN (net en hidpi) + fonds raster cachés + overlays relief/pentes/GR
+// Plan IGN vector base (crisp on hidpi) + hidden raster bases + relief/slopes/GR overlays
 async function buildStyle(): Promise<StyleBundle> {
   const ignStyle: StyleSpecification | null = await fetch(PLAN_IGN_STYLE_URL)
     .then(r => (r.ok ? r.json() : null))
@@ -633,7 +673,7 @@ async function buildStyle(): Promise<StyleBundle> {
         tileSize: 256,
         maxzoom: 15,
       },
-      // source dédiée au terrain 3D: maplibre déconseille de partager la source du hillshade avec setTerrain
+      // source dedicated to the 3D terrain: maplibre advises against sharing the hillshade source with setTerrain
       'terrain-3d': {
         type: 'raster-dem',
         encoding: 'terrarium',
@@ -650,8 +690,9 @@ async function buildStyle(): Promise<StyleBundle> {
   const vectorLayers = (ignStyle?.layers ?? []).map(l => ({
     id: l.id,
     type: l.type,
-    // les courbes de niveau et leurs cotes partagent le source-layer oro_courbe
-    isContour: ('source-layer' in l ? l['source-layer'] : undefined) === CONTOUR_SOURCE_LAYER,
+    // contour lines (source-layer oro_courbe) and the elevation labels annotating them
+    // ("toponyme - courbe ..." layers, served by another source-layer)
+    isContour: ('source-layer' in l ? l['source-layer'] : undefined) === CONTOUR_SOURCE_LAYER || /courbe/i.test(l.id),
     visible: ('layout' in l ? (l.layout as { visibility?: string } | undefined)?.visibility : undefined) !== 'none',
   }));
   return { style, vectorLayers };

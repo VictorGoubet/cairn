@@ -1,8 +1,8 @@
 /**
- * Exports KML (Google Earth / Maps) et TCX (parcours Garmin) construits depuis la trace.
+ * KML (Google Earth / Maps) and TCX (Garmin route) exports built from the track.
  *
- * Le TCX exige un horodatage par point: les temps sont synthétisés à une allure de marche
- * constante, ce que les appareils acceptent pour un parcours planifié.
+ * TCX requires a timestamp per point: times are synthesized at a constant walking pace, which
+ * devices accept for a planned route.
  */
 
 import { cumulativeDistancesM, type LonLatEle } from './geo';
@@ -16,20 +16,20 @@ export interface ExportPoint {
 }
 
 const WALKING_SPEED_M_S = 4000 / 3600;
-// types CoursePoint du schéma TCX; les autres genres de points tombent sur "Generic"
+// CoursePoint types of the TCX schema; other point kinds fall back to "Generic"
 const TCX_POINT_TYPES: Partial<Record<PointKind, string>> = {
-  eau: 'Water',
-  sommet: 'Summit',
-  pause: 'Food',
+  water: 'Water',
+  summit: 'Summit',
+  break: 'Food',
 };
 
 /**
- * Document KML: la trace en LineString et chaque point en Placemark.
+ * KML document: the track as a LineString and each point as a Placemark.
  *
  * Args:
- *   name: nom de l'itinéraire.
- *   coords: trace complète (lon, lat, altitude).
- *   points: points du parcours et repères hors tracé.
+ *   name: route name.
+ *   coords: full track (lon, lat, elevation).
+ *   points: route points and off-track markers.
  */
 export function buildKml(name: string, coords: LonLatEle[], points: ExportPoint[]): string {
   const placemarks = points
@@ -59,12 +59,12 @@ ${placemarks}
 }
 
 /**
- * Parcours TCX: trace horodatée + CoursePoints pour les POI situés sur le tracé.
+ * TCX course: timestamped track plus CoursePoints for the POIs lying on the track.
  *
  * Args:
- *   name: nom de l'itinéraire.
- *   coords: trace complète (lon, lat, altitude).
- *   pois: POI du parcours (les repères hors tracé n'ont pas leur place dans un parcours).
+ *   name: route name.
+ *   coords: full track (lon, lat, elevation).
+ *   pois: route POIs (off-track markers have no place in a route).
  */
 export function buildTcx(name: string, coords: LonLatEle[], pois: ExportPoint[]): string {
   const start = Date.now();
@@ -115,12 +115,12 @@ ${coursePoints}
 }
 
 /**
- * Déclenche le téléchargement d'un fichier texte.
+ * Triggers the download of a text file.
  *
  * Args:
- *   filename: nom complet, extension incluse.
- *   mime: type MIME du contenu.
- *   content: contenu du fichier.
+ *   filename: full name, extension included.
+ *   mime: MIME type of the content.
+ *   content: file content.
  */
 export function downloadTextFile(filename: string, mime: string, content: string): void {
   const url = URL.createObjectURL(new Blob([content], { type: mime }));

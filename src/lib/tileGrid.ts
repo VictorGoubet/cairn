@@ -1,9 +1,9 @@
 /**
- * Grille de tuiles Web-Mercator et cache de requêtes par cellule.
+ * Web-Mercator tile grid and per-cell request cache.
  *
- * Les overlays chargés à la volée (sentes OSM, refuges.info) découpent le viewport en
- * cellules alignées sur cette grille: une requête réseau par cellule, mémorisée pour la
- * session, pour rester léger sur les APIs bénévoles quel que soit le nombre d'utilisateurs.
+ * Overlays loaded on the fly (OSM trails, refuges.info) split the viewport into cells aligned
+ * on this grid: one network request per cell, memoized for the session, to stay light on the
+ * volunteer-run APIs whatever the number of users.
  */
 
 export interface ViewBounds {
@@ -19,11 +19,11 @@ export interface Cell {
 }
 
 /**
- * Énumère les tuiles du niveau donné couvrant l'emprise.
+ * Enumerates the tiles of the given level covering the bounds.
  *
  * Args:
- *   bounds: emprise en degrés.
- *   zoom: niveau de la grille.
+ *   bounds: bounds in degrees.
+ *   zoom: grid level.
  */
 export function cellsInBounds(bounds: ViewBounds, zoom: number): Cell[] {
   const n = 2 ** zoom;
@@ -42,11 +42,11 @@ export function cellsInBounds(bounds: ViewBounds, zoom: number): Cell[] {
 }
 
 /**
- * Emprise géographique d'une tuile.
+ * Geographic bounds of a tile.
  *
  * Args:
- *   cell: coordonnées de la tuile.
- *   zoom: niveau de la grille.
+ *   cell: tile coordinates.
+ *   zoom: grid level.
  */
 export function cellBounds(cell: Cell, zoom: number): ViewBounds {
   const n = 2 ** zoom;
@@ -56,13 +56,13 @@ export function cellBounds(cell: Cell, zoom: number): ViewBounds {
 }
 
 /**
- * Récupération mémorisée avec éviction LRU; une entrée en erreur est retirée du cache.
+ * Memoized fetch with LRU eviction; a failing entry is removed from the cache.
  *
  * Args:
- *   cache: cache partagé du module appelant.
- *   key: clé de la cellule.
- *   maxSize: taille maximale du cache.
- *   fetcher: chargement effectif, appelé une seule fois par clé.
+ *   cache: shared cache owned by the calling module.
+ *   key: cell key.
+ *   maxSize: maximum cache size.
+ *   fetcher: actual loading, called once per key.
  */
 export function cachedFetch<T>(
   cache: Map<string, Promise<T>>,

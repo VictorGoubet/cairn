@@ -41,24 +41,32 @@ export function parseGpx(text: string): {
   waypoints: { lon: number; lat: number; name: string; kind: PointKind }[];
 } {
   const doc = new DOMParser().parseFromString(text, 'application/xml');
-  if (doc.querySelector('parsererror')) throw new Error('GPX invalide');
+  if (doc.querySelector('parsererror')) throw new Error('invalid GPX');
   const points = doc.querySelectorAll('trkpt, rtept');
   const coords: LonLatEle[] = [];
   for (const pt of points) {
-    const lat = Number(pt.getAttribute('lat'));
-    const lon = Number(pt.getAttribute('lon'));
-    if (Number.isNaN(lat) || Number.isNaN(lon)) continue;
-    coords.push([lon, lat, Number(pt.querySelector('ele')?.textContent ?? 0)]);
+    const lat = attrNumber(pt, 'lat');
+    const lon = attrNumber(pt, 'lon');
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    coords.push([lon, lat, Number(pt.querySelector('ele')?.textContent ?? 0) || 0]);
   }
-  const waypoints = [...doc.querySelectorAll('wpt')].map((w, i) => ({
-    lon: Number(w.getAttribute('lon')),
-    lat: Number(w.getAttribute('lat')),
-    name: w.querySelector('name')?.textContent ?? `Point ${i + 1}`,
-    kind: kindFromGarminSym(w.querySelector('sym')?.textContent ?? undefined),
-  }));
+  const waypoints = [...doc.querySelectorAll('wpt')]
+    .map((w, i) => ({
+      lon: attrNumber(w, 'lon'),
+      lat: attrNumber(w, 'lat'),
+      name: w.querySelector('name')?.textContent ?? `Point ${i + 1}`,
+      kind: kindFromGarminSym(w.querySelector('sym')?.textContent ?? undefined),
+    }))
+    .filter(w => Number.isFinite(w.lon) && Number.isFinite(w.lat));
   return { coords, waypoints };
 }
 
 export function downloadGpx(name: string, coords: LonLatEle[], waypoints: GpxWaypoint[]): void {
   downloadTextFile(`${name}.gpx`, 'application/gpx+xml', buildGpx(name, coords, waypoints));
+}
+
+/** a missing or blank attribute is not a zero, which is what Number('') would give */
+function attrNumber(el: Element, name: string): number {
+  const raw = el.getAttribute(name);
+  return raw === null || raw.trim() === '' ? Number.NaN : Number(raw);
 }

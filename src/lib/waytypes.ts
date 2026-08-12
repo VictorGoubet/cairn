@@ -1,10 +1,10 @@
 /**
- * Analyse des voies empruntées par un itinéraire (type, surface, cotation SAC).
+ * Analysis of the ways a route follows (type, surface, SAC scale).
  *
- * BRouter renvoie dans chaque réponse un tableau `messages` avec, segment par segment,
- * les tags OSM de la voie empruntée (highway=, surface=, sac_scale=…) et le point de fin
- * du segment. C'est la même donnée que les fonctionnalités « types de voies » d'OpenRunner
- * ou de Komoot, sans requête supplémentaire.
+ * Every BRouter response carries a `messages` array with, segment by segment, the OSM tags
+ * of the way being followed (highway=, surface=, sac_scale=...) and the segment end point.
+ * This is the same data behind the "way types" features of OpenRunner or Komoot, with no
+ * extra request.
  */
 
 import type { LonLatEle } from './geo';
@@ -15,18 +15,18 @@ export type SurfaceCategory = 'paved' | 'gravel' | 'ground' | 'unknown';
 export interface WaySegment {
   category: WayCategory;
   surface: SurfaceCategory;
-  /** cotation SAC (0 = non renseignée, 1..6 = T1..T6) */
+  /** SAC scale (0 = unspecified, 1..6 = T1..T6) */
   sac: number;
   distanceM: number;
-  /** index (dans les coords du tronçon) du dernier point couvert par ce segment */
+  /** index, within the leg coords, of the last point this segment covers */
   endIndex: number;
 }
 
-/** ordre d'affichage: du plus recherché (sentier) au moins renseigné */
+/** display order: from the most sought after (path) to the least documented */
 export const WAY_CATEGORIES: readonly WayCategory[] = ['path', 'track', 'minor_road', 'road', 'unknown'];
 export const SURFACE_CATEGORIES: readonly SurfaceCategory[] = ['ground', 'gravel', 'paved', 'unknown'];
 
-/** couleurs partagées entre les barres du panneau et la surbrillance sur la carte */
+/** colors shared between the panel bars and the map highlight */
 export const WAY_COLORS: Record<WayCategory, string> = {
   path: '#2f9e44',
   track: '#a07850',
@@ -41,7 +41,7 @@ export const SURFACE_COLORS: Record<SurfaceCategory, string> = {
   unknown: '#ced4da',
 };
 
-/** seuil au-delà duquel on alerte: T3 = randonnée en montagne exigeante */
+/** threshold above which we warn: T3 = demanding mountain hiking */
 export const SAC_WARNING_LEVEL = 3;
 
 const COORD_MATCH_TOLERANCE = 5e-6;
@@ -76,15 +76,15 @@ const SAC_LEVELS: Record<string, number> = {
 };
 
 /**
- * Extrait les segments de voie du tableau `messages` d'une réponse BRouter.
+ * Extracts way segments from the `messages` array of a BRouter response.
  *
  * Args:
- *   messages: lignes brutes (la première est l'en-tête des colonnes).
- *   coords: géométrie du tronçon, pour situer la fin de chaque segment (les messages
- *     donnent le point de fin en microdegrés, présent tel quel dans la géométrie).
+ *   messages: raw rows (the first one is the column header).
+ *   coords: leg geometry, used to locate the end of each segment (messages give the end
+ *     point in microdegrees, present as is in the geometry).
  *
  * Returns:
- *   Un segment par ligne de message, ou undefined si le format est inattendu.
+ *   One segment per message row, or undefined if the format is unexpected.
  */
 export function parseWaySegments(messages: string[][] | undefined, coords: LonLatEle[]): WaySegment[] | undefined {
   if (!messages || messages.length < 2) return undefined;
@@ -115,11 +115,11 @@ export function parseWaySegments(messages: string[][] | undefined, coords: LonLa
 }
 
 /**
- * Agrège les distances par valeur d'une dimension (type de voie ou surface).
+ * Aggregates distances by the values of one dimension (way type or surface).
  *
  * Args:
- *   legs: tronçons résolus; ceux sans analyse (manuels, importés non matchés) comptent en `unknown`.
- *   dimension: champ de WaySegment à agréger.
+ *   legs: resolved legs; those without analysis (manual, imported without a match) count as `unknown`.
+ *   dimension: WaySegment field to aggregate on.
  */
 export function aggregateBy(
   legs: ReadonlyArray<{ waySegments?: WaySegment[]; distanceM: number } | null | undefined>,
@@ -140,10 +140,10 @@ export function aggregateBy(
 }
 
 /**
- * Cotation SAC maximale de l'itinéraire et distance cumulée au niveau d'alerte.
+ * Highest SAC scale of the route and cumulated distance at or above the warning level.
  *
  * Args:
- *   legs: tronçons résolus.
+ *   legs: resolved legs.
  */
 export function sacStats(legs: ReadonlyArray<{ waySegments?: WaySegment[] } | null | undefined>): {
   maxSac: number;
@@ -184,7 +184,7 @@ function surfaceCategory(surface: string | undefined): SurfaceCategory {
   return 'ground';
 }
 
-// la fin de segment est un sommet exact de la géométrie: recherche en avançant seulement
+// a segment end is an exact geometry vertex: search forward only
 function findCoordIndex(coords: LonLatEle[], lon: number, lat: number, from: number): number {
   for (let i = from; i < coords.length; i++) {
     if (Math.abs(coords[i][0] - lon) < COORD_MATCH_TOLERANCE && Math.abs(coords[i][1] - lat) < COORD_MATCH_TOLERANCE) {

@@ -1,9 +1,10 @@
 import { departementFromPostcode } from './departements';
+import { fetchWithTimeout } from './http';
 import { tNow } from './i18n';
 
 const GEOCODE_URL = 'https://data.geopf.fr/geocodage/search';
 
-// catégories IGN trop vagues pour aider à distinguer deux homonymes
+// IGN categories too vague to help tell two homonyms apart
 const GENERIC_CATEGORIES = new Set(['administratif', "zone d'activité ou d'intérêt", "zone d'habitation"]);
 
 const ADDRESS_TYPES: Record<string, string> = {
@@ -35,7 +36,7 @@ interface RawFeature {
 
 export async function searchPlaces(query: string): Promise<GeocodeResult[]> {
   const url = `${GEOCODE_URL}?q=${encodeURIComponent(query)}&limit=10&index=poi,address`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (!res.ok) throw new Error(`geocodage ${res.status}`);
   const data = await res.json();
 

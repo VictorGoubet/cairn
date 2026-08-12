@@ -7,7 +7,7 @@ export function detectLang(): Lang {
     const stored = localStorage.getItem(LANG_KEY);
     if (stored === 'fr' || stored === 'en') return stored;
   } catch {
-    // stockage indisponible: on retombe sur la langue du navigateur
+    // storage unavailable: fall back to the browser language
   }
   return navigator.language.toLowerCase().startsWith('fr') ? 'fr' : 'en';
 }
@@ -16,7 +16,7 @@ export function persistLang(lang: Lang): void {
   try {
     localStorage.setItem(LANG_KEY, lang);
   } catch {
-    // meilleure chance au prochain chargement
+    // better luck on the next load
   }
 }
 

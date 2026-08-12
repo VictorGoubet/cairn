@@ -14,7 +14,7 @@ export function RoutesPanel() {
 
   if (!showRoutes) return null;
 
-  // premier clic arme la confirmation, second clic supprime: pas de dialog natif
+  // first click arms the confirmation, second click deletes: no native dialog
   function remove(id: string) {
     if (confirmId === id) {
       usePlanner.getState().deleteRoute(id);

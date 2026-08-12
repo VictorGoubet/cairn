@@ -23,14 +23,14 @@ export function BottomPanel() {
   const wayTotals = useMemo(() => aggregateBy(resolvedLegs, 'category'), [resolvedLegs]);
   const surfaceTotals = useMemo(() => aggregateBy(resolvedLegs, 'surface'), [resolvedLegs]);
   const sac = useMemo(() => sacStats(resolvedLegs), [resolvedLegs]);
-  // la répartition n'a de sens que si au moins un tronçon routé l'a fournie
+  // the distribution only makes sense if at least one routed leg provided it
   const hasWayTypes = WAY_CATEGORIES.some(c => c !== 'unknown' && (wayTotals[c] ?? 0) > 0);
 
-  // la sélection perd son sens si le tracé change
-  // biome-ignore lint/correctness/useExhaustiveDependencies(coords): déclencheur volontaire, pas une valeur lue
+  // the selection becomes meaningless when the track changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies(coords): intentional trigger, not a value we read
   useEffect(() => setSelection(null), [coords]);
 
-  // POIs du tracé projetés à leur distance cumulée le long de l'itinéraire
+  // route POIs projected onto their cumulative distance along the itinerary
   const pois = useMemo(() => {
     const out: { distM: number; kind: (typeof anchors)[number]['kind']; name: string }[] = [];
     let cum = 0;
@@ -43,7 +43,7 @@ export function BottomPanel() {
 
   if (coords.length < 2) return null;
 
-  // stats sur la sélection du profil quand elle existe, sinon sur tout l'itinéraire
+  // stats over the profile selection when there is one, otherwise over the whole itinerary
   let statsCoords = coords;
   let distanceM = routeDistanceM(legs);
   if (selection) {
@@ -120,7 +120,7 @@ export function BottomPanel() {
   );
 }
 
-// barre empilée + légende; le survol d'une catégorie la met en surbrillance sur la carte
+// stacked bar + legend; hovering a category highlights it on the map
 function DistributionBar({
   dim,
   label,
@@ -148,7 +148,7 @@ function DistributionBar({
       <span className="waytype-title">{label}</span>
       <div className="waytype-bar">
         {categories.map(c => (
-          // biome-ignore lint/a11y/noStaticElementInteractions: survol purement décoratif, la légende reste lisible sans
+          // biome-ignore lint/a11y/noStaticElementInteractions: purely decorative hover, the legend stays readable without it
           <span
             key={c}
             className="waytype-seg"
@@ -160,7 +160,7 @@ function DistributionBar({
       </div>
       <div className="waytype-legend">
         {categories.map(c => (
-          // biome-ignore lint/a11y/noStaticElementInteractions: survol purement décoratif, la légende reste lisible sans
+          // biome-ignore lint/a11y/noStaticElementInteractions: purely decorative hover, the legend stays readable without it
           <span key={c} className="waytype-item" onMouseEnter={() => highlight(c)} onMouseLeave={() => highlight(null)}>
             <span className="waytype-dot" style={{ background: colors[c] }} />
             {t(`${labelPrefix}${c}` as MsgKey)} · {formatDistance(totals[c])}
