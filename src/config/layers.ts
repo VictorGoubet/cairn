@@ -58,6 +58,8 @@ export const BASE_LAYER_OPTIONS: { id: string; labelKey: MsgKey }[] = [
 
 export const DEFAULT_BASE_LAYER = 'plan-ign';
 export const FALLBACK_BASE_LAYER = 'scan25';
+/** the flyover flies over imagery: at 200 m above the ground a drawn map has nothing to show */
+export const FLYOVER_BASE_LAYER = 'ortho';
 
 // fixed tile (massif des Bornes, z12) used as the thumbnail for base layers
 const THUMB_TILE = { z: 12, x: 2117, y: 1458 };

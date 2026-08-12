@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {
   FALLBACK_BASE_LAYER,
+  FLYOVER_BASE_LAYER,
   GR_TILES,
   PLAN_IGN_STYLE_URL,
   RASTER_BASE_LAYERS,
@@ -253,10 +254,12 @@ export function MapView() {
     const hybrid = baseLayerId === 'ortho';
     for (const layer of vectorLayersRef.current) {
       const inBase = planVisible || (hybrid && (layer.type === 'symbol' || layer.type === 'line'));
-      const show = layer.visible && inBase && (overlays.contours || !layer.isContour);
+      // bare imagery for the flight: laying out labels over a tilted view is the most expensive
+      // thing on screen, and the ones that survive the camera pop in and out
+      const show = !flyover && layer.visible && inBase && (overlays.contours || !layer.isContour);
       map.setLayoutProperty(layer.id, 'visibility', show ? 'visible' : 'none');
     }
-  }, [baseLayerId, overlays.contours, mapReady]);
+  }, [baseLayerId, overlays.contours, flyover, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -293,7 +296,9 @@ export function MapView() {
     map.setLayoutProperty('overlay-refuges', 'visibility', overlays.refuges ? 'visible' : 'none');
     map.setTerrain(
       overlays.terrain3d
-        ? { source: 'terrain-3d', exaggeration: flyover ? FLYOVER_EXAGGERATION : terrainExagRef.current }
+        ? flyover
+          ? { source: 'terrain-flyover', exaggeration: FLYOVER_EXAGGERATION }
+          : { source: 'terrain-3d', exaggeration: terrainExagRef.current }
         : null,
     );
   }, [overlays, flyover, mapReady]);
@@ -347,7 +352,7 @@ export function MapView() {
     });
     kmMarkersRef.current = [];
     // rebuilding every badge on each reroute tick of a drag janks a long route for nothing
-    if (overlays.km && !dragging && coords.length >= 2) {
+    if (overlays.km && !dragging && !flyover && coords.length >= 2) {
       const dists = cumulativeDistancesM(coords);
       const stepM = dists[dists.length - 1] > 30_000 ? 5_000 : 1_000;
       kmMarkersRef.current = kmMarkerPoints(coords, dists, stepM).map(pt => {
@@ -357,7 +362,7 @@ export function MapView() {
         return new Marker({ element: el }).setLngLat([pt.lon, pt.lat]).addTo(map);
       });
     }
-  }, [legs, mapReady, overlays.km, dragging]);
+  }, [legs, mapReady, overlays.km, dragging, flyover]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -405,6 +410,10 @@ export function MapView() {
     anchorMarkersRef.current.forEach(m => {
       m.remove();
     });
+    anchorMarkersRef.current = [];
+    // no pins during the flight: with terrain on, every marker asks the elevation of its
+    // position on every frame, and that bill grows with the route
+    if (flyover) return;
     anchorMarkersRef.current = anchors.map((anchor, index) => {
       const el =
         anchor.kind === 'checkpoint'
@@ -457,7 +466,7 @@ export function MapView() {
       });
       return marker;
     });
-  }, [anchors, mapReady, lang]);
+  }, [anchors, mapReady, lang, flyover]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies(lang): the marker titles (tNow) must follow the language
   useEffect(() => {
@@ -466,6 +475,8 @@ export function MapView() {
     offRouteMarkersRef.current.forEach(m => {
       m.remove();
     });
+    offRouteMarkersRef.current = [];
+    if (flyover) return;
     offRouteMarkersRef.current = offRoutePoints.map(w => {
       const el = pointElement(w.kind, w.name);
       attachEditOnClick(el, w.id);
@@ -476,7 +487,7 @@ export function MapView() {
       });
       return marker;
     });
-  }, [offRoutePoints, mapReady, lang]);
+  }, [offRoutePoints, mapReady, lang, flyover]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -498,25 +509,36 @@ export function MapView() {
     const coords = routeCoords(usePlanner.getState().legs);
     if (coords.length < 2) return;
 
-    // relief is the whole point of the flight, so terrain goes on for its duration
-    const camera = { center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() };
-    // going through the store rather than calling setTerrain by hand also brings hillshading
-    // along, without which a snow-white IGN map in 3D reads as a blank screen
-    const previousOverlays = usePlanner.getState().overlays;
+    // the flight is a scene of its own, and every difference from the planner view is also what
+    // buys the frame rate: imagery instead of the pale plan, relief on, and nothing else
+    const previous = {
+      camera: { center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() },
+      overlays: usePlanner.getState().overlays,
+      baseLayerId: usePlanner.getState().baseLayerId,
+      pixelRatio: map.getPixelRatio(),
+    };
+    usePlanner.getState().setBaseLayerId(FLYOVER_BASE_LAYER);
     usePlanner.getState().setOverlay('terrain3d', true);
-    // the flight moves the viewport every frame: client-computed slope tiles and the
-    // per-cell Overpass and refuges queries would fire continuously and stall it
-    for (const heavy of ['slopes', 'gr', 'hidden', 'refuges'] as const) {
-      if (previousOverlays[heavy]) usePlanner.getState().setOverlay(heavy, false);
+    // hillshading exists to make the plan readable in 3D; over imagery it only costs DEM tiles.
+    // The rest recompute on every viewport change, which here means on every frame.
+    for (const heavy of ['hillshade', 'slopes', 'gr', 'hidden', 'refuges'] as const) {
+      usePlanner.getState().setOverlay(heavy, false);
     }
+    // one device pixel instead of two means a quarter of the pixels to shade, which is where the
+    // frame budget goes on a 4K screen; at this speed the softer image goes unnoticed
+    map.setPixelRatio(1);
 
     const handle = startFlyover(map, coords, () => usePlanner.getState().stopFlyover());
     return () => {
       handle.stop();
-      for (const [name, value] of Object.entries(previousOverlays) as [keyof typeof previousOverlays, boolean][]) {
-        usePlanner.getState().setOverlay(name, value);
+      map.setPixelRatio(previous.pixelRatio);
+      usePlanner.getState().setBaseLayerId(previous.baseLayerId);
+      // terrain first: switching it back on would otherwise force hillshading over the restored value
+      usePlanner.getState().setOverlay('terrain3d', previous.overlays.terrain3d);
+      for (const [name, value] of Object.entries(previous.overlays) as [keyof typeof previous.overlays, boolean][]) {
+        if (name !== 'terrain3d') usePlanner.getState().setOverlay(name, value);
       }
-      map.easeTo({ ...camera, duration: 600 });
+      map.easeTo({ ...previous.camera, duration: 600 });
     };
   }, [flyover, mapReady]);
 
@@ -697,6 +719,8 @@ async function buildStyle(): Promise<StyleBundle> {
     type: 'raster',
     source: l.id,
     layout: { visibility: 'none' },
+    // no cross-fade: on a moving camera it reads as the imagery blinking
+    paint: { 'raster-fade-duration': 0 },
   }));
   const overlayLayers: LayerSpecification[] = [
     {
@@ -754,6 +778,15 @@ async function buildStyle(): Promise<StyleBundle> {
         tiles: [TERRARIUM_TILES],
         tileSize: 256,
         maxzoom: 15,
+      },
+      // same relief for the flyover, capped two zooms coarser: a moving camera needs the
+      // elevation of a whole valley at once, and one tile here stands in for sixteen at z15
+      'terrain-flyover': {
+        type: 'raster-dem',
+        encoding: 'terrarium',
+        tiles: [TERRARIUM_TILES],
+        tileSize: 256,
+        maxzoom: 13,
       },
       'slopes-src': { type: 'raster', tiles: [SLOPES_TILES], tileSize: 256, maxzoom: 15 },
       'gr-src': { type: 'raster', tiles: [GR_TILES], tileSize: 256, maxzoom: 18, attribution: '© Waymarked Trails' },

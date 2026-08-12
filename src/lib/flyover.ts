@@ -12,27 +12,31 @@
  * camera flies the shape of the route, not its every twitch. The heading is then smoothed once
  * more on the way out.
  *
- * The caller pins terrain exaggeration to 1 for the flight: MapLibre drops the closest tiles
- * when terrain is on, and the effect grows with exaggeration (maplibre-gl-js issue 1241),
- * which is what makes chunks of the map vanish mid-flight.
+ * This module only drives the camera. The scene it flies through is the caller's job (imagery,
+ * a coarser DEM, no markers and no labels), and terrain exaggeration is pinned to 1 there:
+ * MapLibre drops the closest tiles when terrain is on, and the effect grows with exaggeration
+ * (maplibre-gl-js issue 1241), which is what makes chunks of the map vanish mid-flight.
  */
 
 import { LngLat, type Map as MapLibreMap } from 'maplibre-gl';
 import { cumulativeDistancesM, type LonLatEle, nearestIndex } from './geo';
 
-/** a full route plays in about this long, whatever its length */
-const FLIGHT_SECONDS = 30;
-/** ground speed cap: low and close needs a calmer pass than a high overview */
-const MAX_SPEED_M_S = 90;
+/** short routes stretch to about this long, so a two kilometre loop is not over in a blink */
+const FLIGHT_SECONDS = 20;
+/**
+ * Ground speed cap, and with it the playback time of a long route. It is bounded by tiles rather
+ * than by taste: the imagery has to arrive before the camera gets there.
+ */
+const MAX_SPEED_M_S = 170;
 /**
  * How far ahead the camera looks, and how high it flies. Together they set the pitch and the
- * zoom MapLibre derives: measured at these latitudes, looking 1150 m ahead from 190 m up lands
- * near zoom 15.5 and pitch 81, which is the low grazing shot. Keeping the ratio holds that
+ * zoom MapLibre derives: measured at these latitudes, looking 1150 m ahead from 220 m up lands
+ * near zoom 15.5 and pitch 79, which is the low grazing shot. Keeping the ratio holds that
  * framing on short routes too. Pitch flattens as soon as the height approaches the look-ahead,
  * and a much closer camera derives a zoom past 16.5, where tiles stop keeping up.
  */
 const MAX_AHEAD_M = 1150;
-const HEIGHT_TO_AHEAD = 190 / 1150;
+const HEIGHT_TO_AHEAD = 220 / 1150;
 /**
  * Short routes look ahead a fraction of their length, or the flight starts staring at the end.
  * The floor is what keeps a one kilometre route from deriving a zoom past 16.5: the look-ahead
@@ -40,26 +44,29 @@ const HEIGHT_TO_AHEAD = 190 / 1150;
  */
 const AHEAD_FRACTION = 0.4;
 const MIN_AHEAD_M = 700;
-/** exponential smoothing on the camera altitude, so a cliff does not jerk the camera */
-const ALTITUDE_SMOOTHING = 0.12;
+/**
+ * Altitude and heading are smoothed over a distance flown, not over a number of frames: per
+ * frame, the same constant would mean one thing at 60 fps and another at 25, and the flight would
+ * shake exactly on the machines that are already struggling. Over metres it also holds when the
+ * ground speed changes with the length of the route.
+ */
+const ALTITUDE_SMOOTHING_M = 60;
+const BEARING_SMOOTHING_M = 40;
 /** hard floor on the drop onto the target while the smoothing catches up, as a share of height */
 const MIN_DROP_RATIO = 0.8;
-/** and on the heading, which is what the eye notices most */
-const BEARING_SMOOTHING = 0.14;
 /** samples over the look-ahead window, to clear the relief the camera is heading into */
 const LOOKAHEAD_SAMPLES = 8;
 /** flight path resampling step, and the averaging window that irons out switchbacks */
 const RESAMPLE_STEP_M = 25;
 const SMOOTHING_WINDOW_M = 150;
-/** 30 frames per second is smooth enough here and halves the camera work of 60 */
-const FRAME_INTERVAL_MS = 33;
 /** terrain exaggeration during the flight, see the note above about vanishing tiles */
 export const FLYOVER_EXAGGERATION = 1;
 /**
  * Tiles are worth a short wait, but past this the flight starts anyway: pressing play and
- * watching nothing happen reads as broken.
+ * watching nothing happen reads as broken. The wait covers the scene switch too, since the
+ * imagery the flight flies over is only requested when play is pressed.
  */
-const TAKEOFF_TIMEOUT_MS = 1800;
+const TAKEOFF_TIMEOUT_MS = 3000;
 
 export interface FlyoverHandle {
   stop(): void;
@@ -84,6 +91,11 @@ function positionAt(path: Path, distanceM: number): LonLatEle {
 /** shortest way around the circle, so the camera never spins the long way from 359 to 1 degree */
 function shortestTurn(from: number, to: number): number {
   return ((to - from + 540) % 360) - 180;
+}
+
+/** share of the gap to close over `flownM`, for a smoothing that settles over `lengthM` */
+function catchUp(flownM: number, lengthM: number): number {
+  return 1 - Math.exp(-flownM / lengthM);
 }
 
 /**
@@ -137,20 +149,21 @@ export function startFlyover(map: MapLibreMap, coords: LonLatEle[], onEnd: () =>
   const aheadM = Math.max(MIN_AHEAD_M, Math.min(MAX_AHEAD_M, totalM * AHEAD_FRACTION));
   const heightM = aheadM * HEIGHT_TO_AHEAD;
 
-  // the pitch that comes out of the geometry runs past the default 60 degree cap
+  // the pitch that comes out of the geometry runs past the default 60 degree cap. The ceiling
+  // stays under 85: that close to the horizon the near plane starts clipping the ground
   const previousMaxPitch = map.getMaxPitch();
-  map.setMaxPitch(85);
+  map.setMaxPitch(82);
 
   let frame = 0;
   let done = false;
   let startedAt = 0;
-  let lastFrameAt = 0;
+  let flown = 0;
   let altitude = positionAt(path, 0)[2] + heightM;
   let bearing: number | null = null;
 
   // the camera rides the smoothed path; only the target runs ahead. Trailing the camera behind
   // the position instead would pin it to the start until the flight had covered that setback.
-  const cameraFor = (travelledM: number) => {
+  const cameraFor = (travelledM: number, flownM: number) => {
     const camera = positionAt(path, travelledM);
     const target = positionAt(path, travelledM + aheadM);
     // clear the highest ground in the look-ahead window: on a climb the slope ahead rises above
@@ -163,7 +176,7 @@ export function startFlyover(map: MapLibreMap, coords: LonLatEle[], onEnd: () =>
     // ahead / height. Referencing the ground under the camera instead let a climb catch up with
     // the smoothed altitude, and the camera ended up looking uphill at the sky.
     const wantedAltitude = Math.max(ceiling, target[2]) + heightM;
-    altitude += (wantedAltitude - altitude) * ALTITUDE_SMOOTHING;
+    altitude += (wantedAltitude - altitude) * catchUp(flownM, ALTITUDE_SMOOTHING_M);
     altitude = Math.max(altitude, target[2] + heightM * MIN_DROP_RATIO);
 
     const options = map.calculateCameraOptionsFromTo(
@@ -172,19 +185,22 @@ export function startFlyover(map: MapLibreMap, coords: LonLatEle[], onEnd: () =>
       new LngLat(target[0], target[1]),
       target[2],
     );
-    const wanted = options.bearing ?? 0;
-    bearing = bearing === null ? wanted : bearing + shortestTurn(bearing, wanted) * BEARING_SMOOTHING;
+    const wantedBearing = options.bearing ?? 0;
+    bearing =
+      bearing === null
+        ? wantedBearing
+        : bearing + shortestTurn(bearing, wantedBearing) * catchUp(flownM, BEARING_SMOOTHING_M);
     return { ...options, bearing };
   };
 
+  // every frame, not every other one: dropping frames to save camera work reads as stutter,
+  // because the frames that are kept do not line up with the display's refresh
   const step = (now: number) => {
     if (done) return;
     if (!startedAt) startedAt = now;
     const travelled = ((now - startedAt) / 1000) * speed;
-    if (now - lastFrameAt >= FRAME_INTERVAL_MS) {
-      lastFrameAt = now;
-      map.jumpTo(cameraFor(travelled));
-    }
+    map.jumpTo(cameraFor(travelled, travelled - flown));
+    flown = travelled;
     if (travelled >= totalM) return finish();
     frame = requestAnimationFrame(step);
   };
@@ -208,7 +224,7 @@ export function startFlyover(map: MapLibreMap, coords: LonLatEle[], onEnd: () =>
   // frame the start and let its tiles arrive before moving: a flight that begins over a blank
   // map never catches up. Applied twice on purpose, the first jumpTo lands short when terrain
   // is on (maplibre-gl-js issue 4688).
-  const start = cameraFor(0);
+  const start = cameraFor(0, 0);
   map.jumpTo(start);
   map.jumpTo(start);
   map.once('idle', takeOff);

@@ -125,11 +125,12 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   technique Mapbox documents for camera paths: the camera rides the track while a second point
   runs ahead, and `calculateCameraOptionsFromTo` derives center, zoom, pitch and bearing from
   that geometry (MapLibre has no FreeCameraOptions). What that buys, and what it cost to learn:
-  - **Framing is calibrated, not guessed.** Looking 1150 m ahead from 190 m up lands near zoom
-    15.5 and pitch 81 at our latitudes, the low grazing pass; the height-to-lookahead ratio is
-    kept so short routes stay framed the same way. Measured in flight: pitch 79 to 82, zoom 15.5
-    to 16.1. Going closer still derives a zoom past 16.5, where tiles stop keeping up, which is
-    also why the look-ahead has a floor: a one kilometre route would otherwise frame a hedge.
+  - **Framing is calibrated, not guessed.** Looking 1150 m ahead from 220 m up lands near zoom
+    15.5 and pitch 79 at our latitudes, the low grazing pass; the height-to-lookahead ratio is
+    kept so short routes stay framed the same way. Going closer derives a zoom past 16.5, where
+    tiles stop keeping up, which is also why the look-ahead has a floor: a one kilometre route
+    would otherwise frame a hedge. The pitch cap stays at 82, since nearer the horizon the near
+    plane starts clipping the ground.
   - **Height is measured from the target, not from the ground under the camera.** Pitch is
     `atan(ahead / drop onto the target)`, so a climb that outruns the smoothed altitude tips the
     camera uphill into the sky and the derived pitch pins to the cap. A floor on that drop holds
@@ -138,6 +139,11 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
     Switchbacks and GPS wobble otherwise shake the heading: measured frame-to-frame bearing jerk
     fell from 0.89 deg mean / 2.6 max to 0.19 / 0.9. Elevation is left as sampled, so clearing
     the relief still works on the real profile.
+  - **Smoothing is per metre flown, never per frame.** A constant applied per frame means one thing
+    at 60 fps and another at 25, so the camera would shake hardest on the machines that are
+    already struggling, and it would change again with the ground speed.
+  - **The camera moves on every frame.** Throttling it to 30 fps looks like stutter rather than
+    like an economy: the frames that are kept do not line up with the display's refresh.
   - **Terrain exaggeration is pinned to 1** while flying. MapLibre drops the closest tiles with
     terrain on and it worsens sharply with exaggeration (maplibre-gl-js issue 1241), which is
     exactly the "chunks vanishing" symptom.
@@ -145,10 +151,25 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
     (maplibre-gl-js issue 4688).
   - **The camera clears the relief ahead**, not just the ground under it, or a climb pushes the
     derived pitch towards the sky.
-  - **Heavy overlays are paused** for the flight (client-computed slope tiles, per-cell Overpass
-    and refuges queries) and restored after: they re-fire on every viewport change.
-  - Terrain goes on through the store so hillshading comes along: 3D over a snow-white IGN map
-    with no shading reads as a blank screen. Camera capped at 30 fps, restored on exit.
+  - **The flight is its own scene**, set up in `MapView` and restored on exit, and each difference
+    from the planner view is also what pays for the frame rate:
+    - satellite imagery (`FLYOVER_BASE_LAYER`), because a drawn map has nothing to show from
+      200 m up, and because raster tiles skip the vector work;
+    - **no labels**: laying out symbols over a tilted view is the most expensive thing on screen,
+      and the ones that survive the camera pop in and out;
+    - **no markers**: with terrain on, every DOM marker asks MapLibre for the elevation of its
+      position on every frame, and a long route carries dozens of them;
+    - **a DEM capped two zooms coarser** (`terrain-flyover`, maxzoom 13), where one tile stands in
+      for sixteen: a moving camera needs a whole valley's elevation at once;
+    - **one device pixel instead of two**, a quarter of the pixels to shade, which is where the
+      frame budget goes on a 4K screen;
+    - hillshading, slope tiles, Overpass and refuges off: the first is only there to make the pale
+      plan readable, the others recompute on every viewport change.
+  - **Raster base layers carry `raster-fade-duration: 0`.** The default cross-fade reads as the
+    imagery blinking once the camera is moving.
+  - **Playback time comes from a ground speed cap, not from a target duration.** Holding a route
+    to a fixed number of seconds would mean flying a long one so fast that the imagery cannot
+    arrive; the cap is the honest limit, and a short route is stretched to a floor instead.
 - The style carries a `sky` and a `background` layer. Without the sky, everything above the
   horizon is unpainted and the page shows through as soon as the camera tilts.
 - Map control buttons carry `data-control` so tests never depend on their order or labels.
