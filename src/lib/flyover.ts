@@ -10,15 +10,22 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 import { cumulativeDistancesM, type LonLatEle, nearestIndex } from './geo';
 
 /** a full route plays in this many seconds, whatever its length */
-const FLIGHT_SECONDS = 45;
-/** and never faster than this, so a short loop does not become a blur */
-const MAX_SPEED_M_S = 320;
+const FLIGHT_SECONDS = 60;
+/**
+ * Ground speed cap. Beyond roughly this, the camera outruns tile loading and flies over a
+ * blank map: at zoom 14 a tile spans a few hundred meters, and vector plus DEM tiles both
+ * have to arrive.
+ */
+const MAX_SPEED_M_S = 70;
 const PITCH_DEG = 68;
-const ZOOM = 15.4;
+/** wide enough to keep the tile budget sane while still feeling low over the ground */
+const ZOOM = 14.2;
 /** distance looked ahead to pick the heading: shorter reads jittery, longer cuts corners */
 const LOOKAHEAD_M = 220;
 /** exponential smoothing of the bearing, per frame */
 const BEARING_SMOOTHING = 0.12;
+/** waiting forever for tiles would leave the play button stuck */
+const TAKEOFF_TIMEOUT_MS = 4000;
 
 export interface FlyoverHandle {
   stop(): void;
@@ -95,6 +102,26 @@ export function startFlyover(map: MapLibreMap, coords: LonLatEle[], onEnd: () =>
     frame = requestAnimationFrame(step);
   };
 
-  frame = requestAnimationFrame(step);
-  return { stop: finish };
+  // frame the start and wait for its tiles: taking off immediately shows a blank map
+  map.jumpTo({
+    center: [coords[0][0], coords[0][1]],
+    zoom: ZOOM,
+    pitch: PITCH_DEG,
+    bearing,
+  });
+  const takeOff = () => {
+    if (done) return;
+    frame = requestAnimationFrame(step);
+  };
+  map.once('idle', takeOff);
+  // never strand the flight if a tile request hangs
+  const takeOffFallback = window.setTimeout(takeOff, TAKEOFF_TIMEOUT_MS);
+
+  return {
+    stop: () => {
+      window.clearTimeout(takeOffFallback);
+      map.off('idle', takeOff);
+      finish();
+    },
+  };
 }

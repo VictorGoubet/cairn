@@ -496,13 +496,16 @@ export function MapView() {
 
     // relief is the whole point of the flight, so terrain goes on for its duration
     const camera = { center: map.getCenter(), zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() };
-    const hadTerrain = usePlanner.getState().overlays.terrain3d;
-    if (!hadTerrain) map.setTerrain({ source: 'terrain-3d', exaggeration: terrainExagRef.current });
+    // going through the store rather than calling setTerrain by hand also brings hillshading
+    // along, without which a snow-white IGN map in 3D reads as a blank screen
+    const previousOverlays = usePlanner.getState().overlays;
+    usePlanner.getState().setOverlay('terrain3d', true);
 
     const handle = startFlyover(map, coords, () => usePlanner.getState().stopFlyover());
     return () => {
       handle.stop();
-      if (!usePlanner.getState().overlays.terrain3d) map.setTerrain(null);
+      usePlanner.getState().setOverlay('terrain3d', previousOverlays.terrain3d);
+      usePlanner.getState().setOverlay('hillshade', previousOverlays.hillshade);
       map.easeTo({ ...camera, duration: 600 });
     };
   }, [flyover, mapReady]);
@@ -705,6 +708,18 @@ async function buildStyle(): Promise<StyleBundle> {
 
   const style: StyleSpecification = {
     version: 8,
+    // without a sky, everything above the horizon is unpainted: tilting the camera or
+    // playing the flyover shows the page background through the top half of the screen
+    sky: {
+      'sky-color': '#4d9fe8',
+      // a low blend keeps the blue dominant: high values wash the whole sky into the horizon
+      'sky-horizon-blend': 0.2,
+      'horizon-color': '#a8d3f2',
+      'horizon-fog-blend': 0.5,
+      'fog-color': '#dbe7f2',
+      'fog-ground-blend': 0.02,
+      'atmosphere-blend': 0.4,
+    },
     ...(ignStyle?.glyphs ? { glyphs: ignStyle.glyphs } : {}),
     ...(ignStyle?.sprite ? { sprite: ignStyle.sprite } : {}),
     sources: {
@@ -733,7 +748,13 @@ async function buildStyle(): Promise<StyleBundle> {
       'slopes-src': { type: 'raster', tiles: [SLOPES_TILES], tileSize: 256, maxzoom: 15 },
       'gr-src': { type: 'raster', tiles: [GR_TILES], tileSize: 256, maxzoom: 18, attribution: '© Waymarked Trails' },
     },
-    layers: [...rasterBaseLayers, ...(ignStyle?.layers ?? []), ...overlayLayers],
+    layers: [
+      // a painted floor under everything: a missing tile shows this instead of the page
+      { id: 'canvas-background', type: 'background', paint: { 'background-color': '#eae7e0' } },
+      ...rasterBaseLayers,
+      ...(ignStyle?.layers ?? []),
+      ...overlayLayers,
+    ],
   };
 
   const vectorLayers = (ignStyle?.layers ?? []).map(l => ({

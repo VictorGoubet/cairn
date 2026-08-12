@@ -167,6 +167,7 @@ interface PlannerState {
   stopFlyover: () => void;
   setBaseLayerId: (id: string) => void;
   toggleOverlay: (name: keyof Overlays) => void;
+  setOverlay: (name: keyof Overlays, value: boolean) => void;
   setHoverPoint: (p: LonLat | null) => void;
   setFlyTo: (target: FlyTo | null) => void;
   dismissError: () => void;
@@ -788,9 +789,11 @@ export const usePlanner = create<PlannerState>((set, get) => {
     stopFlyover: () => set({ flyover: false }),
 
     setBaseLayerId: baseLayerId => set({ baseLayerId }),
-    toggleOverlay: name =>
+    toggleOverlay: name => get().setOverlay(name, !get().overlays[name]),
+
+    setOverlay: (name, value) =>
       set(s => {
-        const overlays = { ...s.overlays, [name]: !s.overlays[name] };
+        const overlays = { ...s.overlays, [name]: value };
         // 3D without hillshading is unreadable: turning on the terrain also turns on the relief
         if (name === 'terrain3d' && overlays.terrain3d) overlays.hillshade = true;
         return { overlays };

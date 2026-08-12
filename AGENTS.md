@@ -121,8 +121,13 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   the route, so numbers and geometry always agree.
 - Points reorder by dragging their row; `reorderAnchor` recomputes the legs around both
   positions and leaves frozen legs alone.
-- The play button flies the route like a drone (`lib/flyover.ts`): constant ground speed,
-  smoothed bearing looking ahead, terrain forced on and the camera restored on exit.
+- The play button flies the route like a drone (`lib/flyover.ts`): constant ground speed
+  capped at 70 m/s, smoothed bearing looking ahead, and it waits for the first tiles before
+  taking off. Faster than that and the camera outruns tile loading, flying over a blank map.
+  It turns the terrain on through the store, which brings hillshading with it: 3D over a
+  snow-white IGN map with no shading reads as a blank screen. The camera is restored on exit.
+- The style carries a `sky` and a `background` layer. Without the sky, everything above the
+  horizon is unpainted and the page shows through as soon as the camera tilts.
 - Map control buttons carry `data-control` so tests never depend on their order or labels.
 
 ## Known trade-offs
