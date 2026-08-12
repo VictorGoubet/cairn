@@ -74,6 +74,56 @@ test.describe('phone layout', () => {
     }
   });
 
+  test('tapping the grip cycles the stops, dragging it snaps to the nearest', async ({ page }) => {
+    await openPlanner(page);
+    const sheetClass = () => page.evaluate(() => document.querySelector('.sheet')?.className ?? '');
+    const grip = page.locator('.sheet-grip');
+
+    // the grip must be a real finger target, not a hairline
+    expect(await grip.evaluate(el => Math.round(el.getBoundingClientRect().height))).toBeGreaterThanOrEqual(40);
+
+    for (const expected of ['sheet-half', 'sheet-full', 'sheet-peek']) {
+      const box = await grip.boundingBox();
+      if (!box) throw new Error('no grip');
+      await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+      await page.waitForTimeout(400);
+      expect(await sheetClass()).toContain(expected);
+    }
+
+    const box = await grip.boundingBox();
+    if (!box) throw new Error('no grip');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, box.y - 260, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    expect(await sheetClass()).toContain('sheet-half');
+  });
+
+  test('a map panel stays on screen and never hides under the sheet', async ({ page }) => {
+    await openPlanner(page);
+    // open the sheet first: the panel must win the screen and push the sheet back down
+    await page.locator('.sheet-stop').nth(1).click();
+    await page.waitForTimeout(400);
+
+    for (const index of [1, 2]) {
+      await page.locator('.mc-btn').nth(index).click();
+      await page.waitForTimeout(450);
+      const fit = await page.evaluate(() => {
+        const panel = document.querySelector('.mc-panel')?.getBoundingClientRect();
+        const sheet = document.querySelector('.sheet')?.getBoundingClientRect();
+        if (!panel || !sheet) return null;
+        return {
+          insideViewport: panel.top >= 0 && panel.bottom <= window.innerHeight,
+          clearOfSheet: panel.bottom <= sheet.top,
+        };
+      });
+      expect(fit, `panel ${index}`).toEqual({ insideViewport: true, clearOfSheet: true });
+      await page.locator('.mc-btn').nth(index).click();
+      await page.waitForTimeout(250);
+    }
+  });
+
   test('actions hide behind one button that closes on an outside tap', async ({ page }) => {
     await openPlanner(page);
     await expect(page.locator('.menu-toggle')).toBeVisible();

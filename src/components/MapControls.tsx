@@ -16,7 +16,7 @@ const OPTION_ROWS: { key: keyof Overlays; labelKey: MsgKey }[] = [
   { key: 'terrain3d', labelKey: 'opt_3d' },
 ];
 
-export function MapControls() {
+export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) {
   const t = useT();
   const [open, setOpen] = useState<'layers' | 'options' | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -27,7 +27,10 @@ export function MapControls() {
   const hasRoute = legs.some(l => (l.leg?.coords.length ?? 0) > 0);
 
   function togglePanel(panel: 'layers' | 'options') {
-    setOpen(open === panel ? null : panel);
+    const next = open === panel ? null : panel;
+    setOpen(next);
+    // one thing at a time on a phone: a panel and an open sheet would fight for the screen
+    if (next) onPanelOpen?.();
   }
 
   return (

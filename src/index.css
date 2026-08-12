@@ -1216,7 +1216,7 @@ body {
 }
 
 .sheet-peek {
-  height: 76px;
+  height: 88px;
 }
 
 .sheet-half {
@@ -1229,15 +1229,18 @@ body {
 
 .sheet-grip {
   display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 8px 0 4px;
+  /* 44 px of grabbable height, the usual floor for a finger target */
+  height: 44px;
+  flex-shrink: 0;
   cursor: grab;
   touch-action: none;
 }
 
 .sheet-grip-bar {
-  width: 42px;
-  height: 4px;
+  width: 48px;
+  height: 5px;
   border-radius: 999px;
   background: #cfcec8;
 }
@@ -1386,7 +1389,7 @@ body {
   /* the map chrome sits above the sheet, and steps aside when the sheet takes the screen */
   .map-controls {
     top: auto;
-    bottom: 92px;
+    bottom: 100px;
     right: 8px;
   }
 
@@ -1412,9 +1415,16 @@ body {
     height: 40px;
   }
 
+  /* anchored under the bar and above the sheet, never growing past the screen */
   .mc-panel {
-    right: 46px;
-    width: min(272px, calc(100vw - 64px));
+    position: fixed;
+    top: 58px;
+    right: 56px;
+    left: 8px;
+    bottom: auto;
+    width: auto;
+    max-height: calc(100dvh - 160px);
+    overflow-y: auto;
   }
 
   .routes-panel {

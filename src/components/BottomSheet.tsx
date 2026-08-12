@@ -1,11 +1,26 @@
 import { type ReactNode, type PointerEvent as ReactPointerEvent, useRef, useState } from 'react';
 
-/** peek shows the stats strip, half the profile and the actions, full the whole panel */
+/** peek shows the stats strip, half adds the profile, full the whole panel */
 export type SheetStop = 'peek' | 'half' | 'full';
 
 const STOPS: SheetStop[] = ['peek', 'half', 'full'];
-/** a drag shorter than this is a tap, not an intent to move the sheet */
-const DRAG_THRESHOLD_PX = 24;
+/** below this the gesture was a tap, not a drag */
+const TAP_SLOP_PX = 10;
+/** heights must match the css stops, the drag snaps against them */
+const STOP_RATIOS: Record<SheetStop, number> = { peek: 0, half: 0.46, full: 0.88 };
+const PEEK_PX = 88;
+
+function stopHeight(stop: SheetStop, viewportHeight: number): number {
+  return stop === 'peek' ? PEEK_PX : Math.round(viewportHeight * STOP_RATIOS[stop]);
+}
+
+function nearestStop(height: number, viewportHeight: number): SheetStop {
+  return STOPS.reduce((best, stop) =>
+    Math.abs(stopHeight(stop, viewportHeight) - height) < Math.abs(stopHeight(best, viewportHeight) - height)
+      ? stop
+      : best,
+  );
+}
 
 export function BottomSheet({
   stop,
@@ -18,36 +33,55 @@ export function BottomSheet({
   header: ReactNode;
   children: ReactNode;
 }) {
-  const dragStartRef = useRef<number | null>(null);
-  const [dragOffset, setDragOffset] = useState(0);
+  const sheetRef = useRef<HTMLElement>(null);
+  const dragRef = useRef<{ y: number; height: number; moved: boolean } | null>(null);
+  // set only while a finger is down, so the sheet follows it instead of animating between stops
+  const [dragHeight, setDragHeight] = useState<number | null>(null);
 
-  function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
-    dragStartRef.current = e.clientY;
+  function onPointerDown(e: ReactPointerEvent<HTMLElement>) {
+    const height = sheetRef.current?.getBoundingClientRect().height ?? PEEK_PX;
+    dragRef.current = { y: e.clientY, height, moved: false };
     e.currentTarget.setPointerCapture(e.pointerId);
   }
 
-  function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
-    if (dragStartRef.current === null) return;
-    setDragOffset(e.clientY - dragStartRef.current);
+  function onPointerMove(e: ReactPointerEvent<HTMLElement>) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const delta = drag.y - e.clientY;
+    if (Math.abs(delta) > TAP_SLOP_PX) drag.moved = true;
+    if (!drag.moved) return;
+    const max = stopHeight('full', window.innerHeight);
+    setDragHeight(Math.min(max, Math.max(PEEK_PX, drag.height + delta)));
   }
 
   function onPointerUp() {
-    const offset = dragOffset;
-    dragStartRef.current = null;
-    setDragOffset(0);
-    if (Math.abs(offset) < DRAG_THRESHOLD_PX) return;
-    // dragging down goes to a smaller stop, up to a taller one
-    const next = STOPS.indexOf(stop) + (offset > 0 ? -1 : 1);
-    onStopChange(STOPS[Math.min(STOPS.length - 1, Math.max(0, next))]);
+    const drag = dragRef.current;
+    dragRef.current = null;
+    const height = dragHeight;
+    setDragHeight(null);
+    if (!drag) return;
+    // a tap cycles the stops, which beats asking for a precise drag on a phone
+    if (!drag.moved || height === null) {
+      onStopChange(STOPS[(STOPS.indexOf(stop) + 1) % STOPS.length]);
+      return;
+    }
+    onStopChange(nearestStop(height, window.innerHeight));
   }
 
   return (
     <section
+      ref={sheetRef}
       className={`sheet sheet-${stop}`}
-      style={dragOffset ? { transform: `translateY(${Math.max(0, dragOffset)}px)`, transition: 'none' } : undefined}
+      style={dragHeight === null ? undefined : { height: `${dragHeight}px`, transition: 'none' }}
       aria-label="panel"
     >
-      <div className="sheet-grip" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
+      <div
+        className="sheet-grip"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
         <span className="sheet-grip-bar" />
       </div>
       <div className="sheet-header">
@@ -59,6 +93,7 @@ export function BottomSheet({
               type="button"
               className={candidate === stop ? 'sheet-stop on' : 'sheet-stop'}
               aria-label={candidate}
+              aria-pressed={candidate === stop}
               onClick={() => onStopChange(candidate)}
             />
           ))}

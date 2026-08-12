@@ -96,7 +96,7 @@ export default function App() {
         <TopBar />
         <div className="map-wrap">
           <MapView />
-          <MapControls />
+          <MapControls onPanelOpen={() => setSheetStop('peek')} />
           <PointEditor />
           {toast}
         </div>
