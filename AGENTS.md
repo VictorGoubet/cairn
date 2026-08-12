@@ -125,10 +125,19 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   technique Mapbox documents for camera paths: the camera rides the track while a second point
   runs ahead, and `calculateCameraOptionsFromTo` derives center, zoom, pitch and bearing from
   that geometry (MapLibre has no FreeCameraOptions). What that buys, and what it cost to learn:
-  - **Framing is calibrated, not guessed.** Looking 2300 m ahead from 850 m up lands near zoom
-    14.4 and pitch 70 at our latitudes; the height-to-lookahead ratio is kept so short routes
-    stay framed the same way. An earlier close-in camera (540 m ahead, 430 m up) derived zoom
-    16.9 and asked for roughly thirty times the tiles.
+  - **Framing is calibrated, not guessed.** Looking 1150 m ahead from 190 m up lands near zoom
+    15.5 and pitch 81 at our latitudes, the low grazing pass; the height-to-lookahead ratio is
+    kept so short routes stay framed the same way. Measured in flight: pitch 79 to 82, zoom 15.5
+    to 16.1. Going closer still derives a zoom past 16.5, where tiles stop keeping up, which is
+    also why the look-ahead has a floor: a one kilometre route would otherwise frame a hedge.
+  - **Height is measured from the target, not from the ground under the camera.** Pitch is
+    `atan(ahead / drop onto the target)`, so a climb that outruns the smoothed altitude tips the
+    camera uphill into the sky and the derived pitch pins to the cap. A floor on that drop holds
+    the framing while the smoothing catches up.
+  - **The path is resampled and averaged** (25 m step, 150 m window) before the camera flies it.
+    Switchbacks and GPS wobble otherwise shake the heading: measured frame-to-frame bearing jerk
+    fell from 0.89 deg mean / 2.6 max to 0.19 / 0.9. Elevation is left as sampled, so clearing
+    the relief still works on the real profile.
   - **Terrain exaggeration is pinned to 1** while flying. MapLibre drops the closest tiles with
     terrain on and it worsens sharply with exaggeration (maplibre-gl-js issue 1241), which is
     exactly the "chunks vanishing" symptom.
