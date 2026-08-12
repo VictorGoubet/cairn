@@ -266,9 +266,16 @@ test.describe('reading the route', () => {
     const flying = await camera();
     expect(flying.terrain).toBe(true);
     // the grazing framing: a pitch sitting on the 85 degree cap means the camera looks uphill
-    // into the sky instead of onto the route, and a zoom past 16.5 outruns the tiles
+    // into the sky instead of onto the route. Hairpins pull the camera closer to the dot (the
+    // chord shrinks) so the zoom breathes a little; past 16.8 it is a derived-zoom blowup.
     expect(flying.pitch).toBeLessThan(84);
-    expect(flying.zoom).toBeLessThan(16.5);
+    expect(flying.zoom).toBeLessThan(16.8);
+    // the glowing dot rides the route for the duration of the flight
+    const dotVisible = () =>
+      page.evaluate(() =>
+        (window as unknown as TestHandles).__map.getStyle().layers.some(l => l.id === 'flyover-dot-core'),
+      );
+    expect(await dotVisible()).toBe(true);
 
     // the flight waits briefly for tiles before taking off, then the view keeps evolving. On a
     // short route the look-at point settles on the finish, so the framing moves through zoom
@@ -291,6 +298,7 @@ test.describe('reading the route', () => {
     await page.keyboard.press('Escape');
     await expect.poll(async () => (await camera()).pitch, { timeout: 10_000 }).toBeLessThan(20);
     expect((await camera()).terrain).toBe(false);
+    expect(await dotVisible()).toBe(false);
   });
 
   test('escape closes an open panel', async ({ page }) => {

@@ -122,35 +122,42 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - Points reorder by dragging their row; `reorderAnchor` recomputes the legs around both
   positions and leaves frozen legs alone.
 - The play button flies the route like a drone (`lib/flyover.ts`). It follows the two-path
-  technique Mapbox documents for camera paths: the camera rides the track while a second point
-  runs ahead, and `calculateCameraOptionsFromTo` derives center, zoom, pitch and bearing from
-  that geometry (MapLibre has no FreeCameraOptions). What that buys, and what it cost to learn:
+  technique Mapbox documents for camera paths: the camera rides the track while a glowing dot
+  runs ahead on the route, and `calculateCameraOptionsFromTo` derives center, zoom, pitch and
+  bearing from that geometry (MapLibre has no FreeCameraOptions). What that buys, and what it
+  cost to learn:
+  - **Smoothness is C2 by construction, never filtered per frame.** A polyline is continuous in
+    position but its velocity jumps at every vertex, and the eye reads each jump as a tremor;
+    chasing the target with an exponential filter only lags the tremor. The camera flies a
+    uniform cubic B-spline (continuous acceleration) over resampled, window-averaged control
+    points (25 m step, 150 m window), and every frame is a pure function of elapsed time. No
+    per-frame filter state also means the flight looks the same at 60 fps and at 25.
+  - **Altitude comes from a precomputed clearance envelope.** The required altitude (max raw
+    relief inside the look-ahead window, plus cruise height) is a sliding max, which has
+    corners; blurring it wide and re-clamping it onto the requirement a few times gives a
+    smooth curve that never dips below the relief. Sampled through the same B-spline. Measuring
+    altitude from the target rather than the ground under the camera is what keeps a climb from
+    tipping the derived pitch into the sky.
+  - **Speed follows a trapezoidal velocity profile** (2.5 s ramps): constant speed from a
+    standing start is a velocity discontinuity, and the takeoff reads as a jolt.
+  - **The 3D chase distance is held near the finish.** The dot parks on the finish while the
+    camera closes in; raising the camera to keep the camera-to-dot distance constant keeps the
+    derived zoom steady (no end-of-flight tile starvation) and turns the arrival into a pull-up
+    over the finish.
   - **Framing is calibrated, not guessed.** Looking 1150 m ahead from 220 m up lands near zoom
     15.5 and pitch 79 at our latitudes, the low grazing pass; the height-to-lookahead ratio is
     kept so short routes stay framed the same way. Going closer derives a zoom past 16.5, where
     tiles stop keeping up, which is also why the look-ahead has a floor: a one kilometre route
     would otherwise frame a hedge. The pitch cap stays at 82, since nearer the horizon the near
     plane starts clipping the ground.
-  - **Height is measured from the target, not from the ground under the camera.** Pitch is
-    `atan(ahead / drop onto the target)`, so a climb that outruns the smoothed altitude tips the
-    camera uphill into the sky and the derived pitch pins to the cap. A floor on that drop holds
-    the framing while the smoothing catches up.
-  - **The path is resampled and averaged** (25 m step, 150 m window) before the camera flies it.
-    Switchbacks and GPS wobble otherwise shake the heading: measured frame-to-frame bearing jerk
-    fell from 0.89 deg mean / 2.6 max to 0.19 / 0.9. Elevation is left as sampled, so clearing
-    the relief still works on the real profile.
-  - **Smoothing is per metre flown, never per frame.** A constant applied per frame means one thing
-    at 60 fps and another at 25, so the camera would shake hardest on the machines that are
-    already struggling, and it would change again with the ground speed.
-  - **The camera moves on every frame.** Throttling it to 30 fps looks like stutter rather than
-    like an economy: the frames that are kept do not line up with the display's refresh.
+  - **The dot is two circle layers** (warm glow + white core) on a one-point GeoJSON source that
+    `flyover.ts` owns: added at takeoff, moved every frame to the point the camera looks at,
+    removed on exit.
   - **Terrain exaggeration is pinned to 1** while flying. MapLibre drops the closest tiles with
     terrain on and it worsens sharply with exaggeration (maplibre-gl-js issue 1241), which is
     exactly the "chunks vanishing" symptom.
   - **The initial jump is applied twice**: the first one lands short with terrain on
     (maplibre-gl-js issue 4688).
-  - **The camera clears the relief ahead**, not just the ground under it, or a climb pushes the
-    derived pitch towards the sky.
   - **The flight is its own scene**, set up in `MapView` and restored on exit, and each difference
     from the planner view is also what pays for the frame rate:
     - satellite imagery (`FLYOVER_BASE_LAYER`), because a drawn map has nothing to show from

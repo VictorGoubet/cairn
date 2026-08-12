@@ -2,23 +2,27 @@
  * Drone-like flight along the route, the way Strava plays an activity back.
  *
  * Built on the two-path technique Mapbox documents for camera paths: the camera rides one path
- * while a second point runs ahead of it, and both are sampled at the same progress. MapLibre has
- * no FreeCameraOptions, but `calculateCameraOptionsFromTo` does the same job: give it a camera
- * position with an altitude plus a target, and it derives center, zoom, pitch and bearing.
+ * while a glowing dot runs ahead of it on the route, and `calculateCameraOptionsFromTo` derives
+ * center, zoom, pitch and bearing from that geometry (MapLibre has no FreeCameraOptions).
  * Letting geometry drive the camera beats animating pitch and zoom by hand.
  *
- * A hiking track is full of switchbacks and GPS wobble. Followed literally they shake the
- * camera, so the flight path is resampled at a constant step and averaged over a window: the
- * camera flies the shape of the route, not its every twitch. The heading is then smoothed once
- * more on the way out.
+ * Smoothness is C2 by construction, not filtered after the fact. A hiking track is piecewise
+ * linear: position is continuous but velocity jumps at every vertex, and the eye reads each
+ * jump as a tremor. The camera therefore flies a uniform cubic B-spline over resampled,
+ * window-averaged control points, which has continuous acceleration; its altitude comes from a
+ * clearance envelope precomputed over the whole route and sampled through the same spline; and
+ * ground speed follows a trapezoidal velocity profile, so the flight also starts and ends
+ * without a jolt. Every frame is a pure function of elapsed time, with no filter state that
+ * would behave differently at 60 fps and at 25.
  *
- * This module only drives the camera. The scene it flies through is the caller's job (imagery,
- * a coarser DEM, no markers and no labels), and terrain exaggeration is pinned to 1 there:
- * MapLibre drops the closest tiles when terrain is on, and the effect grows with exaggeration
- * (maplibre-gl-js issue 1241), which is what makes chunks of the map vanish mid-flight.
+ * This module only drives the camera and the dot. The scene it flies through is the caller's
+ * job (imagery, a coarser DEM, no markers and no labels), and terrain exaggeration is pinned
+ * to 1 there: MapLibre drops the closest tiles when terrain is on, and the effect grows with
+ * exaggeration (maplibre-gl-js issue 1241), which is what makes chunks of the map vanish
+ * mid-flight.
  */
 
-import { LngLat, type Map as MapLibreMap } from 'maplibre-gl';
+import { type GeoJSONSource, LngLat, type Map as MapLibreMap } from 'maplibre-gl';
 import { cumulativeDistancesM, type LonLatEle, nearestIndex } from './geo';
 
 /** short routes stretch to about this long, so a two kilometre loop is not over in a blink */
@@ -28,6 +32,8 @@ const FLIGHT_SECONDS = 20;
  * than by taste: the imagery has to arrive before the camera gets there.
  */
 const MAX_SPEED_M_S = 170;
+/** speed ramps up and down over this long, the trapezoidal profile of motion control */
+const RAMP_SECONDS = 2.5;
 /**
  * How far ahead the camera looks, and how high it flies. Together they set the pitch and the
  * zoom MapLibre derives: measured at these latitudes, looking 1150 m ahead from 220 m up lands
@@ -44,21 +50,14 @@ const HEIGHT_TO_AHEAD = 220 / 1150;
  */
 const AHEAD_FRACTION = 0.4;
 const MIN_AHEAD_M = 700;
-/**
- * Altitude and heading are smoothed over a distance flown, not over a number of frames: per
- * frame, the same constant would mean one thing at 60 fps and another at 25, and the flight would
- * shake exactly on the machines that are already struggling. Over metres it also holds when the
- * ground speed changes with the length of the route.
- */
-const ALTITUDE_SMOOTHING_M = 60;
-const BEARING_SMOOTHING_M = 40;
-/** hard floor on the drop onto the target while the smoothing catches up, as a share of height */
-const MIN_DROP_RATIO = 0.8;
-/** samples over the look-ahead window, to clear the relief the camera is heading into */
-const LOOKAHEAD_SAMPLES = 8;
+/** the camera parks this short of the finish, two coincident points derive no bearing */
+const MIN_SEPARATION_M = 40;
 /** flight path resampling step, and the averaging window that irons out switchbacks */
 const RESAMPLE_STEP_M = 25;
 const SMOOTHING_WINDOW_M = 150;
+/** the clearance envelope is blurred this wide, a few times, and re-clamped onto the relief */
+const ENVELOPE_BLUR_M = 300;
+const ENVELOPE_PASSES = 3;
 /** terrain exaggeration during the flight, see the note above about vanishing tiles */
 export const FLYOVER_EXAGGERATION = 1;
 /**
@@ -67,6 +66,9 @@ export const FLYOVER_EXAGGERATION = 1;
  * imagery the flight flies over is only requested when play is pressed.
  */
 const TAKEOFF_TIMEOUT_MS = 3000;
+
+const DOT_SOURCE = 'flyover-dot';
+export const DOT_LAYERS = ['flyover-dot-glow', 'flyover-dot-core'] as const;
 
 export interface FlyoverHandle {
   stop(): void;
@@ -88,48 +90,6 @@ function positionAt(path: Path, distanceM: number): LonLatEle {
   return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), a[2] + t * (b[2] - a[2])];
 }
 
-/** shortest way around the circle, so the camera never spins the long way from 359 to 1 degree */
-function shortestTurn(from: number, to: number): number {
-  return ((to - from + 540) % 360) - 180;
-}
-
-/** share of the gap to close over `flownM`, for a smoothing that settles over `lengthM` */
-function catchUp(flownM: number, lengthM: number): number {
-  return 1 - Math.exp(-flownM / lengthM);
-}
-
-/**
- * Resamples the track at a constant step, then averages each point over a window.
- *
- * Args:
- *   track: the route as walked, switchbacks included.
- *
- * Returns:
- *   A smooth path the camera can fly without shaking.
- */
-function flightPath(track: Path): Path {
-  const totalM = track.dists[track.dists.length - 1];
-  const steps = Math.max(2, Math.round(totalM / RESAMPLE_STEP_M));
-  const even: LonLatEle[] = Array.from({ length: steps + 1 }, (_, i) => positionAt(track, (totalM * i) / steps));
-
-  const half = Math.max(1, Math.round(SMOOTHING_WINDOW_M / RESAMPLE_STEP_M / 2));
-  const smoothed = even.map((point, i) => {
-    const from = Math.max(0, i - half);
-    const to = Math.min(even.length - 1, i + half);
-    let lon = 0;
-    let lat = 0;
-    for (let j = from; j <= to; j++) {
-      lon += even[j][0];
-      lat += even[j][1];
-    }
-    const count = to - from + 1;
-    // elevation stays as sampled: the camera clears the relief, it does not average it away
-    return [lon / count, lat / count, point[2]] as LonLatEle;
-  });
-
-  return { coords: smoothed, dists: cumulativeDistancesM(smoothed) };
-}
-
 /**
  * Flies the camera along the route until the end, or until `stop()` is called.
  *
@@ -143,64 +103,52 @@ function flightPath(track: Path): Path {
  */
 export function startFlyover(map: MapLibreMap, coords: LonLatEle[], onEnd: () => void): FlyoverHandle {
   const track: Path = { coords, dists: cumulativeDistancesM(coords) };
-  const path = flightPath(track);
-  const totalM = path.dists[path.dists.length - 1];
+  const totalM = track.dists[track.dists.length - 1];
   const speed = Math.min(MAX_SPEED_M_S, totalM / FLIGHT_SECONDS);
   const aheadM = Math.max(MIN_AHEAD_M, Math.min(MAX_AHEAD_M, totalM * AHEAD_FRACTION));
   const heightM = aheadM * HEIGHT_TO_AHEAD;
+  // chase distance in 3D; holding it also holds the zoom MapLibre derives from it
+  const chaseM = Math.hypot(aheadM, heightM);
+  const flight = buildFlight(track, aheadM, heightM);
 
   // the pitch that comes out of the geometry runs past the default 60 degree cap. The ceiling
   // stays under 85: that close to the horizon the near plane starts clipping the ground
   const previousMaxPitch = map.getMaxPitch();
   map.setMaxPitch(82);
+  addDot(map);
 
   let frame = 0;
   let done = false;
   let startedAt = 0;
-  let flown = 0;
-  let altitude = positionAt(path, 0)[2] + heightM;
-  let bearing: number | null = null;
 
-  // the camera rides the smoothed path; only the target runs ahead. Trailing the camera behind
-  // the position instead would pin it to the start until the flight had covered that setback.
-  const cameraFor = (travelledM: number, flownM: number) => {
-    const camera = positionAt(path, travelledM);
-    const target = positionAt(path, travelledM + aheadM);
-    // clear the highest ground in the look-ahead window: on a climb the slope ahead rises above
-    // a camera held over the current point, and the derived pitch tips towards the sky
-    let ceiling = camera[2];
-    for (let i = 1; i <= LOOKAHEAD_SAMPLES; i++) {
-      ceiling = Math.max(ceiling, positionAt(track, travelledM + (aheadM * i) / LOOKAHEAD_SAMPLES)[2]);
-    }
-    // the height that matters is the drop onto the target, since that is what sets the pitch:
-    // ahead / height. Referencing the ground under the camera instead let a climb catch up with
-    // the smoothed altitude, and the camera ended up looking uphill at the sky.
-    const wantedAltitude = Math.max(ceiling, target[2]) + heightM;
-    altitude += (wantedAltitude - altitude) * catchUp(flownM, ALTITUDE_SMOOTHING_M);
-    altitude = Math.max(altitude, target[2] + heightM * MIN_DROP_RATIO);
-
+  // the whole frame is a pure function of the distance flown: the camera rides the spline while
+  // the dot runs `aheadM` ahead on the real track, and the camera keeps looking at it
+  const frameFor = (travelledM: number) => {
+    const camDist = Math.min(travelledM, totalM - MIN_SEPARATION_M);
+    const dotDist = Math.min(travelledM + aheadM, totalM);
+    const camera = splineAt(flight.points, camDist);
+    const target = splineAt(flight.points, dotDist);
+    // near the finish the dot parks and the camera closes in; raising the camera to hold the 3D
+    // chase distance keeps the zoom steady and turns the arrival into a pull-up over the finish
+    const separationM = dotDist - camDist;
+    const holdDropM = Math.sqrt(Math.max(chaseM * chaseM - separationM * separationM, heightM * heightM));
+    const altitude = Math.max(scalarSplineAt(flight.clearance, camDist), target[2] + holdDropM);
     const options = map.calculateCameraOptionsFromTo(
       new LngLat(camera[0], camera[1]),
       altitude,
       new LngLat(target[0], target[1]),
       target[2],
     );
-    const wantedBearing = options.bearing ?? 0;
-    bearing =
-      bearing === null
-        ? wantedBearing
-        : bearing + shortestTurn(bearing, wantedBearing) * catchUp(flownM, BEARING_SMOOTHING_M);
-    return { ...options, bearing };
+    return { options, dot: positionAt(track, dotDist) };
   };
 
-  // every frame, not every other one: dropping frames to save camera work reads as stutter,
-  // because the frames that are kept do not line up with the display's refresh
   const step = (now: number) => {
     if (done) return;
     if (!startedAt) startedAt = now;
-    const travelled = ((now - startedAt) / 1000) * speed;
-    map.jumpTo(cameraFor(travelled, travelled - flown));
-    flown = travelled;
+    const travelled = travelledAt((now - startedAt) / 1000, speed, totalM);
+    const { options, dot } = frameFor(travelled);
+    map.jumpTo(options);
+    (map.getSource(DOT_SOURCE) as GeoJSONSource).setData(dotFeature(dot));
     if (travelled >= totalM) return finish();
     frame = requestAnimationFrame(step);
   };
@@ -218,17 +166,171 @@ export function startFlyover(map: MapLibreMap, coords: LonLatEle[], onEnd: () =>
     window.clearTimeout(takeOffFallback);
     map.off('idle', takeOff);
     map.setMaxPitch(previousMaxPitch);
+    removeDot(map);
     onEnd();
   }
 
   // frame the start and let its tiles arrive before moving: a flight that begins over a blank
   // map never catches up. Applied twice on purpose, the first jumpTo lands short when terrain
   // is on (maplibre-gl-js issue 4688).
-  const start = cameraFor(0, 0);
-  map.jumpTo(start);
-  map.jumpTo(start);
+  const start = frameFor(0);
+  map.jumpTo(start.options);
+  map.jumpTo(start.options);
+  (map.getSource(DOT_SOURCE) as GeoJSONSource).setData(dotFeature(start.dot));
   map.once('idle', takeOff);
   const takeOffFallback = window.setTimeout(takeOff, TAKEOFF_TIMEOUT_MS);
 
   return { stop: finish };
+}
+
+interface Flight {
+  /** B-spline control points every RESAMPLE_STEP_M, window-averaged */
+  points: LonLatEle[];
+  /** camera altitude clearing the relief ahead, one value per control point */
+  clearance: number[];
+}
+
+/**
+ * Precomputes the two curves a frame samples: the flight path and the clearance envelope.
+ *
+ * Args:
+ *   track: the route as walked, switchbacks included.
+ *   aheadM: look-ahead distance, also the window the envelope must clear.
+ *   heightM: cruise height over the relief.
+ *
+ * Returns:
+ *   Control points for `splineAt` / `scalarSplineAt`.
+ */
+function buildFlight(track: Path, aheadM: number, heightM: number): Flight {
+  const totalM = track.dists[track.dists.length - 1];
+  const steps = Math.max(2, Math.round(totalM / RESAMPLE_STEP_M));
+  const even: LonLatEle[] = Array.from({ length: steps + 1 }, (_, i) => positionAt(track, (totalM * i) / steps));
+
+  const half = Math.max(1, Math.round(SMOOTHING_WINDOW_M / RESAMPLE_STEP_M / 2));
+  const points = even.map((_, i) => {
+    const from = Math.max(0, i - half);
+    const to = Math.min(even.length - 1, i + half);
+    const sum = [0, 0, 0];
+    for (let j = from; j <= to; j++) {
+      sum[0] += even[j][0];
+      sum[1] += even[j][1];
+      sum[2] += even[j][2];
+    }
+    return sum.map(v => v / (to - from + 1)) as LonLatEle;
+  });
+
+  // required altitude: clear the highest raw relief inside the look-ahead window. A sliding max
+  // has corners, so it is blurred wide and re-clamped onto the requirement a few times: the
+  // result is a smooth envelope that never dips below the relief it must clear.
+  const window = Math.max(1, Math.round(aheadM / RESAMPLE_STEP_M));
+  const required = even.map((point, i) => {
+    let ceiling = point[2];
+    for (let j = i + 1; j <= Math.min(i + window, even.length - 1); j++) ceiling = Math.max(ceiling, even[j][2]);
+    return ceiling + heightM;
+  });
+  let clearance = required;
+  const blurHalf = Math.max(1, Math.round(ENVELOPE_BLUR_M / RESAMPLE_STEP_M / 2));
+  for (let pass = 0; pass < ENVELOPE_PASSES; pass++) {
+    clearance = clearance.map((_, i) => {
+      const from = Math.max(0, i - blurHalf);
+      const to = Math.min(clearance.length - 1, i + blurHalf);
+      let sum = 0;
+      for (let j = from; j <= to; j++) sum += clearance[j];
+      return Math.max(sum / (to - from + 1), required[i]);
+    });
+  }
+
+  return { points, clearance };
+}
+
+/**
+ * Uniform cubic B-spline over control points spaced RESAMPLE_STEP_M apart.
+ *
+ * The spline approximates rather than interpolates, which is the point: it is C2 continuous,
+ * so the camera's acceleration never jumps at a control point the way it does on a polyline.
+ */
+function splineAt(points: LonLatEle[], distanceM: number): LonLatEle {
+  const { i, weights } = splineBasis(points.length, distanceM);
+  const at = (k: number) => points[Math.min(Math.max(k, 0), points.length - 1)];
+  const result: LonLatEle = [0, 0, 0];
+  for (let j = 0; j < 4; j++) {
+    const p = at(i - 1 + j);
+    result[0] += p[0] * weights[j];
+    result[1] += p[1] * weights[j];
+    result[2] += p[2] * weights[j];
+  }
+  return result;
+}
+
+function scalarSplineAt(values: number[], distanceM: number): number {
+  const { i, weights } = splineBasis(values.length, distanceM);
+  const at = (k: number) => values[Math.min(Math.max(k, 0), values.length - 1)];
+  return at(i - 1) * weights[0] + at(i) * weights[1] + at(i + 1) * weights[2] + at(i + 2) * weights[3];
+}
+
+function splineBasis(count: number, distanceM: number): { i: number; weights: [number, number, number, number] } {
+  const u = Math.min(Math.max(distanceM / RESAMPLE_STEP_M, 0), count - 1);
+  const i = Math.min(Math.floor(u), count - 2);
+  const t = u - i;
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return {
+    i,
+    weights: [(1 - 3 * t + 3 * t2 - t3) / 6, (4 - 6 * t2 + 3 * t3) / 6, (1 + 3 * t + 3 * t2 - 3 * t3) / 6, t3 / 6],
+  };
+}
+
+/**
+ * Distance flown after `elapsedS`, on a trapezoidal velocity profile.
+ *
+ * Constant speed from a standing start is a velocity discontinuity, and the takeoff reads as a
+ * jolt; ramping over RAMP_SECONDS at both ends is the standard motion-control fix.
+ */
+function travelledAt(elapsedS: number, speedM: number, totalM: number): number {
+  const durationS = totalM / speedM + RAMP_SECONDS;
+  if (elapsedS >= durationS) return totalM;
+  if (elapsedS < RAMP_SECONDS) return (speedM * elapsedS * elapsedS) / (2 * RAMP_SECONDS);
+  if (elapsedS > durationS - RAMP_SECONDS) {
+    const remaining = durationS - elapsedS;
+    return totalM - (speedM * remaining * remaining) / (2 * RAMP_SECONDS);
+  }
+  return speedM * (elapsedS - RAMP_SECONDS / 2);
+}
+
+/** the moving dot: a warm glow with a white core, riding the point the camera is looking at */
+function addDot(map: MapLibreMap): void {
+  if (map.getSource(DOT_SOURCE)) return;
+  map.addSource(DOT_SOURCE, { type: 'geojson', data: dotFeature([0, 0, 0]) });
+  map.addLayer({
+    id: 'flyover-dot-glow',
+    type: 'circle',
+    source: DOT_SOURCE,
+    paint: { 'circle-radius': 16, 'circle-color': '#ffb703', 'circle-blur': 1.1, 'circle-opacity': 0.9 },
+  });
+  map.addLayer({
+    id: 'flyover-dot-core',
+    type: 'circle',
+    source: DOT_SOURCE,
+    paint: {
+      'circle-radius': 5.5,
+      'circle-color': '#ffffff',
+      'circle-stroke-color': '#f77f00',
+      'circle-stroke-width': 2.5,
+    },
+  });
+}
+
+function removeDot(map: MapLibreMap): void {
+  for (const layer of DOT_LAYERS) {
+    if (map.getLayer(layer)) map.removeLayer(layer);
+  }
+  if (map.getSource(DOT_SOURCE)) map.removeSource(DOT_SOURCE);
+}
+
+function dotFeature(position: LonLatEle): GeoJSON.Feature<GeoJSON.Point> {
+  return {
+    type: 'Feature',
+    properties: {},
+    geometry: { type: 'Point', coordinates: [position[0], position[1]] },
+  };
 }
