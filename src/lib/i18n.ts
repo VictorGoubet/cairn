@@ -4,6 +4,7 @@ export const MESSAGES = {
   fr: {
     search_placeholder: 'Rechercher un lieu…',
     unknown_place: 'inconnu',
+    actions: 'Actions',
     my_routes: 'Mes itinéraires',
     import: 'Importer',
     export: 'Exporter',
@@ -112,6 +113,7 @@ export const MESSAGES = {
   en: {
     search_placeholder: 'Search a place…',
     unknown_place: 'unknown',
+    actions: 'Actions',
     my_routes: 'My routes',
     import: 'Import',
     export: 'Export',

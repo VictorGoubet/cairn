@@ -6,6 +6,7 @@ import type { Lang } from '../lib/lang';
 import { kindDef, kindLabelKey } from '../lib/points';
 import { buildShareUrl } from '../lib/share';
 import { useClickOutside } from '../lib/useClickOutside';
+import { useIsMobile } from '../lib/useMediaQuery';
 import { routeCoords, routePois, usePlanner } from '../store';
 import { RoutesPanel } from './RoutesPanel';
 import { SearchBox } from './SearchBox';
@@ -18,6 +19,10 @@ function closeRoutesPanel() {
 
 export function TopBar() {
   const t = useT();
+  const isMobile = useIsMobile();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
+  useClickOutside(actionsRef, () => setMenuOpen(false), isMobile && menuOpen);
   const lang = usePlanner(s => s.lang);
   const anchors = usePlanner(s => s.anchors);
   const legs = usePlanner(s => s.legs);
@@ -71,11 +76,38 @@ export function TopBar() {
   return (
     <header className="topbar">
       <a className="brand" href={import.meta.env.BASE_URL}>
-        ⛰️ cairn
+        <span aria-hidden="true">⛰️</span>
+        <span className="brand-name">cairn</span>
       </a>
       <SearchBox />
 
-      <div className="topbar-group topbar-right">
+      {isMobile && (
+        <button
+          type="button"
+          className={menuOpen ? 'menu-toggle on' : 'menu-toggle'}
+          aria-label={t('actions')}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen(v => !v)}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
+        </button>
+      )}
+
+      <div
+        className={
+          isMobile ? `topbar-group topbar-right topbar-sheet${menuOpen ? ' open' : ''}` : 'topbar-group topbar-right'
+        }
+        ref={actionsRef}
+      >
         <div className="segmented lang-seg" title="Langue / Language">
           {(['fr', 'en'] as Lang[]).map(l => (
             <button

@@ -94,6 +94,21 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - The IGN vector style is patched at load in `buildStyle()` (MapView): layer visibility is
   driven per-layer, contours and hybrid mode depend on it.
 
+## Mobile layout
+
+- Breakpoint `(max-width: 760px)` (`src/lib/useMediaQuery.ts`). `App` renders two distinct
+  trees rather than bending one with CSS: the desktop split view, or the map plus a bottom
+  sheet. `RouteStats` is shared so distance, gain and save cannot drift apart.
+- The sheet (`components/BottomSheet.tsx`) has three stops, peek / half / full, draggable by
+  its grip or selectable by the dots. `App` mirrors the current stop on `data-sheet` so the
+  map controls can dodge it, and hide entirely at full.
+- Touch replaces what a mouse gave us: a tap appends a point, a long press (500 ms, 12 px of
+  slop) drops an off-route point like the right click, and it suppresses the click that
+  follows so a POI is not doubled with a route point.
+- Actions collapse behind one menu button, so the bar stays a single line on a 320 px screen.
+- Mobile e2e run under Chromium with touch emulation, not a webkit device preset, so
+  `make setup` keeps downloading a single browser.
+
 ## Known trade-offs
 
 - **Back navigation is undo.** A stack of history sentinels turns the browser back button,

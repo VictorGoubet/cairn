@@ -538,6 +538,7 @@ body {
 .waytype-legend {
   display: flex;
   flex-wrap: wrap;
+  min-width: 0;
   gap: 4px 14px;
   color: var(--ink-2);
   font-size: 11.5px;
@@ -1194,9 +1195,187 @@ body {
   white-space: nowrap;
 }
 
-@media (max-width: 860px) {
+/* --- bottom sheet (phone layout) --- */
+
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -2px 16px rgba(0, 0, 0, 0.18);
+  transition: height 0.22s ease;
+  overflow: hidden;
+  /* keep clear of the home indicator on a notched phone */
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.sheet-peek {
+  height: 76px;
+}
+
+.sheet-half {
+  height: 46vh;
+}
+
+.sheet-full {
+  height: 88vh;
+}
+
+.sheet-grip {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.sheet-grip-bar {
+  width: 42px;
+  height: 4px;
+  border-radius: 999px;
+  background: #cfcec8;
+}
+
+.sheet-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 14px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sheet-stops {
+  display: flex;
+  gap: 5px;
+  margin-left: auto;
+}
+
+.sheet-stop {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  position: relative;
+}
+
+.sheet-stop::after {
+  content: "";
+  position: absolute;
+  inset: 8px 4px;
+  border-radius: 999px;
+  background: #cfcec8;
+}
+
+.sheet-stop.on::after {
+  background: var(--accent);
+}
+
+.sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sheet-peek .sheet-body {
+  display: none;
+}
+
+/* the sheet hosts them, so they drop their floating chrome */
+.sheet-body .bottom-panel {
+  position: static;
+  height: 190px;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: none;
+}
+
+.sheet-body .side {
+  width: auto;
+  border-right: none;
+  overflow: visible;
+}
+
+/* --- mobile actions menu --- */
+
+.menu-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.menu-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+.menu-toggle.on {
+  color: #fff;
+  background: var(--topbar);
+  border-color: var(--topbar);
+}
+
+.topbar-sheet {
+  display: none;
+}
+
+.topbar-sheet.open {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 8px;
+  left: 8px;
+  z-index: 20;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.22);
+}
+
+@media (max-width: 760px) {
   .topbar {
+    position: relative;
+    flex-wrap: nowrap;
     gap: 8px;
+    padding: 6px 10px;
+  }
+
+  .brand-name {
+    display: none;
+  }
+
+  .search-box {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .topbar button {
+    padding: 8px 10px;
+  }
+
+  .lang-seg {
+    width: 100%;
   }
 
   .stats-row {
@@ -1204,7 +1383,51 @@ body {
     overflow-x: auto;
   }
 
-  .bottom-panel {
-    height: 160px;
+  /* the map chrome sits above the sheet, and steps aside when the sheet takes the screen */
+  .map-controls {
+    top: auto;
+    bottom: 92px;
+    right: 8px;
+  }
+
+  .app.mobile[data-sheet="half"] .map-controls {
+    bottom: calc(46vh + 16px);
+  }
+
+  .app.mobile[data-sheet="full"] .map-controls {
+    display: none;
+  }
+
+  .stats-row {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .waytype-legend {
+    max-width: 100%;
+  }
+
+  .mc-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .mc-panel {
+    right: 46px;
+    width: min(272px, calc(100vw - 64px));
+  }
+
+  .routes-panel {
+    width: min(320px, calc(100vw - 24px));
+  }
+
+  .point-editor {
+    width: min(340px, calc(100vw - 24px));
+  }
+
+  .kind-option,
+  .side-row button,
+  .segmented button {
+    min-height: 38px;
   }
 }

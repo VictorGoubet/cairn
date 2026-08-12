@@ -88,6 +88,7 @@ export function MapView() {
     let cancelled = false;
     let map: MapLibreMap | null = null;
     let disposeRotateCursor: (() => void) | undefined;
+    let disposeLongPress: (() => void) | undefined;
     buildStyle().then(bundle => {
       if (cancelled || !containerRef.current) return;
       vectorLayersRef.current = bundle.vectorLayers;
@@ -194,12 +195,17 @@ export function MapView() {
           if (map) map.getCanvas().style.cursor = 'crosshair';
         });
         map.on('click', e => {
+          if (suppressNextTap) {
+            suppressNextTap = false;
+            return;
+          }
           if (!e.defaultPrevented) usePlanner.getState().addAnchor([e.lngLat.lng, e.lngLat.lat]);
         });
         map.on('contextmenu', e => {
           usePlanner.getState().addOffRoutePoint([e.lngLat.lng, e.lngLat.lat]);
         });
         disposeRotateCursor = bindRotateCursor(map);
+        disposeLongPress = bindLongPressPoint(map);
         setMapReady(true);
       });
       mapRef.current = map;
@@ -210,6 +216,7 @@ export function MapView() {
     return () => {
       cancelled = true;
       disposeRotateCursor?.();
+      disposeLongPress?.();
       map?.remove();
       mapRef.current = null;
       setMapReady(false);
@@ -452,6 +459,8 @@ export function MapView() {
 // so the hover scale has to live on a child
 // last refresh started wins: a late setData from a stale viewport is ignored
 let poiRefreshToken = 0;
+// set by a long press, cleared by the click it generates
+let suppressNextTap = false;
 
 /**
  * Desirable exaggeration for the relief currently on screen, or null if the DEM is not ready.
@@ -473,6 +482,67 @@ let poiRefreshToken = 0;
  * Returns:
  *   A disposer for the window listener, since the button can be released outside the canvas.
  */
+const LONG_PRESS_MS = 500;
+/** a finger never lands twice on the same pixel: allow a small wobble during the press */
+const LONG_PRESS_SLOP_PX = 12;
+
+/**
+ * Drops an off-route point after a long press, the touch equivalent of the right click.
+ *
+ * Args:
+ *   map: map whose canvas receives the touch events.
+ *
+ * Returns:
+ *   A disposer for the listeners.
+ */
+function bindLongPressPoint(map: MapLibreMap): () => void {
+  const canvas = map.getCanvas();
+  let timer = 0;
+  let start: { x: number; y: number } | null = null;
+
+  const cancel = () => {
+    window.clearTimeout(timer);
+    timer = 0;
+    start = null;
+  };
+
+  const onTouchStart = (e: TouchEvent) => {
+    if (e.touches.length !== 1) {
+      cancel();
+      return;
+    }
+    const touch = e.touches[0];
+    start = { x: touch.clientX, y: touch.clientY };
+    timer = window.setTimeout(() => {
+      if (!start) return;
+      const rect = canvas.getBoundingClientRect();
+      const lngLat = map.unproject([start.x - rect.left, start.y - rect.top]);
+      usePlanner.getState().addOffRoutePoint([lngLat.lng, lngLat.lat]);
+      // the press is consumed: the finger lifting must not also append a route point
+      suppressNextTap = true;
+      cancel();
+    }, LONG_PRESS_MS);
+  };
+
+  const onTouchMove = (e: TouchEvent) => {
+    if (!start || e.touches.length !== 1) return cancel();
+    const touch = e.touches[0];
+    if (Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > LONG_PRESS_SLOP_PX) cancel();
+  };
+
+  canvas.addEventListener('touchstart', onTouchStart, { passive: true });
+  canvas.addEventListener('touchmove', onTouchMove, { passive: true });
+  canvas.addEventListener('touchend', cancel);
+  canvas.addEventListener('touchcancel', cancel);
+  return () => {
+    cancel();
+    canvas.removeEventListener('touchstart', onTouchStart);
+    canvas.removeEventListener('touchmove', onTouchMove);
+    canvas.removeEventListener('touchend', cancel);
+    canvas.removeEventListener('touchcancel', cancel);
+  };
+}
+
 function bindRotateCursor(map: MapLibreMap): () => void {
   const canvas = map.getCanvas();
   let previousCursor: string | null = null;

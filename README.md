@@ -73,7 +73,7 @@ Currently auto-deployed to [Vercel](https://cairn-swart-gamma.vercel.app) on eve
 - [x] Typed waypoints, multi-format export (GPX/KML/TCX), share by link
 - [x] Overlays: slopes, GR/PR, hidden trails, huts and water points, adaptive 3D
 - [x] Solid foundation: English codebase, full quality pass, e2e and regression tests
-- [ ] Mobile-first responsive interface: plan and follow a hike from a phone
+- [x] Mobile-first responsive interface: plan and follow a hike from a phone
 - [ ] Marked hikes around a point, Komoot style (OSM route=hiking relations)
 - [ ] PWA + offline maps (PMTiles)
 - [ ] Later, optional: direct upload to Garmin watches

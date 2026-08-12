@@ -1,18 +1,23 @@
 import { useEffect, useState } from 'react';
 import { BottomPanel } from './components/BottomPanel';
+import { BottomSheet, type SheetStop } from './components/BottomSheet';
 import { MapControls } from './components/MapControls';
 import { MapView } from './components/MapView';
 import { PointEditor } from './components/PointEditor';
+import { RouteStats } from './components/RouteStats';
 import { Sidebar } from './components/Sidebar';
 import { StatsCard } from './components/StatsCard';
 import { TopBar } from './components/TopBar';
 import { useT } from './lib/i18n';
+import { useIsMobile } from './lib/useMediaQuery';
 import { usePlanner } from './store';
 
 export default function App() {
   const t = useT();
   const error = usePlanner(s => s.error);
+  const isMobile = useIsMobile();
   const [sideOpen, setSideOpen] = useState(true);
+  const [sheetStop, setSheetStop] = useState<SheetStop>('peek');
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -78,6 +83,31 @@ export default function App() {
     };
   }, []);
 
+  const toast = error && (
+    <button type="button" className="toast" onClick={() => usePlanner.getState().dismissError()}>
+      {t(error)}
+    </button>
+  );
+
+  // on a phone the map keeps the whole screen and everything else lives in a bottom sheet
+  if (isMobile) {
+    return (
+      <div className="app mobile" data-sheet={sheetStop}>
+        <TopBar />
+        <div className="map-wrap">
+          <MapView />
+          <MapControls />
+          <PointEditor />
+          {toast}
+        </div>
+        <BottomSheet stop={sheetStop} onStopChange={setSheetStop} header={<RouteStats compact />}>
+          <BottomPanel />
+          <Sidebar />
+        </BottomSheet>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <TopBar />
@@ -97,11 +127,7 @@ export default function App() {
           <StatsCard />
           <PointEditor />
           <BottomPanel />
-          {error && (
-            <button type="button" className="toast" onClick={() => usePlanner.getState().dismissError()}>
-              {t(error)}
-            </button>
-          )}
+          {toast}
         </div>
       </div>
     </div>
