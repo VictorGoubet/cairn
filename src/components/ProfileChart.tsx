@@ -207,6 +207,9 @@ export function ProfileChart({
     if (!poiDrag) return;
     const distM = clientXToDistM(e.clientX);
     const moved = poiDrag.moved || Math.abs(distM - poiDrag.distM) > totalM * 0.004;
+    // the sliding point is mirrored live on the map through the hover marker
+    const i = nearestIndex(dists, distM);
+    setHoverPoint([coords[i][0], coords[i][1]]);
     setPoiDrag({ ...poiDrag, distM, moved });
   }
 
@@ -232,6 +235,7 @@ export function ProfileChart({
         state.setFlyTo({ center: [anchor.lon, anchor.lat], zoom: 14 });
       }
     }
+    setHoverPoint(null);
     setPoiDrag(null);
   }
 
@@ -240,7 +244,8 @@ export function ProfileChart({
     const i = nearestIndex(dists, eventDistM(e));
     const state = usePlanner.getState();
     const before = new Set(state.anchors.map(a => a.id));
-    if (!state.insertAnchor([coords[i][0], coords[i][1]])) return;
+    // born as a visible marker right away, the editor then refines what it is
+    if (!state.insertAnchor([coords[i][0], coords[i][1]], 'other')) return;
     // open the editor of the point that was just born, ready to become a summit or a spring
     const added = usePlanner.getState().anchors.find(a => !before.has(a.id));
     if (added) usePlanner.getState().setEditing(added.id);
@@ -276,11 +281,15 @@ export function ProfileChart({
     }
   }
 
-  function onPointerUp() {
+  function onPointerUp(e: React.PointerEvent<SVGRectElement>) {
     scrubbingRef.current = false;
     if (flyover) return;
-    // a plain click (no drag) clears the selection
-    if (dragFromMRef.current !== null && !draggedRef.current) onSelectionChange(null);
+    // a plain click (no drag) clears the selection and focuses the spot on the map
+    if (dragFromMRef.current !== null && !draggedRef.current) {
+      onSelectionChange(null);
+      const i = nearestIndex(dists, eventDistM(e));
+      usePlanner.getState().setFlyTo({ center: [coords[i][0], coords[i][1]], zoom: 14 });
+    }
     dragFromMRef.current = null;
   }
 
@@ -370,7 +379,7 @@ export function ProfileChart({
           width={Math.max(plotW, 0)}
           height={Math.max(plotH, 0)}
           fill="transparent"
-          style={{ touchAction: 'none' }}
+          style={{ touchAction: 'none', cursor: flyover ? 'ew-resize' : 'crosshair' }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}

@@ -120,12 +120,14 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - Selecting a stretch on the profile stores it (`profileSelection`) and the map draws it over
   the route, so numbers and geometry always agree. The chart listens to pointer events, so
   selection and flyover scrubbing work with a finger as well as a mouse.
-- The profile edits points too: a double-click inserts a route point at that distance and opens
-  its editor; clicking a marker reopens it and focuses the point on the map; dragging a marker
-  slides the anchor anywhere along the trail, reordering the anchors when it crosses others
-  (`slideAnchor`, one history snapshot for the whole gesture, start and finish keep their
-  slots). The hit targets are drawn above the interaction rect, since SVG hit-testing follows
-  paint order.
+- The profile edits points too: a double-click inserts a route point at that distance (born as
+  a visible generic marker, the editor then refines what it is); clicking a marker reopens its
+  editor and focuses the point on the map, and a plain click anywhere on the curve focuses that
+  spot; dragging a marker slides the anchor anywhere along the trail, mirrored live on the map
+  through the hover marker, reordering the anchors when it crosses others (`slideAnchor`, one
+  history snapshot for the whole gesture, start and finish keep their slots). The interaction
+  rect carries the map's crosshair cursor so the insert affordance reads at a glance. The hit
+  targets are drawn above the interaction rect, since SVG hit-testing follows paint order.
 - The profile zooms like a video track: the wheel zooms the x axis around the cursor (native
   non-passive listener, React's `onWheel` cannot preventDefault), a horizontal trackpad wheel
   pans, and a chip resets. The plotted geometry is wrapped in a `clipPath`, which also clips
@@ -159,9 +161,9 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   - **The dot accelerates to a cruise ceiling** (300 m/s) and holds it, so a long route takes
     longer to play rather than flying absurdly fast; short routes still stretch to ~10 s. The
     look-ahead (hence camera height) follows the speed, which keeps every pass low and the
-    imagery requested a constant few seconds before the camera reaches it. Scrubbing glides at
-    a bounded multiple of cruise instead of teleporting, so a fast drag on the profile does not
-    land on tiles that never had a chance to load.
+    imagery requested a constant few seconds before the camera reaches it. Manual mode moves at
+    the pointer's own speed: a click teleports the dot, a drag follows the hand; tiles may
+    flash on a long jump, which beats waiting for a chaperoned glide.
   - **Speed follows a trapezoidal velocity profile** (2.5 s ramps): constant speed from a
     standing start is a velocity discontinuity, and the takeoff reads as a jolt.
   - **The frame is a pure function of the dot's position.** The camera trails the dot by the

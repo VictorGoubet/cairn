@@ -135,7 +135,7 @@ interface PlannerState {
   error: MsgKey | null;
   setLang: (lang: Lang) => void;
   addAnchor: (p: LonLat) => void;
-  insertAnchor: (p: LonLat) => boolean;
+  insertAnchor: (p: LonLat, kind?: PointKind) => boolean;
   beginDragAnchor: () => void;
   dragAnchor: (index: number, p: LonLat) => void;
   moveAnchor: (index: number, p: LonLat) => void;
@@ -399,8 +399,8 @@ export const usePlanner = create<PlannerState>((set, get) => {
 
     // inserts a checkpoint by splitting the existing geometry at the nearest point:
     // the trace (routed or imported) is preserved identically, with no network recomputation
-    insertAnchor: p => {
-      const spliced = spliceIntoTrace(get().anchors, get().legs, p, newAnchor(p));
+    insertAnchor: (p, kind) => {
+      const spliced = spliceIntoTrace(get().anchors, get().legs, p, newAnchor(p, kind));
       if (!spliced) return false;
       pushHistory();
       set(spliced);

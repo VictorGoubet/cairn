@@ -46,8 +46,6 @@ const FLIGHT_SECONDS = 10;
 const MAX_SPEED_M_S = 300;
 /** speed ramps up and down over this long, the trapezoidal profile of motion control */
 const RAMP_SECONDS = 2.5;
-/** scrubbing glides at a bounded multiple of cruise instead of teleporting past unloaded tiles */
-const SCRUB_CHASE_FACTOR = 3;
 /**
  * Look-ahead and cruise height, tied by the ratio that frames the low grazing shot (measured:
  * 1150 m ahead from 220 m up lands near zoom 15.5 and pitch 79 at our latitudes). The look-ahead
@@ -183,7 +181,6 @@ export function startFlyover(
   let lastNow = 0;
   let paused = false;
   let progress = MIN_SEPARATION_M;
-  let scrubTarget: number | null = null;
   let velocity = 0;
   let renderedDist: number | null = null;
   let pulses: { poi: FlyoverPoi; bornAt: number }[] = [];
@@ -246,30 +243,21 @@ export function startFlyover(
     // a slow frame below it still advances by true clock time, or slow machines would fly slow
     const dt = lastNow ? Math.min((now - lastNow) / 1000, 0.5) : 0;
     lastNow = now;
-    if (scrubTarget !== null) {
-      // glide toward the pointer at a bounded speed: a straight teleport lands on tiles that
-      // never had a chance to load, which is the white-chunk flash of a fast scrub
-      const delta = scrubTarget - progress;
-      const maxStep = speed * SCRUB_CHASE_FACTOR * dt;
-      if (Math.abs(delta) <= maxStep) {
-        progress = scrubTarget;
-        scrubTarget = null;
-      } else {
-        progress += Math.sign(delta) * maxStep;
-      }
-      velocity = 0;
-    } else if (!paused) {
+    if (!paused) {
       const brake = Math.sqrt(2 * accel * Math.max(totalM - progress, 0));
       velocity = Math.max(Math.min(speed, velocity + accel * dt, brake), speed * 0.02);
       progress = Math.min(progress + velocity * dt, totalM);
     }
     renderAt(progress, now);
-    if (!paused && scrubTarget === null && progress >= totalM) return finish();
+    if (!paused && progress >= totalM) return finish();
     frame = requestAnimationFrame(step);
   };
 
+  // manual mode moves at the pointer's own speed: a click teleports, a drag follows the hand.
+  // Tiles may flash white on a long jump, which beats waiting for a chaperoned glide.
   const onScrub = (e: Event) => {
-    scrubTarget = Math.min(Math.max((e as CustomEvent<number>).detail, MIN_SEPARATION_M), totalM);
+    progress = Math.min(Math.max((e as CustomEvent<number>).detail, MIN_SEPARATION_M), totalM);
+    velocity = 0;
   };
   window.addEventListener(SCRUB_EVENT, onScrub);
 
