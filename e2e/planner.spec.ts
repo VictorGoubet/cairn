@@ -262,7 +262,23 @@ test.describe('reading the route', () => {
       });
 
     await page.locator('[data-control="flyover"]').click();
-    await expect.poll(async () => (await camera()).pitch, { timeout: 10_000 }).toBeGreaterThan(45);
+
+    // pause first, before the flight has time to end under a slow CI: the play button toggles
+    // the mode, and only the dedicated stop button or escape closes the view
+    const paused = () =>
+      page.evaluate(
+        () =>
+          ((window as unknown as TestHandles).__planner.getState() as unknown as { flyoverPaused: boolean })
+            .flyoverPaused,
+      );
+    await page.locator('[data-control="flyover"]').click();
+    await expect.poll(paused).toBe(true);
+    await expect(page.locator('[data-control="flyover-stop"]')).toBeVisible();
+    await page.locator('[data-control="flyover"]').click();
+    await expect.poll(paused).toBe(false);
+
+    // a clearly tilted 3D chase: the exact cruise pitch depends on the relief the camera clears
+    await expect.poll(async () => (await camera()).pitch, { timeout: 10_000 }).toBeGreaterThan(35);
     const flying = await camera();
     expect(flying.terrain).toBe(true);
     // the grazing framing: a pitch sitting on the 85 degree cap means the camera looks uphill
@@ -301,6 +317,7 @@ test.describe('reading the route', () => {
     await expect.poll(async () => (await camera()).pitch, { timeout: 10_000 }).toBeLessThan(20);
     expect((await camera()).terrain).toBe(false);
     expect(await dotVisible()).toBe(false);
+    await expect(page.locator('[data-control="flyover-stop"]')).toBeHidden();
   });
 
   test('escape closes an open panel', async ({ page }) => {
@@ -363,6 +380,50 @@ test.describe('reading the route', () => {
     const state = await planner(page).state();
     expect(state.anchorCount).toBe(3);
     expect(state.legCoordCounts.every(count => count > 1)).toBe(true);
+  });
+});
+
+test.describe('editing from the profile', () => {
+  test('double-click inserts a point, its marker edits on click and slides on drag', async ({ page }) => {
+    await openPlanner(page);
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 1);
+
+    // double-click on the profile inserts a route point there and opens its editor
+    const rect = page.locator('.chart-area rect[fill="transparent"]');
+    await rect.dblclick();
+    await expect(page.locator('.point-editor')).toBeVisible();
+    await page.waitForFunction(() => (window as unknown as TestHandles).__planner.getState().anchors.length === 3);
+
+    // a summit kind makes it a profile marker
+    await page.locator('.kind-grid .kind-option').nth(6).click();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.point-editor')).toBeHidden();
+    const hit = page.locator('.viz-poi-hit');
+    await expect(hit).toHaveCount(1);
+
+    // sliding the marker moves the anchor along the trail
+    const before = await page.evaluate(() => {
+      const a = (window as unknown as TestHandles).__planner.getState().anchors[1];
+      return [a.lon, a.lat];
+    });
+    const box = await hit.boundingBox();
+    if (!box) throw new Error('no hit box');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 70, box.y + box.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await waitForRouting(page, 2);
+    const after = await page.evaluate(() => {
+      const a = (window as unknown as TestHandles).__planner.getState().anchors[1];
+      return [a.lon, a.lat];
+    });
+    expect(after).not.toEqual(before);
+
+    // a plain click on the marker reopens its editor
+    await hit.click();
+    await expect(page.locator('.point-editor')).toBeVisible();
   });
 });
 

@@ -24,6 +24,7 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
   const baseLayerId = usePlanner(s => s.baseLayerId);
   const overlays = usePlanner(s => s.overlays);
   const flyover = usePlanner(s => s.flyover);
+  const flyoverPaused = usePlanner(s => s.flyoverPaused);
   const legs = usePlanner(s => s.legs);
   useClickOutside(rootRef, () => setOpen(null), open !== null);
   useEscapeKey(() => setOpen(null), open !== null);
@@ -63,11 +64,13 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
         type="button"
         className={flyover ? 'mc-btn active' : 'mc-btn'}
         data-control="flyover"
-        title={flyover ? t('flyover_stop') : t('flyover')}
+        title={flyover ? (flyoverPaused ? t('flyover_resume') : t('flyover_pause')) : t('flyover')}
         disabled={!hasRoute}
-        onClick={() => usePlanner.getState().toggleFlyover()}
+        onClick={() =>
+          flyover ? usePlanner.getState().setFlyoverPaused(!flyoverPaused) : usePlanner.getState().toggleFlyover()
+        }
       >
-        {flyover ? (
+        {flyover && !flyoverPaused ? (
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <rect x="6" y="5" width="4" height="14" rx="1" />
             <rect x="14" y="5" width="4" height="14" rx="1" />
@@ -78,6 +81,19 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
           </svg>
         )}
       </button>
+      {flyover && (
+        <button
+          type="button"
+          className="mc-btn"
+          data-control="flyover-stop"
+          title={t('flyover_stop')}
+          onClick={() => usePlanner.getState().stopFlyover()}
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <rect x="6" y="6" width="12" height="12" rx="1.5" />
+          </svg>
+        </button>
+      )}
       <button
         type="button"
         className={open === 'layers' ? 'mc-btn active' : 'mc-btn'}

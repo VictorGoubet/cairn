@@ -74,7 +74,7 @@ export async function renderShareImage(
   drawTrace(ctx, coords, view, traceBox, onMap);
   if (options.showProfile) drawProfile(ctx, coords, w, h, options, onMap);
   if (options.showStats) drawStats(ctx, coords, w, h, options, onMap);
-  drawBrand(ctx, w, onMap || options.background === 'dark');
+  await drawBrand(ctx, w, onMap || options.background === 'dark');
 }
 
 /** Web Mercator projection into the world square [0, 1). */
@@ -335,12 +335,24 @@ function drawStats(
   ctx.restore();
 }
 
-function drawBrand(ctx: CanvasRenderingContext2D, w: number, lightInk: boolean): void {
+async function drawBrand(ctx: CanvasRenderingContext2D, w: number, lightInk: boolean): Promise<void> {
   ctx.save();
+  const size = Math.round(w * 0.055);
+  const x = w * 0.05;
+  const y = w * 0.04;
+  let textX = x;
+  // the wordmark survives a missing logo, the tile is still branded
+  await loadImage(`${import.meta.env.BASE_URL}logo.png`).then(
+    logo => {
+      ctx.drawImage(logo, x, y, size, size);
+      textX = x + size * 1.25;
+    },
+    () => undefined,
+  );
   ctx.textAlign = 'left';
   ctx.fillStyle = lightInk ? '#ffffff' : '#212529';
   ctx.font = `800 ${Math.round(w * 0.037)}px -apple-system, 'Segoe UI', Roboto, sans-serif`;
-  ctx.fillText('⛰️ cairn', w * 0.05, w * 0.075);
+  ctx.fillText('cairn', textX, y + size * 0.72);
   ctx.restore();
 }
 

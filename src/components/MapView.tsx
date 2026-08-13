@@ -45,8 +45,9 @@ const CONTOUR_SOURCE_LAYER = 'oro_courbe';
 const OFF_ROUTE_PULSE_MAX_M = 400;
 
 // 3D terrain exaggeration adapted to the visible relief: classic cartographic rule (Imhof),
-// flatland needs 2-3x to read, high mountains are already spectacular around 1x
-const TERRAIN_EXAGGERATION_MIN = 1.1;
+// flatland needs 2-3x to read. The floor stays well above 1: zoomed into a massif the adaptive
+// target collapses towards true scale, and true-scale mountains on a screen look small.
+const TERRAIN_EXAGGERATION_MIN = 1.5;
 const TERRAIN_EXAGGERATION_MAX = 3;
 /** the visible relief should span roughly this fraction of the viewport width */
 const TERRAIN_RELIEF_TARGET = 0.05;
@@ -531,7 +532,10 @@ export function MapView() {
     map.setPixelRatio(1);
 
     const handle = startFlyover(map, coords, flyoverPois(coords), () => usePlanner.getState().stopFlyover());
+    handle.setPaused(usePlanner.getState().flyoverPaused);
+    const unsubscribePause = usePlanner.subscribe(state => handle.setPaused(state.flyoverPaused));
     return () => {
+      unsubscribePause();
       handle.stop();
       map.setPixelRatio(previous.pixelRatio);
       usePlanner.getState().setBaseLayerId(previous.baseLayerId);

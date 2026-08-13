@@ -22,8 +22,9 @@
  * pulls ahead, then follows. Holding the 3D chase distance whenever the dot is closer than the
  * look-ahead is what keeps the derived zoom steady through that opening.
  *
- * Scrubbing on the elevation profile takes over playback: the first scrub event latches the
- * flight into manual mode, and the dot then follows the pointer until the flight is closed.
+ * The play view has two modes, switched by the caller through `setPaused`: auto, where the dot
+ * advances on its own, and manual, where it holds still and follows scrub events from the
+ * elevation profile. Resuming ramps the speed back up from zero, so it never jolts.
  *
  * This module only drives the camera, the dot and the crossing pulses. The scene it flies
  * through is the caller's job (imagery, a coarser DEM, no markers and no labels), and terrain
@@ -47,17 +48,29 @@ const RAMP_SECONDS = 2.5;
  * bounds the highest pass on very long routes.
  */
 const HEIGHT_TO_AHEAD = 220 / 1150;
-const AHEAD_FRACTION = 0.4;
+const AHEAD_FRACTION = 0.3;
 const MIN_AHEAD_M = 700;
 const MAX_AHEAD_M = 6000;
 /** the dot keeps this lead over the camera park position, two coincident points derive no bearing */
 const MIN_SEPARATION_M = 40;
-/** flight path resampling step, and the averaging window that irons out switchbacks */
-const RESAMPLE_STEP_M = 25;
-const SMOOTHING_WINDOW_M = 150;
-/** the clearance envelope is blurred this wide, a few times, and re-clamped onto the relief */
-const ENVELOPE_BLUR_M = 300;
+/**
+ * Path smoothing is temporal, not metric: the eye sees shake per second, so the averaging
+ * window covers a fixed time of flight and grows with the ground speed. A 150 m window that
+ * calmed a 90 m/s pass returns ten times the shake frequency at ten times the speed.
+ */
+const SMOOTHING_WINDOW_S = 1.8;
+const MIN_SMOOTHING_WINDOW_M = 150;
+/** control points per smoothing window, which keeps the spline cost independent of the speed */
+const STEPS_PER_WINDOW = 6;
+/** the clearance envelope is blurred over this much flight time, then re-clamped onto the relief */
+const ENVELOPE_BLUR_S = 3;
 const ENVELOPE_PASSES = 3;
+/**
+ * The relief window the camera must clear. Tying it to the look-ahead made long routes fly
+ * needlessly high: clearing a peak three kilometres ahead only guards against the dot hiding
+ * behind a ridge for a moment, and it costs the whole flight its closeness to the ground.
+ */
+const CLEARANCE_WINDOW_MAX_M = 1500;
 /** terrain exaggeration during the flight, see the note above about vanishing tiles */
 export const FLYOVER_EXAGGERATION = 1;
 /**
@@ -84,6 +97,8 @@ export interface FlyoverPoi {
 
 export interface FlyoverHandle {
   stop(): void;
+  /** true freezes the dot (manual mode); false resumes the flight from where it stands */
+  setPaused(paused: boolean): void;
 }
 
 /**
@@ -101,7 +116,7 @@ export function onFlyoverProgress(listener: (distM: number) => void): () => void
   return () => window.removeEventListener(PROGRESS_EVENT, handler);
 }
 
-/** Moves the running flight to a position on the route; playback stays manual afterwards. */
+/** Moves the running flight's dot to a position on the route; pausing is the caller's call. */
 export function scrubFlyover(distM: number): void {
   window.dispatchEvent(new CustomEvent<number>(SCRUB_EVENT, { detail: distM }));
 }
@@ -147,7 +162,7 @@ export function startFlyover(
   const heightM = aheadM * HEIGHT_TO_AHEAD;
   // chase distance in 3D; holding it also holds the zoom MapLibre derives from it
   const chaseM = Math.hypot(aheadM, heightM);
-  const flight = buildFlight(track, aheadM, heightM);
+  const flight = buildFlight(track, aheadM, heightM, speed);
 
   // the pitch that comes out of the geometry runs past the default 60 degree cap. The ceiling
   // stays under 85: that close to the horizon the near plane starts clipping the ground
@@ -155,10 +170,13 @@ export function startFlyover(
   map.setMaxPitch(82);
   addLayers(map);
 
+  const accel = speed / RAMP_SECONDS;
   let frame = 0;
   let done = false;
-  let startedAt = 0;
-  let manualDist: number | null = null;
+  let lastNow = 0;
+  let paused = false;
+  let progress = MIN_SEPARATION_M;
+  let velocity = 0;
   let renderedDist: number | null = null;
   let pulses: { poi: FlyoverPoi; bornAt: number }[] = [];
 
@@ -166,14 +184,14 @@ export function startFlyover(
   // look-ahead, parked over the start while the dot pulls away, and keeps looking at it
   const frameFor = (dotDist: number) => {
     const camDist = Math.min(Math.max(dotDist - aheadM, 0), totalM - MIN_SEPARATION_M);
-    const camera = splineAt(flight.points, camDist);
-    const target = splineAt(flight.points, dotDist);
+    const camera = splineAt(flight, camDist);
+    const target = splineAt(flight, dotDist);
     // while the dot is closer than the look-ahead (the opening, or a scrub near the start),
     // raising the camera to hold the 3D chase distance keeps the derived zoom steady and tilts
     // the shot from top-down to grazing as the separation grows
     const separationM = dotDist - camDist;
     const holdDropM = Math.sqrt(Math.max(chaseM * chaseM - separationM * separationM, heightM * heightM));
-    const altitude = Math.max(scalarSplineAt(flight.clearance, camDist), target[2] + holdDropM);
+    const altitude = Math.max(scalarSplineAt(flight, camDist), target[2] + holdDropM);
     const options = map.calculateCameraOptionsFromTo(
       new LngLat(camera[0], camera[1]),
       altitude,
@@ -212,23 +230,32 @@ export function startFlyover(
     }
   };
 
+  // the trapezoid is integrated rather than written in closed form, so the flight can pause
+  // anywhere and ramp back up from there: accelerate to cruise, brake on the remaining distance
   const step = (now: number) => {
     if (done) return;
-    if (!startedAt) startedAt = now;
-    const auto = manualDist === null;
-    const travelled = auto ? travelledAt((now - startedAt) / 1000, speed, totalM) : (manualDist as number);
-    renderAt(Math.min(Math.max(travelled, MIN_SEPARATION_M), totalM), now);
-    if (auto && travelled >= totalM) return finish();
+    // the cap only guards the return from a background tab, where rAF stops and dt is minutes;
+    // a slow frame below it still advances by true clock time, or slow machines would fly slow
+    const dt = lastNow ? Math.min((now - lastNow) / 1000, 0.5) : 0;
+    lastNow = now;
+    if (!paused) {
+      const brake = Math.sqrt(2 * accel * Math.max(totalM - progress, 0));
+      velocity = Math.max(Math.min(speed, velocity + accel * dt, brake), speed * 0.02);
+      progress = Math.min(progress + velocity * dt, totalM);
+    }
+    renderAt(progress, now);
+    if (!paused && progress >= totalM) return finish();
     frame = requestAnimationFrame(step);
   };
 
   const onScrub = (e: Event) => {
-    manualDist = (e as CustomEvent<number>).detail;
+    progress = Math.min(Math.max((e as CustomEvent<number>).detail, MIN_SEPARATION_M), totalM);
+    velocity = 0;
   };
   window.addEventListener(SCRUB_EVENT, onScrub);
 
   function takeOff() {
-    if (done || startedAt) return;
+    if (done || lastNow) return;
     window.clearTimeout(takeOffFallback);
     frame = requestAnimationFrame(step);
   }
@@ -255,14 +282,23 @@ export function startFlyover(
   map.once('idle', takeOff);
   const takeOffFallback = window.setTimeout(takeOff, TAKEOFF_TIMEOUT_MS);
 
-  return { stop: finish };
+  return {
+    stop: finish,
+    setPaused: p => {
+      if (p === paused) return;
+      paused = p;
+      velocity = 0;
+    },
+  };
 }
 
 interface Flight {
-  /** B-spline control points every RESAMPLE_STEP_M, window-averaged */
+  /** B-spline control points every `stepM`, window-averaged */
   points: LonLatEle[];
   /** camera altitude clearing the relief ahead, one value per control point */
   clearance: number[];
+  /** spacing of the control points, derived from the smoothing window */
+  stepM: number;
 }
 
 /**
@@ -276,12 +312,14 @@ interface Flight {
  * Returns:
  *   Control points for `splineAt` / `scalarSplineAt`.
  */
-function buildFlight(track: Path, aheadM: number, heightM: number): Flight {
+function buildFlight(track: Path, aheadM: number, heightM: number, speedM: number): Flight {
   const totalM = track.dists[track.dists.length - 1];
-  const steps = Math.max(2, Math.round(totalM / RESAMPLE_STEP_M));
+  const windowM = Math.max(MIN_SMOOTHING_WINDOW_M, speedM * SMOOTHING_WINDOW_S);
+  const stepM = windowM / STEPS_PER_WINDOW;
+  const steps = Math.max(2, Math.round(totalM / stepM));
   const even: LonLatEle[] = Array.from({ length: steps + 1 }, (_, i) => positionAt(track, (totalM * i) / steps));
 
-  const half = Math.max(1, Math.round(SMOOTHING_WINDOW_M / RESAMPLE_STEP_M / 2));
+  const half = Math.max(1, Math.round(windowM / stepM / 2));
   const points = even.map((_, i) => {
     const from = Math.max(0, i - half);
     const to = Math.min(even.length - 1, i + half);
@@ -297,7 +335,7 @@ function buildFlight(track: Path, aheadM: number, heightM: number): Flight {
   // required altitude: clear the highest raw relief inside the look-ahead window. A sliding max
   // has corners, so it is blurred wide and re-clamped onto the requirement a few times: the
   // result is a smooth envelope that never dips below the relief it must clear.
-  const lookaheadSteps = Math.max(1, Math.round(aheadM / RESAMPLE_STEP_M));
+  const lookaheadSteps = Math.max(1, Math.round(Math.min(aheadM, CLEARANCE_WINDOW_MAX_M) / stepM));
   const required = even.map((point, i) => {
     let ceiling = point[2];
     for (let j = i + 1; j <= Math.min(i + lookaheadSteps, even.length - 1); j++)
@@ -305,7 +343,7 @@ function buildFlight(track: Path, aheadM: number, heightM: number): Flight {
     return ceiling + heightM;
   });
   let clearance = required;
-  const blurHalf = Math.max(1, Math.round(ENVELOPE_BLUR_M / RESAMPLE_STEP_M / 2));
+  const blurHalf = Math.max(1, Math.round((speedM * ENVELOPE_BLUR_S) / stepM / 2));
   for (let pass = 0; pass < ENVELOPE_PASSES; pass++) {
     clearance = clearance.map((_, i) => {
       const from = Math.max(0, i - blurHalf);
@@ -316,17 +354,18 @@ function buildFlight(track: Path, aheadM: number, heightM: number): Flight {
     });
   }
 
-  return { points, clearance };
+  return { points, clearance, stepM };
 }
 
 /**
- * Uniform cubic B-spline over control points spaced RESAMPLE_STEP_M apart.
+ * Uniform cubic B-spline over the flight's control points.
  *
  * The spline approximates rather than interpolates, which is the point: it is C2 continuous,
  * so the camera's acceleration never jumps at a control point the way it does on a polyline.
  */
-function splineAt(points: LonLatEle[], distanceM: number): LonLatEle {
-  const { i, weights } = splineBasis(points.length, distanceM);
+function splineAt(flight: Flight, distanceM: number): LonLatEle {
+  const points = flight.points;
+  const { i, weights } = splineBasis(points.length, distanceM / flight.stepM);
   const at = (k: number) => points[Math.min(Math.max(k, 0), points.length - 1)];
   const result: LonLatEle = [0, 0, 0];
   for (let j = 0; j < 4; j++) {
@@ -338,14 +377,15 @@ function splineAt(points: LonLatEle[], distanceM: number): LonLatEle {
   return result;
 }
 
-function scalarSplineAt(values: number[], distanceM: number): number {
-  const { i, weights } = splineBasis(values.length, distanceM);
+function scalarSplineAt(flight: Flight, distanceM: number): number {
+  const values = flight.clearance;
+  const { i, weights } = splineBasis(values.length, distanceM / flight.stepM);
   const at = (k: number) => values[Math.min(Math.max(k, 0), values.length - 1)];
   return at(i - 1) * weights[0] + at(i) * weights[1] + at(i + 1) * weights[2] + at(i + 2) * weights[3];
 }
 
-function splineBasis(count: number, distanceM: number): { i: number; weights: [number, number, number, number] } {
-  const u = Math.min(Math.max(distanceM / RESAMPLE_STEP_M, 0), count - 1);
+function splineBasis(count: number, position: number): { i: number; weights: [number, number, number, number] } {
+  const u = Math.min(Math.max(position, 0), count - 1);
   const i = Math.min(Math.floor(u), count - 2);
   const t = u - i;
   const t2 = t * t;
@@ -354,23 +394,6 @@ function splineBasis(count: number, distanceM: number): { i: number; weights: [n
     i,
     weights: [(1 - 3 * t + 3 * t2 - t3) / 6, (4 - 6 * t2 + 3 * t3) / 6, (1 + 3 * t + 3 * t2 - 3 * t3) / 6, t3 / 6],
   };
-}
-
-/**
- * Distance flown after `elapsedS`, on a trapezoidal velocity profile.
- *
- * Constant speed from a standing start is a velocity discontinuity, and the takeoff reads as a
- * jolt; ramping over RAMP_SECONDS at both ends is the standard motion-control fix.
- */
-function travelledAt(elapsedS: number, speedM: number, totalM: number): number {
-  const durationS = totalM / speedM + RAMP_SECONDS;
-  if (elapsedS >= durationS) return totalM;
-  if (elapsedS < RAMP_SECONDS) return (speedM * elapsedS * elapsedS) / (2 * RAMP_SECONDS);
-  if (elapsedS > durationS - RAMP_SECONDS) {
-    const remaining = durationS - elapsedS;
-    return totalM - (speedM * remaining * remaining) / (2 * RAMP_SECONDS);
-  }
-  return speedM * (elapsedS - RAMP_SECONDS / 2);
 }
 
 /** the moving dot (warm glow, white core) and the expanding rings pulsed at crossed points */

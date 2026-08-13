@@ -87,7 +87,7 @@ export function TopBar() {
   return (
     <header className="topbar">
       <a className="brand" href={import.meta.env.BASE_URL}>
-        <span aria-hidden="true">⛰️</span>
+        <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="brand-logo" />
         <span className="brand-name">cairn</span>
       </a>
       <SearchBox />

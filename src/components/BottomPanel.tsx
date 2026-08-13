@@ -33,11 +33,11 @@ export function BottomPanel() {
 
   // route POIs projected onto their cumulative distance along the itinerary
   const pois = useMemo(() => {
-    const out: { distM: number; kind: (typeof anchors)[number]['kind']; name: string }[] = [];
+    const out: { id: string; distM: number; kind: (typeof anchors)[number]['kind']; name: string }[] = [];
     let cum = 0;
     anchors.forEach((a, i) => {
       if (i > 0) cum += legs[i - 1]?.leg?.distanceM ?? 0;
-      if (a.kind !== 'checkpoint') out.push({ distM: cum, kind: a.kind, name: a.name });
+      if (a.kind !== 'checkpoint') out.push({ id: a.id, distM: cum, kind: a.kind, name: a.name });
     });
     return out;
   }, [anchors, legs]);

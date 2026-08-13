@@ -100,7 +100,7 @@ export default function App() {
           <PointEditor />
           {toast}
         </div>
-        <BottomSheet stop={sheetStop} onStopChange={setSheetStop} header={<RouteStats compact />}>
+        <BottomSheet stop={sheetStop} onStopChange={setSheetStop} header={<RouteStats />}>
           <BottomPanel />
           <Sidebar />
         </BottomSheet>

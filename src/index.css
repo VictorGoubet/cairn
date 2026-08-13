@@ -299,11 +299,20 @@ body {
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 17px;
   font-weight: 700;
   letter-spacing: 0.3px;
   color: inherit;
   text-decoration: none;
+}
+
+.brand-logo {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
 }
 
 .topbar-group {
@@ -1319,6 +1328,15 @@ body {
   fill: #fff;
   stroke: #f77f00;
   stroke-width: 2;
+}
+
+.viz-poi-hit {
+  fill: transparent;
+  cursor: grab;
+}
+
+.viz-poi-hit:active {
+  cursor: grabbing;
 }
 
 .viz-poi.poi-hit {

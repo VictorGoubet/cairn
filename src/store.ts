@@ -113,8 +113,10 @@ interface PlannerState {
   routingPreset: RoutingPreset;
   wayTypeHighlight: WayHighlight | null;
   profileSelection: ProfileSelection | null;
-  /** true while the camera flies the route, see lib/flyover */
+  /** true while the play view is open, see lib/flyover */
   flyover: boolean;
+  /** inside the play view: false = the camera flies, true = manual, the dot follows the profile */
+  flyoverPaused: boolean;
   anchors: Anchor[];
   legs: LegSlot[];
   offRoutePoints: OffRoutePoint[];
@@ -165,6 +167,7 @@ interface PlannerState {
   setProfileSelection: (selection: ProfileSelection | null) => void;
   toggleFlyover: () => void;
   stopFlyover: () => void;
+  setFlyoverPaused: (paused: boolean) => void;
   setBaseLayerId: (id: string) => void;
   toggleOverlay: (name: keyof Overlays) => void;
   setOverlay: (name: keyof Overlays, value: boolean) => void;
@@ -364,6 +367,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
     wayTypeHighlight: null,
     profileSelection: null,
     flyover: false,
+    flyoverPaused: false,
     anchors: draft?.anchors ?? [],
     legs: draft?.legs ?? [],
     offRoutePoints: draft?.offRoutePoints ?? [],
@@ -785,8 +789,9 @@ export const usePlanner = create<PlannerState>((set, get) => {
 
     setWayTypeHighlight: wayTypeHighlight => set({ wayTypeHighlight }),
     setProfileSelection: profileSelection => set({ profileSelection }),
-    toggleFlyover: () => set(s => ({ flyover: !s.flyover && routeCoords(s.legs).length >= 2 })),
-    stopFlyover: () => set({ flyover: false }),
+    toggleFlyover: () => set(s => ({ flyover: !s.flyover && routeCoords(s.legs).length >= 2, flyoverPaused: false })),
+    stopFlyover: () => set({ flyover: false, flyoverPaused: false }),
+    setFlyoverPaused: flyoverPaused => set({ flyoverPaused }),
 
     setBaseLayerId: baseLayerId => set({ baseLayerId }),
     toggleOverlay: name => get().setOverlay(name, !get().overlays[name]),

@@ -1,4 +1,8 @@
-<h1 align="center">⛰️ cairn</h1>
+<p align="center">
+  <img src="public/logo.png" alt="cairn" width="110" />
+</p>
+
+<h1 align="center">cairn</h1>
 
 <p align="center">
   <strong>Free hiking route planner built on IGN open data</strong>

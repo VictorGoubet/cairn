@@ -120,6 +120,11 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - Selecting a stretch on the profile stores it (`profileSelection`) and the map draws it over
   the route, so numbers and geometry always agree. The chart listens to pointer events, so
   selection and flyover scrubbing work with a finger as well as a mouse.
+- The profile edits points too: a double-click inserts a route point at that distance and opens
+  its editor, clicking a marker reopens it, and dragging a marker horizontally slides the
+  anchor along the trail (clamped between its neighbors), which is how a summit point gets
+  nudged onto the real summit. The hit targets are drawn above the interaction rect, since SVG
+  hit-testing follows paint order.
 - Points reorder by dragging their row; `reorderAnchor` recomputes the legs around both
   positions and leaves frozen legs alone.
 - The play button flies the route like a drone (`lib/flyover.ts`). It follows the two-path
@@ -131,8 +136,15 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
     position but its velocity jumps at every vertex, and the eye reads each jump as a tremor;
     chasing the target with an exponential filter only lags the tremor. The camera flies a
     uniform cubic B-spline (continuous acceleration) over resampled, window-averaged control
-    points (25 m step, 150 m window), and every frame is a pure function of elapsed time. No
-    per-frame filter state also means the flight looks the same at 60 fps and at 25.
+    points, and every frame is a pure function of elapsed time. No per-frame filter state also
+    means the flight looks the same at 60 fps and at 25.
+  - **Smoothing windows are seconds of flight, not metres.** The eye sees shake per second: a
+    150 m window that calmed a 90 m/s pass returns ten times the shake frequency at ten times
+    the speed, so the averaging window covers ~1.8 s of travel (150 m floor) and the control
+    point spacing scales with it, keeping the spline cost speed-independent. The envelope blur
+    scales the same way, and the relief window it must clear is capped at 1500 m: clearing a
+    peak three kilometres ahead only guards against the dot hiding for a moment, and it cost
+    the whole flight its closeness to the ground.
   - **Altitude comes from a precomputed clearance envelope.** The required altitude (max raw
     relief inside the look-ahead window, plus cruise height) is a sliding max, which has
     corners; blurring it wide and re-clamping it onto the requirement a few times gives a
@@ -163,7 +175,12 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
     not store writes: a zustand set per camera frame would re-render subscribers and re-arm the
     draft writer sixty times a second. The profile chart mirrors the dot imperatively (one SVG
     transform per event) and bounces its POI markers when crossed; dragging on the chart during
-    a flight scrubs it, and the first scrub latches the flight into manual mode until closed.
+    a flight scrubs it.
+  - **The play view has three states**: closed, auto (the camera flies) and manual (paused, the
+    dot follows the profile). Touching the profile switches to manual; the play control toggles
+    pause/resume and a dedicated stop button closes the view (`flyoverPaused` in the store, the
+    flight integrates its trapezoid instead of using a closed form so resuming ramps back up
+    from wherever the dot stands).
   - **Terrain exaggeration is pinned to 1** while flying. MapLibre drops the closest tiles with
     terrain on and it worsens sharply with exaggeration (maplibre-gl-js issue 1241), which is
     exactly the "chunks vanishing" symptom.

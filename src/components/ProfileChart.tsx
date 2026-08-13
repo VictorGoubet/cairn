@@ -11,6 +11,8 @@ const PAD = { top: 22, right: 14, bottom: 22, left: 46 };
 const SLOPE_WINDOW_M = 60;
 
 export interface ProfilePoi {
+  /** id of the route anchor behind the marker, so the chart can edit and move it */
+  id: string;
   distM: number;
   kind: PointKind;
   name: string;
@@ -44,6 +46,8 @@ export function ProfileChart({
   const scrubbingRef = useRef(false);
   const progressRef = useRef<SVGGElement>(null);
   const poiRefs = useRef(new Map<number, SVGGElement>());
+  const [poiDrag, setPoiDrag] = useState<{ id: string; distM: number; moved: boolean } | null>(null);
+  const poiDragBoundsRef = useRef<{ fromM: number; toM: number }>({ fromM: 0, toM: 0 });
 
   useEffect(() => {
     const el = containerRef.current;
@@ -140,16 +144,78 @@ export function ProfileChart({
     };
   }, [flyover, dists, coords, pois, size.w, size.h, totalM, eleMin, eleMax]);
 
-  function eventDistM(e: React.PointerEvent<SVGRectElement>): number {
+  function eventDistM(e: { clientX: number; currentTarget: Element }): number {
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = (e.clientX - rect.left) / rect.width;
     return Math.min(Math.max(ratio, 0), 1) * totalM;
+  }
+
+  /** distance under an arbitrary clientX, for handlers not attached to the interaction rect */
+  function clientXToDistM(clientX: number): number {
+    const el = containerRef.current;
+    if (!el) return 0;
+    const rect = el.getBoundingClientRect();
+    const ratio = (clientX - rect.left - PAD.left) / Math.max(plotW, 1);
+    return Math.min(Math.max(ratio, 0), 1) * totalM;
+  }
+
+  function beginPoiDrag(e: React.PointerEvent<SVGCircleElement>, poi: ProfilePoi) {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    // sliding a point along the route must not cross its neighbors, the anchors stay ordered
+    const { anchors, legs } = usePlanner.getState();
+    const index = anchors.findIndex(a => a.id === poi.id);
+    const cum: number[] = [0];
+    for (let i = 0; i < legs.length; i++) cum.push(cum[i] + (legs[i]?.leg?.distanceM ?? 0));
+    const margin = totalM * 0.005;
+    poiDragBoundsRef.current = {
+      fromM: index > 0 ? cum[index - 1] + margin : 0,
+      toM: index < anchors.length - 1 ? cum[index + 1] - margin : totalM,
+    };
+    setPoiDrag({ id: poi.id, distM: poi.distM, moved: false });
+  }
+
+  function onPoiDragMove(e: React.PointerEvent<SVGCircleElement>) {
+    if (!poiDrag) return;
+    const bounds = poiDragBoundsRef.current;
+    const distM = Math.min(Math.max(clientXToDistM(e.clientX), bounds.fromM), bounds.toM);
+    const moved = poiDrag.moved || Math.abs(distM - poiDrag.distM) > totalM * 0.004;
+    setPoiDrag({ ...poiDrag, distM, moved });
+  }
+
+  function endPoiDrag() {
+    if (!poiDrag) return;
+    const { anchors, moveAnchor, setEditing } = usePlanner.getState();
+    const index = anchors.findIndex(a => a.id === poiDrag.id);
+    if (index >= 0) {
+      if (poiDrag.moved) {
+        // snap to the route point under the released position: the point stays on the trail
+        const i = nearestIndex(dists, poiDrag.distM);
+        moveAnchor(index, [coords[i][0], coords[i][1]]);
+      } else {
+        setEditing(poiDrag.id);
+      }
+    }
+    setPoiDrag(null);
+  }
+
+  function onChartDoubleClick(e: React.MouseEvent<SVGRectElement>) {
+    if (flyover) return;
+    const i = nearestIndex(dists, eventDistM(e));
+    const state = usePlanner.getState();
+    const before = new Set(state.anchors.map(a => a.id));
+    if (!state.insertAnchor([coords[i][0], coords[i][1]])) return;
+    // open the editor of the point that was just born, ready to become a summit or a spring
+    const added = usePlanner.getState().anchors.find(a => !before.has(a.id));
+    if (added) usePlanner.getState().setEditing(added.id);
   }
 
   function onPointerDown(e: React.PointerEvent<SVGRectElement>) {
     // capture so a drag keeps scrubbing or selecting outside the chart
     e.currentTarget.setPointerCapture(e.pointerId);
     if (flyover) {
+      // touching the profile takes over playback: the play view switches to manual
+      usePlanner.getState().setFlyoverPaused(true);
       scrubbingRef.current = true;
       scrubFlyover(eventDistM(e));
       return;
@@ -222,7 +288,8 @@ export function ProfileChart({
           <path key={r.d.slice(0, 24)} d={r.d} className="viz-line-seg" stroke={r.color} />
         ))}
         {pois.map(p => {
-          const index = nearestIndex(dists, p.distM);
+          const dragged = poiDrag?.id === p.id ? poiDrag.distM : p.distM;
+          const index = nearestIndex(dists, dragged);
           const def = kindDef(p.kind);
           const px = x(dists[index]);
           const py = y(coords[index][2]);
@@ -253,6 +320,7 @@ export function ProfileChart({
             <circle cx={hover.cx} cy={hover.cy} r={4} className="viz-dot" />
           </g>
         )}
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only enrichment, the numbers stay readable without it */}
         <rect
           x={PAD.left}
           y={PAD.top}
@@ -264,7 +332,29 @@ export function ProfileChart({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerLeave={onPointerLeave}
+          onDoubleClick={onChartDoubleClick}
         />
+        {/* hit targets above the interaction rect: click edits, a horizontal drag slides the
+            point along the route (how a summit gets nudged onto the real summit) */}
+        {!flyover &&
+          pois.map(p => {
+            const dragged = poiDrag?.id === p.id ? poiDrag.distM : p.distM;
+            const index = nearestIndex(dists, dragged);
+            return (
+              <circle
+                key={`hit-${p.id}`}
+                className="viz-poi-hit"
+                cx={x(dists[index])}
+                cy={y(coords[index][2]) - 18}
+                r={12}
+                style={{ touchAction: 'none' }}
+                onPointerDown={e => beginPoiDrag(e, p)}
+                onPointerMove={onPoiDragMove}
+                onPointerUp={endPoiDrag}
+                onPointerCancel={endPoiDrag}
+              />
+            );
+          })}
       </svg>
       {hover && hoverIndex !== null && (
         <div
