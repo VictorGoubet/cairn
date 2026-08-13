@@ -2,7 +2,7 @@
 .PHONY: help setup dev check format lint typecheck test test-e2e build preview
 
 help:
-	@echo "make setup      install deps (and the playwright browser)"
+	@echo "make setup      install deps, the playwright browser and the git hooks"
 	@echo "make dev        start dev server (http://localhost:5173)"
 	@echo "make check      full quality gate: lint + typecheck + test + build"
 	@echo "make format     auto-fix formatting + lint (biome)"
@@ -18,6 +18,7 @@ check: lint typecheck test build
 setup:
 	pnpm install
 	pnpm exec playwright install chromium
+	pnpm exec simple-git-hooks
 
 dev:
 	pnpm dev

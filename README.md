@@ -13,9 +13,15 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/VictorGoubet/cairn/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/VictorGoubet/cairn/actions/workflows/ci.yml/badge.svg" /></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
+</p>
+
+<p align="center">
   <a href="https://cairn-swart-gamma.vercel.app">Live demo</a> •
-  <a href="#quick-start">Quick Start</a> •
+  <a href="#quick-start">Quick start</a> •
   <a href="#stack">Stack</a> •
+  <a href="#development">Development</a> •
   <a href="#deploy">Deploy</a>
 </p>
 
@@ -26,23 +32,13 @@ typed waypoints, marked routes around you, 3D flyover, GPX/KML/TCX export, share
 a social image. Built entirely on open data (IGN Géoplateforme, OpenStreetMap, refuges.info)
 and queried straight from your browser: no backend, no account, no personal tracking.
 
-## Quick Start
+## Quick start
+
+Node 22 and pnpm, then:
 
 ```bash
-make setup
-make dev
-```
-
-Quality gate (lint + typecheck + unit tests + build):
-
-```bash
-make check
-```
-
-Browser tests:
-
-```bash
-make test-e2e
+make setup   # dependencies, the playwright browser, the git hooks
+make dev     # http://localhost:5173
 ```
 
 ## Stack
@@ -61,6 +57,24 @@ make test-e2e
 
 Everything is queried straight from the browser: the deployed site is pure static files.
 
+## Development
+
+`make` is the only entry point; run `make` alone for the list.
+
+| Command | What it does |
+| --- | --- |
+| `make check` | the gate CI runs: lint, types, unit tests, build |
+| `make format` | fixes formatting and lint (biome) |
+| `make test` | unit and regression tests (vitest) |
+| `make test-e2e` | browser suite (playwright, real APIs) |
+
+A pre-commit hook lints the staged files, and CI runs `make check` on every push. The
+end-to-end suite queries IGN, BRouter and Overpass, so it stays a local command rather than a
+pipeline that goes red when a free API hiccups.
+
+[ARCHITECTURE.md](ARCHITECTURE.md) documents the internals: layout, interaction map,
+conventions and known trade-offs.
+
 ## Deploy
 
 ```bash
@@ -70,6 +84,10 @@ make build
 Static output in `dist/`, deployable anywhere.
 
 Currently auto-deployed to [Vercel](https://cairn-swart-gamma.vercel.app) on every push to `main`.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
 
 ## Data and credits
 

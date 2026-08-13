@@ -1,13 +1,27 @@
 {
   "name": "cairn",
+  "description": "Free hiking and trek route planner built on IGN and OpenStreetMap open data",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.0.0",
+  "license": "MIT",
+  "author": "Victor Goubet",
+  "homepage": "https://cairn-swart-gamma.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VictorGoubet/cairn.git"
+  },
   "type": "module",
   "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm exec biome check --staged --no-errors-on-unmatched"
   },
   "dependencies": {
     "maplibre-gl": "^6.3.0",
@@ -24,6 +38,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "jsdom": "^30.0.1",
+    "simple-git-hooks": "^2.13.1",
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
     "vitest": "^4.1.10"
