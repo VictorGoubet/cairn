@@ -84,8 +84,16 @@ export const FLYOVER_EXAGGERATION = 1;
  * imagery the flight flies over is only requested when play is pressed.
  */
 const TAKEOFF_TIMEOUT_MS = 3000;
-/** how long a crossing pulse lives on screen */
-const PULSE_MS = 1100;
+/** how long a crossing pulse and its label live on screen */
+const PULSE_MS = 1400;
+/**
+ * Fast manual scrubbing lifts the camera: height is the honest answer to tiles that cannot
+ * load at cursor speed, since one coarse tile covers what sixteen fine ones would. The boost
+ * follows the dot speed beyond cruise and settles back down when the hand stops.
+ */
+const SCRUB_BOOST_S = 1.2;
+const SCRUB_BOOST_MAX_M = 2500;
+const SCRUB_BOOST_SMOOTHING_S = 0.4;
 
 const DOT_SOURCE = 'flyover-dot';
 const PULSE_SOURCE = 'flyover-pulse';
@@ -98,6 +106,8 @@ export interface FlyoverPoi {
   lon: number;
   lat: number;
   distM: number;
+  /** shown when the dot crosses the point: its emoji and name */
+  label: string;
 }
 
 export interface FlyoverHandle {
@@ -183,7 +193,9 @@ export function startFlyover(
   let progress = MIN_SEPARATION_M;
   let velocity = 0;
   let renderedDist: number | null = null;
-  let pulses: { poi: FlyoverPoi; bornAt: number }[] = [];
+  let scrubSpeed = 0;
+  let boostM = 0;
+  let pulses: { poi: FlyoverPoi; bornAt: number; label: HTMLDivElement }[] = [];
 
   // the whole frame is a pure function of the dot's position: the camera trails it by the
   // look-ahead, parked over the start while the dot pulls away, and keeps looking at it
@@ -196,7 +208,7 @@ export function startFlyover(
     // the shot from top-down to grazing as the separation grows
     const separationM = dotDist - camDist;
     const holdDropM = Math.sqrt(Math.max(chaseM * chaseM - separationM * separationM, heightM * heightM));
-    const altitude = Math.max(scalarSplineAt(flight, camDist), target[2] + holdDropM);
+    const altitude = Math.max(scalarSplineAt(flight, camDist), target[2] + holdDropM) + boostM;
     const options = map.calculateCameraOptionsFromTo(
       new LngLat(camera[0], camera[1]),
       altitude,
@@ -211,12 +223,16 @@ export function startFlyover(
       const from = Math.min(renderedDist, dotDist);
       const to = Math.max(renderedDist, dotDist);
       for (const poi of pois) {
-        if (poi.distM > from && poi.distM <= to) pulses.push({ poi, bornAt: now });
+        if (poi.distM > from && poi.distM <= to) pulses.push({ poi, bornAt: now, label: addPulseLabel(map, poi) });
       }
     }
     const hadPulses = pulses.length > 0;
-    pulses = pulses.filter(p => now - p.bornAt < PULSE_MS);
-    if (dotDist !== renderedDist) {
+    pulses = pulses.filter(p => {
+      if (now - p.bornAt < PULSE_MS) return true;
+      p.label.remove();
+      return false;
+    });
+    if (dotDist !== renderedDist || boostM > 0) {
       const { options, dot } = frameFor(dotDist);
       map.jumpTo(options);
       (map.getSource(DOT_SOURCE) as GeoJSONSource).setData(dotFeature(dot));
@@ -224,6 +240,11 @@ export function startFlyover(
       window.dispatchEvent(new CustomEvent<number>(PROGRESS_EVENT, { detail: dotDist }));
     }
     if (hadPulses || pulses.length > 0) {
+      // the labels are DOM, so they follow the camera by reprojection on every frame
+      for (const p of pulses) {
+        const at = map.project(new LngLat(p.poi.lon, p.poi.lat));
+        p.label.style.transform = `translate(${at.x}px, ${at.y}px) translate(-50%, -180%)`;
+      }
       (map.getSource(PULSE_SOURCE) as GeoJSONSource).setData({
         type: 'FeatureCollection',
         features: pulses.map(p => ({
@@ -243,6 +264,11 @@ export function startFlyover(
     // a slow frame below it still advances by true clock time, or slow machines would fly slow
     const dt = lastNow ? Math.min((now - lastNow) / 1000, 0.5) : 0;
     lastNow = now;
+    if (dt > 0) {
+      const instant = Math.abs(progress - (renderedDist ?? progress)) / dt;
+      scrubSpeed += (instant - scrubSpeed) * Math.min(dt / SCRUB_BOOST_SMOOTHING_S, 1);
+      boostM = Math.min(Math.max(scrubSpeed - speed, 0) * SCRUB_BOOST_S, SCRUB_BOOST_MAX_M);
+    }
     if (!paused) {
       const brake = Math.sqrt(2 * accel * Math.max(totalM - progress, 0));
       velocity = Math.max(Math.min(speed, velocity + accel * dt, brake), speed * 0.02);
@@ -275,6 +301,8 @@ export function startFlyover(
     window.removeEventListener(SCRUB_EVENT, onScrub);
     map.off('idle', takeOff);
     map.setMaxPitch(previousMaxPitch);
+    for (const p of pulses) p.label.remove();
+    pulses = [];
     removeLayers(map);
     onEnd();
   }
@@ -438,6 +466,14 @@ function addLayers(map: MapLibreMap): void {
       'circle-stroke-width': 2.5,
     },
   });
+}
+
+function addPulseLabel(map: MapLibreMap, poi: FlyoverPoi): HTMLDivElement {
+  const el = document.createElement('div');
+  el.className = 'flyover-poi-label';
+  el.textContent = poi.label;
+  map.getContainer().appendChild(el);
+  return el;
 }
 
 function removeLayers(map: MapLibreMap): void {

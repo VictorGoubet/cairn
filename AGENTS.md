@@ -127,7 +127,9 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   through the hover marker, reordering the anchors when it crosses others (`slideAnchor`, one
   history snapshot for the whole gesture, start and finish keep their slots). The interaction
   rect carries the map's crosshair cursor so the insert affordance reads at a glance. The hit
-  targets are drawn above the interaction rect, since SVG hit-testing follows paint order.
+  targets are drawn above the interaction rect, since SVG hit-testing follows paint order, and
+  the drag itself listens on the window: pointer capture on a 12 px SVG circle lets go as soon
+  as the pointer outruns it, which froze the marker and turned every slide into a click.
 - The profile zooms like a video track: the wheel zooms the x axis around the cursor (native
   non-passive listener, React's `onWheel` cannot preventDefault), a horizontal trackpad wheel
   pans, and a chip resets. The plotted geometry is wrapped in a `clipPath`, which also clips
@@ -162,8 +164,9 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
     longer to play rather than flying absurdly fast; short routes still stretch to ~10 s. The
     look-ahead (hence camera height) follows the speed, which keeps every pass low and the
     imagery requested a constant few seconds before the camera reaches it. Manual mode moves at
-    the pointer's own speed: a click teleports the dot, a drag follows the hand; tiles may
-    flash on a long jump, which beats waiting for a chaperoned glide.
+    the pointer's own speed: a click teleports the dot, a drag follows the hand, and fast
+    scrubbing lifts the camera (one coarse tile covers what sixteen fine ones would) before
+    settling back down when the hand stops.
   - **Speed follows a trapezoidal velocity profile** (2.5 s ramps): constant speed from a
     standing start is a velocity discontinuity, and the takeoff reads as a jolt.
   - **The frame is a pure function of the dot's position.** The camera trails the dot by the
@@ -179,7 +182,8 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   - **The dot is two circle layers** (warm glow + white core) on a one-point GeoJSON source that
     `flyover.ts` owns: added at takeoff, moved every frame, removed on exit. Annotated points
     (named route points, off-route points within 400 m of the trail) pulse an expanding ring
-    when the dot crosses them, both directions, so scrubbing pops them too.
+    when the dot crosses them, both directions, so scrubbing pops them too, plus a floating
+    name card (emoji + name) as a DOM element repositioned by reprojection on every frame.
   - **Progress and scrubbing travel as window events** (`onFlyoverProgress` / `scrubFlyover`),
     not store writes: a zustand set per camera frame would re-render subscribers and re-arm the
     draft writer sixty times a second. The profile chart mirrors the dot imperatively (one SVG
@@ -216,9 +220,11 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - Map control buttons carry `data-control` so tests never depend on their order or labels.
 - The Share button is a menu: copy the link, or open the share-image studio
   (`components/SharePanel.tsx` over `lib/shareImage.ts`), a canvas-composed social tile the way
-  Strava does them: square or story, basemap (plan or ortho WMTS raster tiles) or plain
-  dark/light background, stats and mini elevation profile toggles, then copy / native share
-  sheet / download. The gotchas are load-bearing:
+  Strava does them: square or story, five curated presets picked through a carousel (map,
+  satellite, night, pure trace, paper) instead of stacked toggles, a large logo + wordmark, then
+  copy / network icon buttons / download. The network buttons hand the image to the native
+  share sheet on a phone; a desktop cannot upload into a social site, so the image lands in the
+  clipboard and the site opens. The gotchas are load-bearing:
   - tiles are fetched with `crossOrigin: anonymous` (Géoplateforme sends CORS) so the canvas
     stays exportable; a tainted canvas would make `toBlob` throw;
   - renders compose on an off-screen canvas and blit when done, otherwise two renders in

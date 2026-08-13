@@ -595,7 +595,9 @@ function flyoverPois(coords: LonLatEle[]): FlyoverPoi[] {
   let cum = 0;
   anchors.forEach((anchor, i) => {
     if (i > 0) cum += legs[i - 1]?.leg?.distanceM ?? 0;
-    if (anchor.kind !== 'checkpoint' || anchor.name) pois.push({ lon: anchor.lon, lat: anchor.lat, distM: cum });
+    if (anchor.kind !== 'checkpoint' || anchor.name) {
+      pois.push({ lon: anchor.lon, lat: anchor.lat, distM: cum, label: poiLabel(anchor.kind, anchor.name) });
+    }
   });
   for (const point of offRoutePoints) {
     let best = 0;
@@ -607,9 +609,15 @@ function flyoverPois(coords: LonLatEle[]): FlyoverPoi[] {
         best = i;
       }
     });
-    if (bestD <= OFF_ROUTE_PULSE_MAX_M) pois.push({ lon: point.lon, lat: point.lat, distM: dists[best] });
+    if (bestD <= OFF_ROUTE_PULSE_MAX_M) {
+      pois.push({ lon: point.lon, lat: point.lat, distM: dists[best], label: poiLabel(point.kind, point.name) });
+    }
   }
   return pois.sort((a, b) => a.distM - b.distM);
+}
+
+function poiLabel(kind: PointKind, name: string): string {
+  return `${kindDef(kind).emoji} ${name}`.trim();
 }
 
 function adaptiveExaggeration(map: MapLibreMap, applied: number): number | null {

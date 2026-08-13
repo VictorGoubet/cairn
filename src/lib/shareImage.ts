@@ -62,10 +62,13 @@ export async function renderShareImage(
 
   const onMap = options.background === 'plan' || options.background === 'satellite';
   // on a basemap the route frames the whole canvas; on a plain background it sits in the
-  // upper part, leaving the lower band to the stats
+  // upper part, leaving the lower band to the stats, or dead center when nothing else shows
+  const bare = !options.showStats && !options.showProfile;
   const traceBox = onMap
     ? { x: 0, y: 0, w, h }
-    : { x: w * 0.12, y: h * 0.14, w: w * 0.76, h: h * (options.format === 'story' ? 0.5 : 0.42) };
+    : bare
+      ? { x: w * 0.12, y: h * 0.2, w: w * 0.76, h: h * 0.6 }
+      : { x: w * 0.12, y: h * 0.14, w: w * 0.76, h: h * (options.format === 'story' ? 0.5 : 0.42) };
   const view = fitView(coords, traceBox.w, traceBox.h);
 
   drawBackground(ctx, w, h, options.background);
@@ -337,22 +340,22 @@ function drawStats(
 
 async function drawBrand(ctx: CanvasRenderingContext2D, w: number, lightInk: boolean): Promise<void> {
   ctx.save();
-  const size = Math.round(w * 0.055);
+  const size = Math.round(w * 0.095);
   const x = w * 0.05;
-  const y = w * 0.04;
+  const y = w * 0.035;
   let textX = x;
   // the wordmark survives a missing logo, the tile is still branded
   await loadImage(`${import.meta.env.BASE_URL}logo.png`).then(
     logo => {
       ctx.drawImage(logo, x, y, size, size);
-      textX = x + size * 1.25;
+      textX = x + size * 1.12;
     },
     () => undefined,
   );
   ctx.textAlign = 'left';
   ctx.fillStyle = lightInk ? '#ffffff' : '#212529';
-  ctx.font = `800 ${Math.round(w * 0.037)}px -apple-system, 'Segoe UI', Roboto, sans-serif`;
-  ctx.fillText('cairn', textX, y + size * 0.72);
+  ctx.font = `800 ${Math.round(w * 0.058)}px -apple-system, 'Segoe UI', Roboto, sans-serif`;
+  ctx.fillText('cairn', textX, y + size * 0.74);
   ctx.restore();
 }
 

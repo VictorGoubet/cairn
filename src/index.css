@@ -962,17 +962,106 @@ body {
   cursor: pointer;
 }
 
-.share-body {
+.share-head .segmented {
+  margin-left: auto;
+  margin-right: 10px;
+}
+
+.share-carousel {
   display: flex;
-  gap: 16px;
+  align-items: center;
+  gap: 8px;
+}
+
+.carousel-arrow {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--ink-2);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.carousel-arrow:hover {
+  background: rgb(0 0 0 / 5%);
+}
+
+.carousel-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.carousel-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.carousel-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.carousel-dots .dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  background: var(--border);
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.carousel-dots .dot.on {
+  background: var(--accent);
+}
+
+.share-networks {
+  display: flex;
+  gap: 6px;
+}
+
+.network-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.network-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.network-btn:hover {
+  background: rgb(0 0 0 / 5%);
+}
+
+.share-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .share-preview {
-  flex: 1;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   min-width: 0;
+  flex: 1;
 }
 
 .share-preview canvas {
@@ -986,42 +1075,6 @@ body {
 
 .share-preview.story canvas {
   max-width: 230px;
-}
-
-.share-options {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 240px;
-  flex-shrink: 0;
-}
-
-.share-options .segmented {
-  flex-wrap: wrap;
-}
-
-.share-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.share-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-@media (max-width: 760px) {
-  .share-body {
-    flex-direction: column;
-  }
-
-  .share-options {
-    width: 100%;
-  }
 }
 
 /* --- point editor --- */
@@ -1333,6 +1386,38 @@ body {
 .viz-poi-hit {
   fill: transparent;
   cursor: grab;
+}
+
+/* name card floated over a crossed point during the flyover, positioned by reprojection */
+.flyover-poi-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  background: rgb(20 24 31 / 78%);
+  border-radius: 999px;
+  pointer-events: none;
+  animation: poi-label 1.4s ease-out forwards;
+}
+
+@keyframes poi-label {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 .chart-zoom-reset {

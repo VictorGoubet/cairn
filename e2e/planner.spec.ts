@@ -454,8 +454,9 @@ test.describe('sharing an image', () => {
     await page.locator('[data-control="share-image"]').click();
     await expect(page.locator('.share-panel')).toBeVisible();
 
-    // the dark background needs no network, so the render is deterministic
-    await page.locator('.share-options .segmented').nth(1).locator('button').nth(2).click();
+    // the night preset needs no network, so the render is deterministic
+    await page.locator('[data-control="share-next"]').click();
+    await page.locator('[data-control="share-next"]').click();
     await expect
       .poll(
         () =>
@@ -470,7 +471,7 @@ test.describe('sharing an image', () => {
       .toBeGreaterThan(30_000);
 
     // story format re-renders at the taller size
-    await page.locator('.share-options .segmented').nth(0).locator('button').nth(1).click();
+    await page.locator('.share-head .segmented button').nth(1).click();
     await expect
       .poll(() =>
         page.evaluate(() => document.querySelector<HTMLCanvasElement>('[data-control="share-canvas"]')?.height ?? 0),

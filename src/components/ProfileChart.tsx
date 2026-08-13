@@ -46,7 +46,9 @@ export function ProfileChart({
   const scrubbingRef = useRef(false);
   const progressRef = useRef<SVGGElement>(null);
   const poiRefs = useRef(new Map<number, SVGGElement>());
-  const [poiDrag, setPoiDrag] = useState<{ id: string; distM: number; moved: boolean } | null>(null);
+  const [poiDrag, setPoiDrag] = useState<{ id: string; startM: number; distM: number; moved: boolean } | null>(null);
+  const poiDragRef = useRef<typeof poiDrag>(null);
+  poiDragRef.current = poiDrag;
   // zoomed stretch of the x axis, video-editor style; null shows the whole route
   const [view, setView] = useState<{ fromM: number; toM: number } | null>(null);
 
@@ -199,45 +201,56 @@ export function ProfileChart({
 
   function beginPoiDrag(e: React.PointerEvent<SVGCircleElement>, poi: ProfilePoi) {
     e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    setPoiDrag({ id: poi.id, distM: poi.distM, moved: false });
+    setPoiDrag({ id: poi.id, startM: poi.distM, distM: poi.distM, moved: false });
   }
 
-  function onPoiDragMove(e: React.PointerEvent<SVGCircleElement>) {
-    if (!poiDrag) return;
-    const distM = clientXToDistM(e.clientX);
-    const moved = poiDrag.moved || Math.abs(distM - poiDrag.distM) > totalM * 0.004;
-    // the sliding point is mirrored live on the map through the hover marker
-    const i = nearestIndex(dists, distM);
-    setHoverPoint([coords[i][0], coords[i][1]]);
-    setPoiDrag({ ...poiDrag, distM, moved });
-  }
-
-  function endPoiDrag() {
-    if (!poiDrag) return;
-    const state = usePlanner.getState();
-    const from = state.anchors.findIndex(a => a.id === poiDrag.id);
-    if (from >= 0) {
-      if (poiDrag.moved) {
-        // the point goes wherever it was dropped, reordering the anchors if it crossed some:
-        // its slot is where its new distance falls among the others, start and finish excluded
-        const cum: number[] = [0];
-        for (let i = 0; i < state.legs.length; i++) cum.push(cum[i] + (state.legs[i]?.leg?.distanceM ?? 0));
-        const others = cum.filter((_, i) => i !== from);
-        const slot = others.filter(d => d <= poiDrag.distM).length;
-        const to = Math.min(Math.max(slot, 1), state.anchors.length - 2);
-        const i = nearestIndex(dists, poiDrag.distM);
-        state.slideAnchor(poiDrag.id, to, [coords[i][0], coords[i][1]]);
-      } else {
-        // a plain click: open the editor and focus the point on the map
-        const anchor = state.anchors[from];
-        state.setEditing(poiDrag.id);
-        state.setFlyTo({ center: [anchor.lon, anchor.lat], zoom: 14 });
+  // the drag listens on the window: pointer capture on a 12 px SVG circle lets go as soon as
+  // the pointer outruns it, which froze the marker and turned every slide into a click
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-arm per drag, not per drag frame
+  useEffect(() => {
+    if (!poiDrag?.id) return;
+    const onMove = (e: PointerEvent) => {
+      const distM = clientXToDistM(e.clientX);
+      // the sliding point is mirrored live on the map through the hover marker
+      const i = nearestIndex(dists, distM);
+      setHoverPoint([coords[i][0], coords[i][1]]);
+      setPoiDrag(d => d && { ...d, distM, moved: d.moved || Math.abs(distM - d.startM) > totalM * 0.004 });
+    };
+    const onUp = () => {
+      const drag = poiDragRef.current;
+      if (!drag) return;
+      const state = usePlanner.getState();
+      const from = state.anchors.findIndex(a => a.id === drag.id);
+      if (from >= 0) {
+        if (drag.moved) {
+          // the point goes wherever it was dropped, reordering the anchors if it crossed some:
+          // its slot is where its new distance falls among the others, start and finish excluded
+          const cum: number[] = [0];
+          for (let i = 0; i < state.legs.length; i++) cum.push(cum[i] + (state.legs[i]?.leg?.distanceM ?? 0));
+          const others = cum.filter((_, i) => i !== from);
+          const slot = others.filter(d => d <= drag.distM).length;
+          const to = Math.min(Math.max(slot, 1), state.anchors.length - 2);
+          const i = nearestIndex(dists, drag.distM);
+          state.slideAnchor(drag.id, to, [coords[i][0], coords[i][1]]);
+        } else {
+          // a plain click: open the editor and focus the point on the map
+          const anchor = state.anchors[from];
+          state.setEditing(drag.id);
+          state.setFlyTo({ center: [anchor.lon, anchor.lat], zoom: 14 });
+        }
       }
-    }
-    setHoverPoint(null);
-    setPoiDrag(null);
-  }
+      setHoverPoint(null);
+      setPoiDrag(null);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [poiDrag?.id]);
 
   function onChartDoubleClick(e: React.MouseEvent<SVGRectElement>) {
     if (flyover) return;
@@ -379,7 +392,7 @@ export function ProfileChart({
           width={Math.max(plotW, 0)}
           height={Math.max(plotH, 0)}
           fill="transparent"
-          style={{ touchAction: 'none', cursor: flyover ? 'ew-resize' : 'crosshair' }}
+          style={{ touchAction: 'none', cursor: 'crosshair' }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -402,9 +415,6 @@ export function ProfileChart({
                   r={12}
                   style={{ touchAction: 'none' }}
                   onPointerDown={e => beginPoiDrag(e, p)}
-                  onPointerMove={onPoiDragMove}
-                  onPointerUp={endPoiDrag}
-                  onPointerCancel={endPoiDrag}
                 />
               );
             })}
