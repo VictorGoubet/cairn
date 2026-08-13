@@ -69,6 +69,14 @@ describe('buildTcx', () => {
     expect(types).toEqual(['Water', 'Summit', 'Generic']);
   });
 
+  it('gives every course point an altitude, and long names a Notes element', () => {
+    const doc = parseXml(buildTcx('Tour', COORDS, POINTS));
+    expect(doc.querySelectorAll('CoursePoint > AltitudeMeters')).toHaveLength(POINTS.length);
+    // "Source du Mélezet" overflows the 10-character Name, so the full name rides in Notes
+    expect(doc.querySelector('CoursePoint > Notes')?.textContent).toBe('Source du Mélezet');
+    expect([...doc.querySelectorAll('CoursePoint > Name')][0]?.textContent).toBe('Source du ');
+  });
+
   it('respects the schema length limits', () => {
     const longName = 'x'.repeat(40);
     const doc = parseXml(buildTcx(longName, COORDS, [{ ...POINTS[0], name: longName }]));

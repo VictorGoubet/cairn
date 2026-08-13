@@ -61,6 +61,11 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   become off-route points.
 - **Anchor drag**: elastic line during drag, re-route throttled at 450 ms (Leaflet Routing
   Machine's cadence), snap-on-drop to the router's junction.
+- **Exports carry everything a Garmin can read**: GPX waypoints get `<sym>` (the watch's
+  pictogram), `<type>` (our kind, read back first on import) and the track's elevation when the
+  point sits within 120 m of it; the track is typed `hiking`. TCX CoursePoints get the altitude
+  (ascent-to-next screens), the 10-character `Name` the alert shows, and the full name in
+  `Notes` when it overflows.
 - **Share links** (`src/lib/share.ts`): payload `#r=1.<base64url(deflate-raw(JSON))>`.
   Routed legs travel as anchors only (recomputed on open); frozen legs travel as a polyline
   (Google algorithm, lat/lon at 1e-5, elevation at 0.1 m). `''` = manual leg still computing

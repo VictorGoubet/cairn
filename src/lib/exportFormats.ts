@@ -16,11 +16,15 @@ export interface ExportPoint {
 }
 
 const WALKING_SPEED_M_S = 4000 / 3600;
-// CoursePoint types of the TCX schema; other point kinds fall back to "Generic"
+// CoursePoint types of the TCX schema; the vocabulary is cycling-flavored, so the mapping
+// borrows the closest alert a watch can raise, and other kinds fall back to "Generic"
 const TCX_POINT_TYPES: Partial<Record<PointKind, string>> = {
   water: 'Water',
   summit: 'Summit',
   break: 'Food',
+  camp: 'Generic',
+  hut: 'FirstAid',
+  viewpoint: 'Generic',
 };
 
 /**
@@ -83,11 +87,15 @@ export function buildTcx(name: string, coords: LonLatEle[], pois: ExportPoint[])
   const coursePoints = pois
     .map(p => {
       const i = nearestCoordIndex(coords, p.lon, p.lat);
+      // the watch shows Name (10 chars max on most devices) in the alert and Notes on the
+      // point's page; altitude feeds the ascent-to-next-point screens
+      const notes = p.name.length > 10 ? `\n        <Notes>${escXml(p.name)}</Notes>` : '';
       return `      <CoursePoint>
         <Name>${escXml(p.name.slice(0, 10))}</Name>
         <Time>${timeAt(i)}</Time>
         <Position><LatitudeDegrees>${p.lat.toFixed(6)}</LatitudeDegrees><LongitudeDegrees>${p.lon.toFixed(6)}</LongitudeDegrees></Position>
-        <PointType>${TCX_POINT_TYPES[p.kind] ?? 'Generic'}</PointType>
+        <AltitudeMeters>${coords[i][2].toFixed(1)}</AltitudeMeters>
+        <PointType>${TCX_POINT_TYPES[p.kind] ?? 'Generic'}</PointType>${notes}
       </CoursePoint>`;
     })
     .join('\n');

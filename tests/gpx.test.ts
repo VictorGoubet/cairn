@@ -8,8 +8,8 @@ const COORDS: LonLatEle[] = [
 ];
 
 const WAYPOINTS: GpxWaypoint[] = [
-  { lon: 6.505, lat: 44.6, name: 'Source', sym: 'Drinking Water' },
-  { lon: 6.51, lat: 44.6, name: 'Col', sym: 'Summit' },
+  { lon: 6.505, lat: 44.6, name: 'Source', kind: 'water', sym: 'Drinking Water' },
+  { lon: 6.51, lat: 44.6, name: 'Col', kind: 'summit', sym: 'Summit' },
 ];
 
 describe('buildGpx', () => {
@@ -26,6 +26,22 @@ describe('buildGpx', () => {
   it('keeps garmin symbols so the watch shows the right pictogram', () => {
     const doc = new DOMParser().parseFromString(buildGpx('Tour', COORDS, WAYPOINTS), 'application/xml');
     expect([...doc.querySelectorAll('wpt > sym')].map(s => s.textContent)).toEqual(['Drinking Water', 'Summit']);
+  });
+
+  it('carries the hiking activity, waypoint elevations and kinds', () => {
+    const doc = new DOMParser().parseFromString(buildGpx('Tour', COORDS, WAYPOINTS), 'application/xml');
+    expect(doc.querySelector('trk > type')?.textContent).toBe('hiking');
+    // 'Col' sits on the track and borrows its elevation; 'Source' is ~400 m off, too far
+    expect(doc.querySelectorAll('wpt > ele')).toHaveLength(1);
+    expect([...doc.querySelectorAll('wpt > type')].map(n => n.textContent)).toEqual(['water', 'summit']);
+  });
+
+  it('keeps a far-off waypoint honest, with no borrowed elevation', () => {
+    const doc = new DOMParser().parseFromString(
+      buildGpx('Tour', COORDS, [{ lon: 7.5, lat: 45.6, name: 'Loin' }]),
+      'application/xml',
+    );
+    expect(doc.querySelectorAll('wpt > ele')).toHaveLength(0);
   });
 
   it('omits the sym element when a point has none', () => {
@@ -54,6 +70,14 @@ describe('parseGpx', () => {
     expect(parsed.coords[1][2]).toBe(1100);
     expect(parsed.waypoints.map(w => w.kind)).toEqual(['water', 'summit']);
     expect(parsed.waypoints[0].name).toBe('Source');
+  });
+
+  it('falls back to the garmin symbol when a foreign file has no type', () => {
+    const foreign = `<?xml version="1.0"?><gpx version="1.1">
+      <wpt lat="44.6" lon="6.5"><name>Aiga</name><sym>Drinking Water</sym></wpt>
+      <trk><trkseg><trkpt lat="44.6" lon="6.5"><ele>1000</ele></trkpt><trkpt lat="44.61" lon="6.5"><ele>1010</ele></trkpt></trkseg></trk>
+    </gpx>`;
+    expect(parseGpx(foreign).waypoints[0].kind).toBe('water');
   });
 
   it('reads route points as well as track points', () => {
