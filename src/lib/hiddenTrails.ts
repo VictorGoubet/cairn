@@ -3,12 +3,11 @@
  * visibility (trail_visibility), fetched through the Overpass API, one request per z11 cell.
  */
 
-import { fetchWithTimeout } from './http';
+import { overpassQuery } from './overpass';
 import { type Cell, cachedFetch, cellBounds, cellsInBounds, type ViewBounds } from './tileGrid';
 
 export const HIDDEN_TRAILS_MIN_ZOOM = 12;
 
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 // z11 cells (~15 km per side): a zoomed viewport fits in 1-4 requests
 const CELL_ZOOM = 11;
 const MAX_CELLS_PER_VIEW = 6;
@@ -45,11 +44,13 @@ async function queryOverpass(cell: Cell): Promise<GeoJSON.Feature[]> {
     `way["highway"~"^(path|footway)$"]["informal"="yes"](${bbox});` +
     `way["highway"~"^(path|footway)$"]["trail_visibility"~"^(${LOW_VISIBILITY})$"](${bbox});` +
     `);out geom 600;`;
-  const res = await fetchWithTimeout(OVERPASS_URL, { method: 'POST', body: `data=${encodeURIComponent(query)}` });
-  if (!res.ok) throw new Error(`overpass ${res.status}`);
-  const data = await res.json();
+  const elements = await overpassQuery<{
+    type: string;
+    geometry?: { lon: number; lat: number }[];
+    tags?: Record<string, string>;
+  }>(query);
   const features: GeoJSON.Feature[] = [];
-  for (const el of data.elements ?? []) {
+  for (const el of elements) {
     if (el.type !== 'way' || !el.geometry || el.geometry.length < 2) continue;
     features.push({
       type: 'Feature',

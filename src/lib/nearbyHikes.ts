@@ -9,13 +9,12 @@
 
 import { sampleElevations } from './demElevation';
 import { haversineM, type LonLat, type LonLatEle } from './geo';
-import { fetchWithTimeout } from './http';
+import { overpassQuery } from './overpass';
 import { type Cell, cachedFetch, cellBounds, cellsInBounds, type ViewBounds } from './tileGrid';
 
 /** below this zoom the area covers too many routes to mean anything */
 export const NEARBY_HIKES_MIN_ZOOM = 11;
 
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 // z11 cells (~15 km per side), the grid the trail overlay already uses: wider cells were
 // cheaper to cache but listed routes tens of kilometres away, which is not "around here"
 const CELL_ZOOM = 11;
@@ -63,11 +62,15 @@ const cellCache = new Map<string, Promise<NearbyHike[]>>();
 export async function fetchNearbyHikes(bounds: ViewBounds): Promise<NearbyHike[]> {
   const cells = cellsInBounds(bounds, CELL_ZOOM);
   if (cells.length === 0 || cells.length > MAX_CELLS_PER_VIEW) return [];
-  const results = await Promise.all(
+  // a cell that fails only silences its own area: the view keeps whatever the others found,
+  // and only a view where every cell failed surfaces as an error
+  const results = await Promise.allSettled(
     cells.map(cell => cachedFetch(cellCache, `${cell.x}/${cell.y}`, CACHE_MAX_CELLS, () => queryHikes(cell))),
   );
+  const found = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+  if (found.length === 0 && results.length > 0) throw new Error('overpass unavailable');
   const byId = new Map<number, NearbyHike>();
-  for (const hike of results.flat()) byId.set(hike.id, hike);
+  for (const hike of found.flat()) byId.set(hike.id, hike);
   return [...byId.values()].sort(
     (a, b) =>
       (NETWORK_RANK[a.network] ?? 9) - (NETWORK_RANK[b.network] ?? 9) ||
@@ -87,17 +90,18 @@ export async function fetchNearbyHikes(bounds: ViewBounds): Promise<NearbyHike[]
  *   The longest continuous stretch of the route, with elevations sampled from the DEM.
  */
 export async function fetchHikeTrack(id: number, center: LonLat): Promise<LonLatEle[]> {
-  const query = `[out:json][timeout:30];rel(${id});out geom;`;
-  const res = await fetchWithTimeout(OVERPASS_URL, { method: 'POST', body: `data=${encodeURIComponent(query)}` });
-  if (!res.ok) throw new Error(`overpass ${res.status}`);
-  const data = await res.json();
-  const relation = (data.elements ?? []).find((el: { type: string }) => el.type === 'relation');
+  const elements = await overpassQuery<{ type: string; members?: RelationMember[] }>(
+    `[out:json][timeout:30];rel(${id});out geom;`,
+  );
+  const relation = elements.find(el => el.type === 'relation');
   const ways: LonLat[][] = [];
   for (const member of relation?.members ?? []) {
     if (member.type !== 'way' || !member.geometry || SIDE_ROLES.test(member.role ?? '')) continue;
-    const way = member.geometry
-      .filter((p: { lon?: number; lat?: number }) => Number.isFinite(p.lon) && Number.isFinite(p.lat))
-      .map((p: { lon: number; lat: number }) => [p.lon, p.lat] as LonLat);
+    const way: LonLat[] = [];
+    for (const point of member.geometry) {
+      if (Number.isFinite(point.lon) && Number.isFinite(point.lat))
+        way.push([point.lon as number, point.lat as number]);
+    }
     if (way.length >= 2) ways.push(way);
   }
   const stitched = clipAround(stitchWays(ways), center, MAX_LOADED_M);
@@ -179,15 +183,26 @@ export function clipAround(coords: LonLat[], center: LonLat, maxM: number): LonL
   return coords.slice(from, to + 1);
 }
 
+interface RelationMember {
+  type: string;
+  role?: string;
+  geometry?: { lon?: number; lat?: number }[];
+}
+
+interface RelationTags {
+  type: string;
+  id: number;
+  tags?: Record<string, string>;
+}
+
 async function queryHikes(cell: Cell): Promise<NearbyHike[]> {
   const b = cellBounds(cell, CELL_ZOOM);
   const bbox = `${b.south},${b.west},${b.north},${b.east}`;
-  const query = `[out:json][timeout:25];rel["route"="hiking"]["name"](${bbox});out tags ${MAX_ROUTES_PER_CELL};`;
-  const res = await fetchWithTimeout(OVERPASS_URL, { method: 'POST', body: `data=${encodeURIComponent(query)}` });
-  if (!res.ok) throw new Error(`overpass ${res.status}`);
-  const data = await res.json();
+  const elements = await overpassQuery<RelationTags>(
+    `[out:json][timeout:25];rel["route"="hiking"]["name"](${bbox});out tags ${MAX_ROUTES_PER_CELL};`,
+  );
   const hikes: NearbyHike[] = [];
-  for (const el of data.elements ?? []) {
+  for (const el of elements) {
     if (el.type !== 'relation' || !el.tags?.name) continue;
     hikes.push({
       id: el.id,
