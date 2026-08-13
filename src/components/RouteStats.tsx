@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { track } from '../lib/analytics';
 import { elevationStats, formatDistance } from '../lib/geo';
 import { useT } from '../lib/i18n';
 import { dateLocale } from '../lib/lang';
@@ -35,6 +36,7 @@ export function RouteStats() {
   function confirmSave() {
     const name = saveName.trim();
     if (!name) return;
+    track('save-route', { distanceKm: Math.round(routeDistanceM(legs) / 1000) });
     usePlanner.getState().saveCurrentRoute(name);
     setSaveOpen(false);
   }

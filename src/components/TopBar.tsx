@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { track } from '../lib/analytics';
 import { buildKml, buildTcx, downloadTextFile, type ExportPoint } from '../lib/exportFormats';
 import { downloadGpx, type GpxWaypoint, parseGpx } from '../lib/gpx';
 import { type MsgKey, tNow, useT } from '../lib/i18n';
@@ -8,7 +9,7 @@ import { buildShareUrl } from '../lib/share';
 import { useClickOutside } from '../lib/useClickOutside';
 import { useEscapeKey } from '../lib/useEscapeKey';
 import { useIsMobile } from '../lib/useMediaQuery';
-import { routeCoords, routePois, usePlanner } from '../store';
+import { routeCoords, routeDistanceM, routePois, usePlanner } from '../store';
 import { RoutesPanel } from './RoutesPanel';
 import { SearchBox } from './SearchBox';
 import { SharePanel } from './SharePanel';
@@ -53,6 +54,7 @@ export function TopBar() {
 
   async function shareRoute() {
     setShowShareMenu(false);
+    track('share-link');
     await navigator.clipboard.writeText(await buildShareUrl());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -60,6 +62,7 @@ export function TopBar() {
 
   function exportRoute(format: ExportFormat) {
     setShowExport(false);
+    track('export', { format, distanceKm: Math.round(routeDistanceM(legs) / 1000) });
     const named = (point: ExportPoint) => ({ ...point, name: point.name || tNow(kindLabelKey(point.kind)) });
     const pois = routePois(anchors).map(named);
     const allPoints = [...pois, ...offRoutePoints.map(named)];
@@ -78,6 +81,7 @@ export function TopBar() {
   async function importGpx(file: File) {
     try {
       const { coords: imported, waypoints: importedWpts } = parseGpx(await file.text());
+      track('import-gpx');
       usePlanner.getState().importRoute(imported, importedWpts);
     } catch {
       usePlanner.setState({ error: 'err_gpx' });

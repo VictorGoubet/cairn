@@ -66,6 +66,11 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   point sits within 120 m of it; the track is typed `hiking`. TCX CoursePoints get the altitude
   (ascent-to-next screens), the 10-character `Name` the alert shows, and the full name in
   `Notes` when it overflows.
+- **Analytics** is Umami, loaded from `index.html` and scoped with `data-domains` so localhost
+  never counts. `lib/analytics.ts` wraps `umami.track` into a no-op when the script is absent
+  (development, an ad blocker), and the events stay coarse and non-identifying: `flyover`,
+  `share-link`, `share-image` (how / preset / format), `export` (format / rounded km),
+  `import-gpx`, `save-route`.
 - **Share links** (`src/lib/share.ts`): payload `#r=1.<base64url(deflate-raw(JSON))>`.
   Routed legs travel as anchors only (recomputed on open); frozen legs travel as a polyline
   (Google algorithm, lat/lon at 1e-5, elevation at 0.1 m). `''` = manual leg still computing

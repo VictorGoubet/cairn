@@ -57,6 +57,7 @@ make test-e2e
 | Terrain (3D, slopes, client-side elevations) | Terrarium DEM tiles (AWS Open Data) |
 | POIs and hidden trails | refuges.info API, Overpass API |
 | Tests | vitest + jsdom (unit), playwright (e2e) |
+| Analytics | Umami, cookieless and open source, production domain only |
 
 Everything is queried straight from the browser: the deployed site is pure static files.
 

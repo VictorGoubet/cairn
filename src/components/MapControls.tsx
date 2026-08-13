@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { BASE_LAYER_OPTIONS, layerThumbUrl } from '../config/layers';
+import { track } from '../lib/analytics';
 import { type MsgKey, useT } from '../lib/i18n';
 import { SLOPE_LEGEND } from '../lib/slopeTiles';
 import { useClickOutside } from '../lib/useClickOutside';
@@ -66,9 +67,11 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
         data-control="flyover"
         title={flyover ? (flyoverPaused ? t('flyover_resume') : t('flyover_pause')) : t('flyover')}
         disabled={!hasRoute}
-        onClick={() =>
-          flyover ? usePlanner.getState().setFlyoverPaused(!flyoverPaused) : usePlanner.getState().toggleFlyover()
-        }
+        onClick={() => {
+          if (flyover) return usePlanner.getState().setFlyoverPaused(!flyoverPaused);
+          track('flyover');
+          usePlanner.getState().toggleFlyover();
+        }}
       >
         {flyover && !flyoverPaused ? (
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

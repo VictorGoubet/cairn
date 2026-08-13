@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { track } from '../lib/analytics';
 import { type MsgKey, useT } from '../lib/i18n';
 import { dateLocale } from '../lib/lang';
 import { renderShareImage, type ShareFormat, type ShareImageOptions } from '../lib/shareImage';
@@ -80,6 +81,7 @@ export function SharePanel({ onClose }: { onClose: () => void }) {
     try {
       // Safari requires the promise form: the clipboard call must be synchronous with the click
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': toBlob() })]);
+      track('share-image', { how: 'copy', preset: PRESETS[presetIndex].key, format });
       setFeedback('copied');
       setTimeout(() => setFeedback(null), 2500);
       return true;
@@ -93,6 +95,7 @@ export function SharePanel({ onClose }: { onClose: () => void }) {
   async function shareTo(network: Network) {
     // a phone hands the image straight to the app through the native sheet; a desktop cannot
     // upload into a social site, so the image lands in the clipboard and the site opens
+    track('share-image', { how: network, preset: PRESETS[presetIndex].key, format });
     try {
       const file = new File([await toBlob()], 'cairn.png', { type: 'image/png' });
       if (navigator.canShare?.({ files: [file] })) {
@@ -106,6 +109,7 @@ export function SharePanel({ onClose }: { onClose: () => void }) {
   }
 
   async function downloadImage() {
+    track('share-image', { how: 'download', preset: PRESETS[presetIndex].key, format });
     const url = URL.createObjectURL(await toBlob());
     const link = document.createElement('a');
     link.href = url;
