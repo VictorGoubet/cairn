@@ -6,12 +6,13 @@
  * the route geometry, and the caller turns the canvas into a blob to copy, share or download.
  */
 
-import { ORTHO_RASTER_TILES, PLAN_IGN_RASTER_TILES } from '../config/layers';
+import { LngLatBounds, Map as MapLibreMap } from 'maplibre-gl';
+import { ORTHO_RASTER_TILES, PLAN_IGN_RASTER_TILES, TERRARIUM_TILES } from '../config/layers';
 import { elevationStats, formatDistance, formatDuration, hikingDurationH, type LonLatEle, pathDistanceM } from './geo';
 import { tNow } from './i18n';
 
 export type ShareFormat = 'square' | 'story';
-export type ShareBackground = 'plan' | 'satellite' | 'transparent' | 'light';
+export type ShareBackground = 'plan' | 'satellite' | 'relief' | 'transparent' | 'light';
 
 export interface ShareImageOptions {
   format: ShareFormat;
@@ -31,6 +32,9 @@ export const SHARE_SIZES: Record<ShareFormat, { w: number; h: number }> = {
 /** widest zoom the WMTS layers serve everywhere, and a hard cap on fetched tiles */
 const MAX_TILE_ZOOM = 16;
 const MAX_TILES = 80;
+/** the 3D scene starts anyway once this passes, offline relief beats no tile at all */
+const RELIEF_IDLE_TIMEOUT_MS = 12_000;
+const RELIEF_PITCH = 62;
 /** share of the canvas the route leaves free around itself */
 const VIEW_PADDING = 0.16;
 
@@ -65,7 +69,8 @@ export async function renderShareImage(
   if (!ctx) return;
 
   ctx.clearRect(0, 0, w, h);
-  const onMap = options.background === 'plan' || options.background === 'satellite';
+  const relief = options.background === 'relief';
+  const onMap = options.background === 'plan' || options.background === 'satellite' || relief;
   // white ink over imagery or over whatever photo the transparent tile lands on
   const lightInk = onMap || options.background === 'transparent';
   // on a basemap the route frames the whole canvas; on a plain background it sits in the
@@ -79,14 +84,16 @@ export async function renderShareImage(
   const view = fitView(coords, traceBox.w, traceBox.h);
 
   if (options.background === 'light') drawBackground(ctx, w, h);
-  if (onMap) await drawTiles(ctx, view, w, h, options.background === 'plan');
+  if (relief) await drawReliefScene(ctx, coords, w, h);
+  else if (onMap) await drawTiles(ctx, view, w, h, options.background === 'plan');
   drawScrims(ctx, w, h, onMap);
   // a soft shadow keeps white ink readable on whatever story photo sits behind the tile
   if (options.background === 'transparent') {
     ctx.shadowColor = 'rgba(10, 12, 16, 0.55)';
     ctx.shadowBlur = Math.round(w * 0.012);
   }
-  drawTrace(ctx, coords, view, traceBox, onMap);
+  // the relief scene drapes the trace on the terrain itself, a flat overlay would not line up
+  if (!relief) drawTrace(ctx, coords, view, traceBox, onMap);
   if (options.showProfile) drawProfile(ctx, coords, w, h, options, lightInk);
   if (options.showStats) drawStats(ctx, coords, w, h, options, lightInk);
   await drawBrand(ctx, w, lightInk);
@@ -198,6 +205,119 @@ function loadImage(url: string): Promise<HTMLImageElement> {
     img.onerror = () => reject(new Error(`tile ${url}`));
     img.src = url;
   });
+}
+
+/**
+ * Renders the route in 3D, draped on the relief, through a throwaway MapLibre instance.
+ *
+ * The map lives in an off-screen container with `preserveDrawingBuffer` so its canvas can be
+ * composited once every tile has arrived (or the timeout passes). The camera looks down the
+ * route's main axis, tilted like the flyover.
+ */
+async function drawReliefScene(
+  ctx: CanvasRenderingContext2D,
+  coords: LonLatEle[],
+  w: number,
+  h: number,
+): Promise<void> {
+  const container = document.createElement('div');
+  container.style.cssText = `position:fixed;left:-100000px;top:0;width:${w}px;height:${h}px;`;
+  document.body.appendChild(container);
+  const map = new MapLibreMap({
+    container,
+    interactive: false,
+    attributionControl: false,
+    pixelRatio: 1,
+    style: {
+      version: 8,
+      sources: {
+        ortho: { type: 'raster', tiles: [ORTHO_RASTER_TILES], tileSize: 256, maxzoom: 19 },
+        dem: { type: 'raster-dem', encoding: 'terrarium', tiles: [TERRARIUM_TILES], tileSize: 256, maxzoom: 13 },
+      },
+      sky: { 'sky-color': '#4d9fe8', 'sky-horizon-blend': 0.2, 'horizon-color': '#a8d3f2', 'fog-color': '#dbe7f2' },
+      layers: [
+        { id: 'bg', type: 'background', paint: { 'background-color': '#dbe7f2' } },
+        { id: 'ortho', type: 'raster', source: 'ortho', paint: { 'raster-fade-duration': 0 } },
+      ],
+    },
+  });
+  try {
+    await new Promise<void>(resolve => map.once('load', () => resolve()));
+    map.setMaxPitch(RELIEF_PITCH);
+    map.addSource('trace', {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'LineString', coordinates: coords.map(c => [c[0], c[1]]) },
+      },
+    });
+    map.addLayer({
+      id: 'trace-casing',
+      type: 'line',
+      source: 'trace',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#ffffff', 'line-width': 11 },
+    });
+    map.addLayer({
+      id: 'trace-line',
+      type: 'line',
+      source: 'trace',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': TRACE_COLOR, 'line-width': 6.5 },
+    });
+    map.setTerrain({ source: 'dem', exaggeration: 1.3 });
+
+    const bounds = coords.reduce(
+      (acc, c) => acc.extend([c[0], c[1]]),
+      new LngLatBounds([coords[0][0], coords[0][1]], [coords[0][0], coords[0][1]]),
+    );
+    // looking down the route's main axis, generous headroom for what the tilt pushes up
+    const start = coords[0];
+    const end = coords[coords.length - 1];
+    const bearing = (Math.atan2(end[0] - start[0], end[1] - start[1]) * 180) / Math.PI;
+    const frame = () => {
+      map.fitBounds(bounds, {
+        bearing,
+        animate: false,
+        padding: {
+          top: Math.round(h * 0.24),
+          bottom: Math.round(h * 0.15),
+          left: Math.round(w * 0.1),
+          right: Math.round(w * 0.1),
+        },
+      });
+      map.setPitch(RELIEF_PITCH);
+    };
+    const settle = () =>
+      new Promise<void>(resolve => {
+        const timeout = window.setTimeout(resolve, RELIEF_IDLE_TIMEOUT_MS);
+        map.once('idle', () => {
+          window.clearTimeout(timeout);
+          resolve();
+        });
+      });
+    // twice on purpose: the first framing is computed for a ground at sea level, and once the
+    // DEM arrives the camera can sit under the mountains, where the near plane clips the world
+    frame();
+    await settle();
+    frame();
+    await settle();
+    // synchronous re-render then copy within the same task: one task later the WebGL buffer is
+    // already presented and cleared, and the composite reads fully transparent
+    // no preserveDrawingBuffer: the copy happens inside the render event, while the freshly
+    // painted frame is still the current buffer (the documented screenshot pattern)
+    await new Promise<void>(resolve => {
+      map.once('render', () => {
+        ctx.drawImage(map.getCanvas(), 0, 0, w, h);
+        resolve();
+      });
+      map.triggerRepaint();
+    });
+  } finally {
+    map.remove();
+    container.remove();
+  }
 }
 
 function drawBackground(ctx: CanvasRenderingContext2D, w: number, h: number): void {

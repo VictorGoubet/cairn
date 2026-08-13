@@ -5,7 +5,7 @@ import { renderShareImage, type ShareFormat, type ShareImageOptions } from '../l
 import { useEscapeKey } from '../lib/useEscapeKey';
 import { routeCoords, usePlanner } from '../store';
 
-type PresetKey = 'map' | 'satellite' | 'overlay' | 'trace' | 'paper';
+type PresetKey = 'map' | 'satellite' | 'overlay' | 'trace' | 'paper' | 'relief';
 
 /** curated looks, Strava-style: one swipe picks a whole layout instead of stacking options */
 const PRESETS: { key: PresetKey; options: Omit<ShareImageOptions, 'format' | 'title'> }[] = [
@@ -14,6 +14,7 @@ const PRESETS: { key: PresetKey; options: Omit<ShareImageOptions, 'format' | 'ti
   { key: 'overlay', options: { background: 'transparent', showStats: true, showProfile: true } },
   { key: 'trace', options: { background: 'transparent', showStats: false, showProfile: false } },
   { key: 'paper', options: { background: 'light', showStats: true, showProfile: true } },
+  { key: 'relief', options: { background: 'relief', showStats: true, showProfile: false } },
 ];
 
 const FORMATS: ShareFormat[] = ['square', 'story'];

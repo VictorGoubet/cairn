@@ -229,7 +229,13 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   buttons hand the image to the native share sheet on a phone; a desktop cannot upload into a
   social site, so the image lands in the clipboard and the site opens. Transparent tiles keep
   their alpha (PNG, no background paint, white ink with a soft shadow) and preview over a CSS
-  checkerboard. The gotchas are load-bearing:
+  checkerboard. A sixth preset renders the route in real 3D: a throwaway MapLibre map in an
+  off-screen container (ortho + terrarium DEM + draped trace, pitch 62 down the route's axis),
+  composited into the tile. Its two traps: the camera must be framed twice, because the first
+  fit is computed for a ground at sea level and the loaded DEM leaves it under the mountains
+  (everything near-plane-clipped, a fully transparent canvas); and the copy must happen inside
+  the `render` event, one task later the WebGL buffer is presented and cleared. The gotchas are
+  load-bearing:
   - tiles are fetched with `crossOrigin: anonymous` (Géoplateforme sends CORS) so the canvas
     stays exportable; a tainted canvas would make `toBlob` throw;
   - renders compose on an off-screen canvas and blit when done, otherwise two renders in
