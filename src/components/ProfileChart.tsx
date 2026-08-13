@@ -47,7 +47,8 @@ export function ProfileChart({
   const progressRef = useRef<SVGGElement>(null);
   const poiRefs = useRef(new Map<number, SVGGElement>());
   const [poiDrag, setPoiDrag] = useState<{ id: string; distM: number; moved: boolean } | null>(null);
-  const poiDragBoundsRef = useRef<{ fromM: number; toM: number }>({ fromM: 0, toM: 0 });
+  // zoomed stretch of the x axis, video-editor style; null shows the whole route
+  const [view, setView] = useState<{ fromM: number; toM: number } | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -60,6 +61,8 @@ export function ProfileChart({
   }, []);
 
   const totalM = dists[dists.length - 1];
+  const viewFromM = view?.fromM ?? 0;
+  const viewToM = view?.toM ?? totalM;
   const elevations = coords.map(c => c[2]);
   let eleMin = Math.min(...elevations);
   let eleMax = Math.max(...elevations);
@@ -69,7 +72,7 @@ export function ProfileChart({
     eleMax = mid + 25;
   }
 
-  const { x, y, plotW, plotH } = makeScales(size.w, size.h, totalM, eleMin, eleMax);
+  const { x, y, plotW, plotH } = makeScales(size.w, size.h, viewFromM, viewToM, eleMin, eleMax);
 
   // smoothed signed slope at each point (degrees)
   const slopes = useMemo(() => {
@@ -84,7 +87,7 @@ export function ProfileChart({
 
   // line runs grouped by slope color, plus the neutral area below
   const { runs, areaPath } = useMemo(() => {
-    const scales = makeScales(size.w, size.h, totalM, eleMin, eleMax);
+    const scales = makeScales(size.w, size.h, viewFromM, viewToM, eleMin, eleMax);
     const point = (i: number) => `${scales.x(dists[i]).toFixed(1)},${scales.y(coords[i][2]).toFixed(1)}`;
     const runList: { color: string; d: string }[] = [];
     let current: { color: string; d: string } | null = null;
@@ -105,17 +108,52 @@ export function ProfileChart({
       runs: runList,
       areaPath: `${line}L${scales.x(totalM).toFixed(1)},${baseline}L${PAD.left},${baseline}Z`,
     };
-  }, [coords, dists, slopes, size.w, size.h, totalM, eleMin, eleMax]);
+  }, [coords, dists, slopes, size.w, size.h, viewFromM, viewToM, eleMin, eleMax, totalM]);
 
   const yTicks = niceTicks(eleMin, eleMax, 3);
-  const xTicks = niceTicks(0, totalM / 1000, 5);
+  const xTicks = niceTicks(viewFromM / 1000, viewToM / 1000, 5);
+
+  // the view resets with the route: a zoom kept across edits would frame the wrong stretch
+  // biome-ignore lint/correctness/useExhaustiveDependencies(coords): intentional trigger, not a value we read
+  useEffect(() => setView(null), [coords]);
+
+  // native listener: React's onWheel is passive, and the chart must eat the scroll to zoom
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const plot = Math.max(rect.width - PAD.left - PAD.right, 1);
+      const ratio = Math.min(Math.max((e.clientX - rect.left - PAD.left) / plot, 0), 1);
+      setView(current => {
+        const fromM = current?.fromM ?? 0;
+        const toM = current?.toM ?? totalM;
+        const span = toM - fromM;
+        // a mostly-horizontal wheel (trackpad) pans the zoomed stretch
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+          if (!current) return current;
+          const from = Math.min(Math.max(fromM + (e.deltaX / plot) * span, 0), totalM - span);
+          return { fromM: from, toM: from + span };
+        }
+        const factor = e.deltaY > 0 ? 1.25 : 0.8;
+        const newSpan = Math.min(Math.max(span * factor, Math.max(200, totalM * 0.02)), totalM);
+        if (newSpan >= totalM) return null;
+        // the distance under the cursor stays under the cursor, like zooming a video track
+        const from = Math.min(Math.max(fromM + ratio * span - ratio * newSpan, 0), totalM - newSpan);
+        return { fromM: from, toM: from + newSpan };
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [totalM]);
 
   // the flying dot mirrored on the profile, moved imperatively: a React render per camera
   // frame would reconcile the whole SVG sixty times a second for one moving circle
   useEffect(() => {
     const marker = progressRef.current;
     if (!flyover || !marker) return;
-    const { x: sx, y: sy } = makeScales(size.w, size.h, totalM, eleMin, eleMax);
+    const { x: sx, y: sy } = makeScales(size.w, size.h, viewFromM, viewToM, eleMin, eleMax);
     let prevM: number | null = null;
     marker.style.display = 'none';
     const off = onFlyoverProgress(distM => {
@@ -142,12 +180,12 @@ export function ProfileChart({
       off();
       marker.style.display = 'none';
     };
-  }, [flyover, dists, coords, pois, size.w, size.h, totalM, eleMin, eleMax]);
+  }, [flyover, dists, coords, pois, size.w, size.h, viewFromM, viewToM, eleMin, eleMax]);
 
   function eventDistM(e: { clientX: number; currentTarget: Element }): number {
     const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = (e.clientX - rect.left) / rect.width;
-    return Math.min(Math.max(ratio, 0), 1) * totalM;
+    const ratio = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+    return viewFromM + ratio * (viewToM - viewFromM);
   }
 
   /** distance under an arbitrary clientX, for handlers not attached to the interaction rect */
@@ -155,45 +193,43 @@ export function ProfileChart({
     const el = containerRef.current;
     if (!el) return 0;
     const rect = el.getBoundingClientRect();
-    const ratio = (clientX - rect.left - PAD.left) / Math.max(plotW, 1);
-    return Math.min(Math.max(ratio, 0), 1) * totalM;
+    const ratio = Math.min(Math.max((clientX - rect.left - PAD.left) / Math.max(plotW, 1), 0), 1);
+    return viewFromM + ratio * (viewToM - viewFromM);
   }
 
   function beginPoiDrag(e: React.PointerEvent<SVGCircleElement>, poi: ProfilePoi) {
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
-    // sliding a point along the route must not cross its neighbors, the anchors stay ordered
-    const { anchors, legs } = usePlanner.getState();
-    const index = anchors.findIndex(a => a.id === poi.id);
-    const cum: number[] = [0];
-    for (let i = 0; i < legs.length; i++) cum.push(cum[i] + (legs[i]?.leg?.distanceM ?? 0));
-    const margin = totalM * 0.005;
-    poiDragBoundsRef.current = {
-      fromM: index > 0 ? cum[index - 1] + margin : 0,
-      toM: index < anchors.length - 1 ? cum[index + 1] - margin : totalM,
-    };
     setPoiDrag({ id: poi.id, distM: poi.distM, moved: false });
   }
 
   function onPoiDragMove(e: React.PointerEvent<SVGCircleElement>) {
     if (!poiDrag) return;
-    const bounds = poiDragBoundsRef.current;
-    const distM = Math.min(Math.max(clientXToDistM(e.clientX), bounds.fromM), bounds.toM);
+    const distM = clientXToDistM(e.clientX);
     const moved = poiDrag.moved || Math.abs(distM - poiDrag.distM) > totalM * 0.004;
     setPoiDrag({ ...poiDrag, distM, moved });
   }
 
   function endPoiDrag() {
     if (!poiDrag) return;
-    const { anchors, moveAnchor, setEditing } = usePlanner.getState();
-    const index = anchors.findIndex(a => a.id === poiDrag.id);
-    if (index >= 0) {
+    const state = usePlanner.getState();
+    const from = state.anchors.findIndex(a => a.id === poiDrag.id);
+    if (from >= 0) {
       if (poiDrag.moved) {
-        // snap to the route point under the released position: the point stays on the trail
+        // the point goes wherever it was dropped, reordering the anchors if it crossed some:
+        // its slot is where its new distance falls among the others, start and finish excluded
+        const cum: number[] = [0];
+        for (let i = 0; i < state.legs.length; i++) cum.push(cum[i] + (state.legs[i]?.leg?.distanceM ?? 0));
+        const others = cum.filter((_, i) => i !== from);
+        const slot = others.filter(d => d <= poiDrag.distM).length;
+        const to = Math.min(Math.max(slot, 1), state.anchors.length - 2);
         const i = nearestIndex(dists, poiDrag.distM);
-        moveAnchor(index, [coords[i][0], coords[i][1]]);
+        state.slideAnchor(poiDrag.id, to, [coords[i][0], coords[i][1]]);
       } else {
-        setEditing(poiDrag.id);
+        // a plain click: open the editor and focus the point on the map
+        const anchor = state.anchors[from];
+        state.setEditing(poiDrag.id);
+        state.setFlyTo({ center: [anchor.lon, anchor.lat], zoom: 14 });
       }
     }
     setPoiDrag(null);
@@ -261,6 +297,11 @@ export function ProfileChart({
     <div ref={containerRef} className="chart-area">
       <svg width={size.w} height={size.h} role="img" aria-label={tNow('profile_title')}>
         <title>{tNow('profile_title')}</title>
+        <defs>
+          <clipPath id="profile-clip">
+            <rect x={PAD.left} y={0} width={Math.max(plotW, 0)} height={PAD.top + Math.max(plotH, 0)} />
+          </clipPath>
+        </defs>
         {selection && (
           <rect
             className="viz-selection"
@@ -283,43 +324,45 @@ export function ProfileChart({
             {t} km
           </text>
         ))}
-        <path d={areaPath} className="viz-area" />
-        {runs.map(r => (
-          <path key={r.d.slice(0, 24)} d={r.d} className="viz-line-seg" stroke={r.color} />
-        ))}
-        {pois.map(p => {
-          const dragged = poiDrag?.id === p.id ? poiDrag.distM : p.distM;
-          const index = nearestIndex(dists, dragged);
-          const def = kindDef(p.kind);
-          const px = x(dists[index]);
-          const py = y(coords[index][2]);
-          return (
-            <g
-              key={`${p.distM}-${p.kind}-${p.name}`}
-              className="viz-poi"
-              ref={el => {
-                if (el) poiRefs.current.set(p.distM, el);
-                else poiRefs.current.delete(p.distM);
-              }}
-            >
-              <line x1={px} x2={px} y1={py} y2={py - 12} />
-              <text x={px} y={py - 15} textAnchor="middle">
-                {def.emoji}
-                <title>{p.name || tNow(kindLabelKey(p.kind))}</title>
-              </text>
-            </g>
-          );
-        })}
-        <g ref={progressRef} className="viz-flyover-dot" style={{ display: 'none' }}>
-          <circle r={8} className="viz-flyover-glow" />
-          <circle r={3.5} className="viz-flyover-core" />
-        </g>
-        {hover && (
-          <g>
-            <line x1={hover.cx} x2={hover.cx} y1={PAD.top} y2={PAD.top + plotH} className="viz-crosshair" />
-            <circle cx={hover.cx} cy={hover.cy} r={4} className="viz-dot" />
+        <g clipPath="url(#profile-clip)">
+          <path d={areaPath} className="viz-area" />
+          {runs.map(r => (
+            <path key={r.d.slice(0, 24)} d={r.d} className="viz-line-seg" stroke={r.color} />
+          ))}
+          {pois.map(p => {
+            const dragged = poiDrag?.id === p.id ? poiDrag.distM : p.distM;
+            const index = nearestIndex(dists, dragged);
+            const def = kindDef(p.kind);
+            const px = x(dists[index]);
+            const py = y(coords[index][2]);
+            return (
+              <g
+                key={`${p.distM}-${p.kind}-${p.name}`}
+                className="viz-poi"
+                ref={el => {
+                  if (el) poiRefs.current.set(p.distM, el);
+                  else poiRefs.current.delete(p.distM);
+                }}
+              >
+                <line x1={px} x2={px} y1={py} y2={py - 12} />
+                <text x={px} y={py - 15} textAnchor="middle">
+                  {def.emoji}
+                  <title>{p.name || tNow(kindLabelKey(p.kind))}</title>
+                </text>
+              </g>
+            );
+          })}
+          <g ref={progressRef} className="viz-flyover-dot" style={{ display: 'none' }}>
+            <circle r={8} className="viz-flyover-glow" />
+            <circle r={3.5} className="viz-flyover-core" />
           </g>
-        )}
+          {hover && (
+            <g>
+              <line x1={hover.cx} x2={hover.cx} y1={PAD.top} y2={PAD.top + plotH} className="viz-crosshair" />
+              <circle cx={hover.cx} cy={hover.cy} r={4} className="viz-dot" />
+            </g>
+          )}
+        </g>
         {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only enrichment, the numbers stay readable without it */}
         <rect
           x={PAD.left}
@@ -336,26 +379,34 @@ export function ProfileChart({
         />
         {/* hit targets above the interaction rect: click edits, a horizontal drag slides the
             point along the route (how a summit gets nudged onto the real summit) */}
-        {!flyover &&
-          pois.map(p => {
-            const dragged = poiDrag?.id === p.id ? poiDrag.distM : p.distM;
-            const index = nearestIndex(dists, dragged);
-            return (
-              <circle
-                key={`hit-${p.id}`}
-                className="viz-poi-hit"
-                cx={x(dists[index])}
-                cy={y(coords[index][2]) - 18}
-                r={12}
-                style={{ touchAction: 'none' }}
-                onPointerDown={e => beginPoiDrag(e, p)}
-                onPointerMove={onPoiDragMove}
-                onPointerUp={endPoiDrag}
-                onPointerCancel={endPoiDrag}
-              />
-            );
-          })}
+        {!flyover && (
+          <g clipPath="url(#profile-clip)">
+            {pois.map(p => {
+              const dragged = poiDrag?.id === p.id ? poiDrag.distM : p.distM;
+              const index = nearestIndex(dists, dragged);
+              return (
+                <circle
+                  key={`hit-${p.id}`}
+                  className="viz-poi-hit"
+                  cx={x(dists[index])}
+                  cy={y(coords[index][2]) - 18}
+                  r={12}
+                  style={{ touchAction: 'none' }}
+                  onPointerDown={e => beginPoiDrag(e, p)}
+                  onPointerMove={onPoiDragMove}
+                  onPointerUp={endPoiDrag}
+                  onPointerCancel={endPoiDrag}
+                />
+              );
+            })}
+          </g>
+        )}
       </svg>
+      {view && (
+        <button type="button" className="chart-zoom-reset" title={tNow('zoom_reset')} onClick={() => setView(null)}>
+          {`${(totalM / (viewToM - viewFromM)).toFixed(1)}× ↺`}
+        </button>
+      )}
       {hover && hoverIndex !== null && (
         <div
           className="viz-tooltip"
@@ -372,10 +423,10 @@ export function ProfileChart({
   );
 }
 
-function makeScales(w: number, h: number, totalM: number, eleMin: number, eleMax: number) {
+function makeScales(w: number, h: number, fromM: number, toM: number, eleMin: number, eleMax: number) {
   const plotW = w - PAD.left - PAD.right;
   const plotH = h - PAD.top - PAD.bottom;
-  const x = (m: number) => PAD.left + (m / totalM) * plotW;
+  const x = (m: number) => PAD.left + ((m - fromM) / Math.max(toM - fromM, 1)) * plotW;
   const y = (ele: number) => PAD.top + (1 - (ele - eleMin) / (eleMax - eleMin)) * plotH;
   return { x, y, plotW, plotH };
 }

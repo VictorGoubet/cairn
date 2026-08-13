@@ -1,13 +1,13 @@
 /**
  * Drone-like flight along the route, the way Strava plays an activity back.
  *
- * A glowing dot walks the whole route in a near-constant time while the camera chases it, and
+ * A glowing dot walks the whole route while the camera chases it, and
  * `calculateCameraOptionsFromTo` derives center, zoom, pitch and bearing from that geometry
  * (MapLibre has no FreeCameraOptions). Letting geometry drive the camera beats animating pitch
- * and zoom by hand. Constant playback time means the ground speed grows with the route, so the
- * look-ahead (and with it the camera height) scales with the length: the imagery ahead is
- * always requested a constant few seconds before the camera reaches it, and a long route reads
- * as a higher overview pass while a short loop keeps the low grazing shot.
+ * and zoom by hand. The dot accelerates and then holds a cruise ceiling, so a long route takes
+ * longer to play rather than flying absurdly fast; the look-ahead (and with it the camera
+ * height) follows the speed, which keeps the pass low and the imagery requested a constant few
+ * seconds before the camera reaches it.
  *
  * Smoothness is C2 by construction, not filtered after the fact. A hiking track is piecewise
  * linear: position is continuous but velocity jumps at every vertex, and the eye reads each
@@ -36,21 +36,28 @@
 import { type GeoJSONSource, LngLat, type Map as MapLibreMap } from 'maplibre-gl';
 import { cumulativeDistancesM, type LonLatEle, nearestIndex } from './geo';
 
-/** near-constant playback: the dot crosses the route in about this long, plus the ramps */
+/** short routes still get a full flight: below this duration the speed scales down */
 const FLIGHT_SECONDS = 10;
+/**
+ * Cruise ceiling. The flight accelerates and then holds this, the way Strava plays long
+ * activities back: a long route takes longer rather than flying infinitely fast, which is what
+ * keeps the camera low and the tiles loadable whatever the distance.
+ */
+const MAX_SPEED_M_S = 300;
 /** speed ramps up and down over this long, the trapezoidal profile of motion control */
 const RAMP_SECONDS = 2.5;
+/** scrubbing glides at a bounded multiple of cruise instead of teleporting past unloaded tiles */
+const SCRUB_CHASE_FACTOR = 3;
 /**
  * Look-ahead and cruise height, tied by the ratio that frames the low grazing shot (measured:
  * 1150 m ahead from 220 m up lands near zoom 15.5 and pitch 79 at our latitudes). The look-ahead
- * scales with the route so the tile lead time stays constant at any speed; the floor keeps a
- * short route from deriving a zoom past 16.5 (200 m of look-ahead framed a hedge), and the cap
- * bounds the highest pass on very long routes.
+ * follows the speed so the imagery ahead is always requested the same few seconds before the
+ * camera reaches it; the floor keeps a short route from deriving a zoom past 16.5 (200 m of
+ * look-ahead framed a hedge).
  */
 const HEIGHT_TO_AHEAD = 220 / 1150;
-const AHEAD_FRACTION = 0.3;
+const TILE_LEAD_S = 4;
 const MIN_AHEAD_M = 700;
-const MAX_AHEAD_M = 6000;
 /** the dot keeps this lead over the camera park position, two coincident points derive no bearing */
 const MIN_SEPARATION_M = 40;
 /**
@@ -157,8 +164,8 @@ export function startFlyover(
 ): FlyoverHandle {
   const track: Path = { coords, dists: cumulativeDistancesM(coords) };
   const totalM = track.dists[track.dists.length - 1];
-  const speed = totalM / FLIGHT_SECONDS;
-  const aheadM = Math.max(MIN_AHEAD_M, Math.min(MAX_AHEAD_M, totalM * AHEAD_FRACTION));
+  const speed = Math.min(MAX_SPEED_M_S, totalM / FLIGHT_SECONDS);
+  const aheadM = Math.max(MIN_AHEAD_M, speed * TILE_LEAD_S);
   const heightM = aheadM * HEIGHT_TO_AHEAD;
   // chase distance in 3D; holding it also holds the zoom MapLibre derives from it
   const chaseM = Math.hypot(aheadM, heightM);
@@ -176,6 +183,7 @@ export function startFlyover(
   let lastNow = 0;
   let paused = false;
   let progress = MIN_SEPARATION_M;
+  let scrubTarget: number | null = null;
   let velocity = 0;
   let renderedDist: number | null = null;
   let pulses: { poi: FlyoverPoi; bornAt: number }[] = [];
@@ -238,19 +246,30 @@ export function startFlyover(
     // a slow frame below it still advances by true clock time, or slow machines would fly slow
     const dt = lastNow ? Math.min((now - lastNow) / 1000, 0.5) : 0;
     lastNow = now;
-    if (!paused) {
+    if (scrubTarget !== null) {
+      // glide toward the pointer at a bounded speed: a straight teleport lands on tiles that
+      // never had a chance to load, which is the white-chunk flash of a fast scrub
+      const delta = scrubTarget - progress;
+      const maxStep = speed * SCRUB_CHASE_FACTOR * dt;
+      if (Math.abs(delta) <= maxStep) {
+        progress = scrubTarget;
+        scrubTarget = null;
+      } else {
+        progress += Math.sign(delta) * maxStep;
+      }
+      velocity = 0;
+    } else if (!paused) {
       const brake = Math.sqrt(2 * accel * Math.max(totalM - progress, 0));
       velocity = Math.max(Math.min(speed, velocity + accel * dt, brake), speed * 0.02);
       progress = Math.min(progress + velocity * dt, totalM);
     }
     renderAt(progress, now);
-    if (!paused && progress >= totalM) return finish();
+    if (!paused && scrubTarget === null && progress >= totalM) return finish();
     frame = requestAnimationFrame(step);
   };
 
   const onScrub = (e: Event) => {
-    progress = Math.min(Math.max((e as CustomEvent<number>).detail, MIN_SEPARATION_M), totalM);
-    velocity = 0;
+    scrubTarget = Math.min(Math.max((e as CustomEvent<number>).detail, MIN_SEPARATION_M), totalM);
   };
   window.addEventListener(SCRUB_EVENT, onScrub);
 

@@ -384,6 +384,22 @@ test.describe('reading the route', () => {
 });
 
 test.describe('editing from the profile', () => {
+  test('the wheel zooms the profile and the chip resets it', async ({ page }) => {
+    await openPlanner(page);
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 1);
+
+    const chart = page.locator('.chart-area');
+    await chart.hover();
+    await page.mouse.wheel(0, -240);
+    await expect(page.locator('.chart-zoom-reset')).toBeVisible();
+    // the x axis now starts inside the route
+    await expect(page.locator('.chart-area .viz-tick').filter({ hasText: 'km' }).first()).not.toHaveText('0 km');
+    await page.locator('.chart-zoom-reset').click();
+    await expect(page.locator('.chart-zoom-reset')).toBeHidden();
+  });
+
   test('double-click inserts a point, its marker edits on click and slides on drag', async ({ page }) => {
     await openPlanner(page);
     await clickAt(page, CEILLAC);

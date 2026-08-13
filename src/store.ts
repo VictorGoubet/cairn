@@ -141,6 +141,7 @@ interface PlannerState {
   moveAnchor: (index: number, p: LonLat) => void;
   removeAnchor: (id: string) => void;
   reorderAnchor: (from: number, to: number) => void;
+  slideAnchor: (id: string, to: number, p: LonLat) => void;
   undo: () => void;
   redo: () => void;
   clear: () => void;
@@ -518,6 +519,22 @@ export const usePlanner = create<PlannerState>((set, get) => {
 
     // swapping two points changes the shape of the route: every leg between them, plus the
     // one before and after, is recomputed. Frozen legs (import, manual) keep their geometry.
+    slideAnchor: (id, to, p) => {
+      const { anchors, manualMode } = get();
+      const from = anchors.findIndex(a => a.id === id);
+      if (from < 0 || to < 0 || to >= anchors.length) return;
+      pushHistory();
+      const moved = { ...anchors[from], lon: p[0], lat: p[1] };
+      const nextAnchors = anchors.toSpliced(from, 1).toSpliced(to, 0, moved);
+      const firstLeg = Math.max(0, Math.min(from, to) - 1);
+      const lastLeg = Math.min(nextAnchors.length - 2, Math.max(from, to));
+      const staleLegs = get().legs.map((slot, i) =>
+        i >= firstLeg && i <= lastLeg && !slot.manual ? newSlot(manualMode) : slot,
+      );
+      set({ anchors: nextAnchors, legs: staleLegs });
+      ensureLegs();
+    },
+
     reorderAnchor: (from, to) => {
       const { anchors } = get();
       if (from === to || from < 0 || to < 0 || from >= anchors.length || to >= anchors.length) return;

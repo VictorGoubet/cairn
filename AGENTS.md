@@ -121,10 +121,15 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   the route, so numbers and geometry always agree. The chart listens to pointer events, so
   selection and flyover scrubbing work with a finger as well as a mouse.
 - The profile edits points too: a double-click inserts a route point at that distance and opens
-  its editor, clicking a marker reopens it, and dragging a marker horizontally slides the
-  anchor along the trail (clamped between its neighbors), which is how a summit point gets
-  nudged onto the real summit. The hit targets are drawn above the interaction rect, since SVG
-  hit-testing follows paint order.
+  its editor; clicking a marker reopens it and focuses the point on the map; dragging a marker
+  slides the anchor anywhere along the trail, reordering the anchors when it crosses others
+  (`slideAnchor`, one history snapshot for the whole gesture, start and finish keep their
+  slots). The hit targets are drawn above the interaction rect, since SVG hit-testing follows
+  paint order.
+- The profile zooms like a video track: the wheel zooms the x axis around the cursor (native
+  non-passive listener, React's `onWheel` cannot preventDefault), a horizontal trackpad wheel
+  pans, and a chip resets. The plotted geometry is wrapped in a `clipPath`, which also clips
+  the SVG hit regions of the markers.
 - Points reorder by dragging their row; `reorderAnchor` recomputes the legs around both
   positions and leaves frozen legs alone.
 - The play button flies the route like a drone (`lib/flyover.ts`). It follows the two-path
@@ -151,10 +156,12 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
     smooth curve that never dips below the relief. Sampled through the same B-spline. Measuring
     altitude from the target rather than the ground under the camera is what keeps a climb from
     tipping the derived pitch into the sky.
-  - **Playback time is near constant** (~10 s of cruise plus the ramps): the dot walks the whole
-    route whatever its length, so the ground speed grows with the route, and the look-ahead
-    (hence camera height) scales with it. That keeps the tile lead time constant at any speed:
-    a long route reads as a higher overview pass, a short loop keeps the low grazing shot.
+  - **The dot accelerates to a cruise ceiling** (300 m/s) and holds it, so a long route takes
+    longer to play rather than flying absurdly fast; short routes still stretch to ~10 s. The
+    look-ahead (hence camera height) follows the speed, which keeps every pass low and the
+    imagery requested a constant few seconds before the camera reaches it. Scrubbing glides at
+    a bounded multiple of cruise instead of teleporting, so a fast drag on the profile does not
+    land on tiles that never had a chance to load.
   - **Speed follows a trapezoidal velocity profile** (2.5 s ramps): constant speed from a
     standing start is a velocity discontinuity, and the takeoff reads as a jolt.
   - **The frame is a pure function of the dot's position.** The camera trails the dot by the
