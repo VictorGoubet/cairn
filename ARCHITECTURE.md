@@ -233,10 +233,13 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
     cell, memoized like the trail overlay), and the geometry of a single route is fetched when
     the user loads it. Asking for geometry to draw a list downloads whole GR traversals.
   - every Overpass call in the app goes through `lib/overpass.ts`: the main instance grants two
-    concurrent connections per IP and answers 429 beyond them, so a shared queue caps the
-    concurrency, retries once on a community mirror, and a cell that fails only silences its
-    own area (an error shows only when every cell failed). A panning burst can queue twenty
-    cells; they drain at two at a time by design.
+    concurrent connections per IP and answers 406/429 beyond them, so a shared queue caps the
+    concurrency, spaces request starts out, retries once on a community mirror, and a refusal
+    opens a 45 s cooldown during which every call fails fast instead of feeding the ban. A cell
+    that fails only silences its own area (an error shows only when every cell failed).
+  - viewport-driven fetches fire once the camera settles (debounced moveend), never per zoom
+    notch: the app runs on the user's IP, and getting hikers rate-limited is the one way to
+    lose them.
   - the query cap is generous (200 per cell) so Overpass never truncates at an arbitrary cut:
     relevance is decided here, after sorting.
   - **sorted local first**, then by declared length. Trail catalogues go international-down-to-

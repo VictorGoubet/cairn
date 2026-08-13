@@ -40,10 +40,6 @@ export function setRoutingPreset(preset: RoutingPreset): void {
   customProfileUpload = null;
 }
 
-export function getRoutingPreset(): RoutingPreset {
-  return activePreset;
-}
-
 /**
  * Routes a chain of points in a single request (easy on the volunteer-run server).
  *

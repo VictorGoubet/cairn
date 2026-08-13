@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 
 /** phone-sized viewport: the layout switches to a map plus a bottom sheet */
-export const MOBILE_QUERY = '(max-width: 760px)';
+const MOBILE_QUERY = '(max-width: 760px)';
 
-export function useMediaQuery(query: string): boolean {
+function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
 
   useEffect(() => {

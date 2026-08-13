@@ -17,17 +17,3 @@ export async function fetchWithTimeout(url: string, init?: RequestInit, timeoutM
     clearTimeout(timer);
   }
 }
-
-/**
- * Fetches JSON, failing loudly on a timeout, a transport error or a non-2xx answer.
- *
- * Args:
- *   url: endpoint to call.
- *   init: fetch options, merged with the abort signal.
- *   timeoutMs: deadline in milliseconds.
- */
-export async function fetchJson<T>(url: string, init?: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
-  const res = await fetchWithTimeout(url, init, timeoutMs);
-  if (!res.ok) throw new Error(`${new URL(url).host}: ${res.status}`);
-  return (await res.json()) as T;
-}

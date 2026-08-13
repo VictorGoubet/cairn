@@ -60,13 +60,13 @@ export interface LegSlot {
   leg: RouteLeg | null;
 }
 
-export type FlyTo = { center: LonLat; zoom: number } | { bounds: [LonLat, LonLat] };
+type FlyTo = { center: LonLat; zoom: number } | { bounds: [LonLat, LonLat] };
 
 /** dimension and value highlighted on the map when hovering the legends */
 export type WayHighlight = { dim: 'category' | 'surface'; value: string };
 
 /** stretch selected on the elevation profile, in meters along the route */
-export type ProfileSelection = { fromM: number; toM: number };
+type ProfileSelection = { fromM: number; toM: number };
 
 export interface SavedRoute {
   id: string;
@@ -86,7 +86,7 @@ interface Snapshot {
 }
 
 /** route decoded from a share link (see lib/share.ts) */
-export interface SharedRouteInput {
+interface SharedRouteInput {
   name: string;
   preset?: RoutingPreset;
   anchors: Anchor[];
@@ -865,7 +865,7 @@ setTimeout(() => usePlanner.getState().retryLegs(), 0);
 // so any change here reloads the whole page
 if (import.meta.hot) import.meta.hot.accept(() => import.meta.hot?.invalidate());
 
-export function lonLat(anchor: Anchor): LonLat {
+function lonLat(anchor: Anchor): LonLat {
   return [anchor.lon, anchor.lat];
 }
 

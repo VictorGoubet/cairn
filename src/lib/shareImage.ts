@@ -12,7 +12,7 @@ import { elevationStats, formatDistance, formatDuration, hikingDurationH, type L
 import { tNow } from './i18n';
 
 export type ShareFormat = 'square' | 'story';
-export type ShareBackground = 'plan' | 'satellite' | 'relief' | 'transparent' | 'light';
+type ShareBackground = 'plan' | 'satellite' | 'relief' | 'transparent' | 'light';
 
 export interface ShareImageOptions {
   format: ShareFormat;
@@ -24,7 +24,7 @@ export interface ShareImageOptions {
   scale?: number;
 }
 
-export const SHARE_SIZES: Record<ShareFormat, { w: number; h: number }> = {
+const SHARE_SIZES: Record<ShareFormat, { w: number; h: number }> = {
   square: { w: 1080, h: 1080 },
   story: { w: 1080, h: 1920 },
 };

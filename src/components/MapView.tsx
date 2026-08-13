@@ -44,6 +44,8 @@ const DRAG_REROUTE_MS = 450;
 const CONTOUR_SOURCE_LAYER = 'oro_courbe';
 // off-route points farther than this from the trail do not pulse during the flyover
 const OFF_ROUTE_PULSE_MAX_M = 400;
+/** viewport-driven fetches wait for the camera to settle */
+const POI_REFRESH_DEBOUNCE_MS = 800;
 
 // 3D terrain exaggeration adapted to the visible relief: classic cartographic rule (Imhof),
 // flatland needs 2-3x to read. The floor stays well above 1: zoomed into a massif the adaptive
@@ -333,9 +335,17 @@ export function MapView() {
       void refreshPoiOverlays(map, overlays.hidden, overlays.refuges);
     };
     refresh();
-    map.on('moveend', refresh);
+    // only once the camera settles: zooming fires a moveend per notch, and firing a burst of
+    // Overpass cells at every notch is how a free API starts answering 406
+    let timer = 0;
+    const onMoveEnd = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(refresh, POI_REFRESH_DEBOUNCE_MS);
+    };
+    map.on('moveend', onMoveEnd);
     return () => {
-      map.off('moveend', refresh);
+      window.clearTimeout(timer);
+      map.off('moveend', onMoveEnd);
     };
   }, [overlays.hidden, overlays.refuges, mapReady]);
 

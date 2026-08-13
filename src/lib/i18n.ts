@@ -1,6 +1,6 @@
 import { usePlanner } from '../store';
 
-export const MESSAGES = {
+const MESSAGES = {
   fr: {
     search_placeholder: 'Rechercher un lieu…',
     unknown_place: 'inconnu',

@@ -97,7 +97,7 @@ const SCRUB_BOOST_SMOOTHING_S = 0.4;
 
 const DOT_SOURCE = 'flyover-dot';
 const PULSE_SOURCE = 'flyover-pulse';
-export const DOT_LAYERS = ['flyover-pulse-ring', 'flyover-dot-glow', 'flyover-dot-core'] as const;
+const DOT_LAYERS = ['flyover-pulse-ring', 'flyover-dot-glow', 'flyover-dot-core'] as const;
 
 const PROGRESS_EVENT = 'cairn:flyover-progress';
 const SCRUB_EVENT = 'cairn:flyover-scrub';
