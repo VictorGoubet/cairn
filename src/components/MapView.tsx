@@ -25,6 +25,7 @@ import { cumulativeDistancesM, haversineM, kmMarkerPoints, type LonLatEle, neare
 import { fetchHiddenTrails, HIDDEN_TRAILS_MIN_ZOOM } from '../lib/hiddenTrails';
 import { tNow } from '../lib/i18n';
 import { bindLongPress, bindMiddleDragRotate, bindRotateCursor } from '../lib/mapGestures';
+import { setMapInstance } from '../lib/mapHandle';
 import { kindDef, type PointKind } from '../lib/points';
 import {
   fetchRefugePoints,
@@ -232,6 +233,7 @@ export function MapView() {
         setMapReady(true);
       });
       mapRef.current = map;
+      setMapInstance(map);
       if (import.meta.env.DEV) {
         Object.assign(window, { __map: map, __planner: usePlanner });
       }
@@ -242,6 +244,7 @@ export function MapView() {
       disposeGestures = [];
       map?.remove();
       mapRef.current = null;
+      setMapInstance(null);
       setMapReady(false);
     };
   }, []);

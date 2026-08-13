@@ -22,9 +22,9 @@
 <br>
 
 Draw a hiking route that follows real trails, over official IGN maps. Elevation profile,
-typed waypoints, GPX/KML/TCX export, share by link. Built entirely on open data (IGN
-Géoplateforme, OpenStreetMap, refuges.info) and queried straight from your browser:
-no backend, no account, no tracking.
+typed waypoints, marked routes around you, 3D flyover, GPX/KML/TCX export, share by link or as
+a social image. Built entirely on open data (IGN Géoplateforme, OpenStreetMap, refuges.info)
+and queried straight from your browser: no backend, no account, no personal tracking.
 
 ## Quick Start
 

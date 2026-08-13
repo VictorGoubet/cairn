@@ -228,6 +228,22 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - The style carries a `sky` and a `background` layer. Without the sky, everything above the
   horizon is unpainted and the page shows through as soon as the camera tilts.
 - Map control buttons carry `data-control` so tests never depend on their order or labels.
+- **"Hikes around"** (`lib/nearbyHikes.ts` behind the compass control) lists the marked OSM
+  routes near the view and turns one into an itinerary, with no backend:
+  - two Overpass queries on purpose: the list fetches relation *tags only* (one request per z11
+    cell, memoized like the trail overlay), and the geometry of a single route is fetched when
+    the user loads it. Asking for geometry to draw a list downloads whole GR traversals.
+  - the query cap is generous (200 per cell) so Overpass never truncates at an arbitrary cut:
+    relevance is decided here, after sorting.
+  - **sorted local first**, then by declared length. Trail catalogues go international-down-to-
+    local; around an alpine village that buries the day loops under every Via Alpina stage.
+  - a relation is an unordered bag of ways, some reversed, some spurs: `stitchWays` chains them
+    greedily and keeps the longest continuous stretch, `clipAround` trims a national traversal
+    to 45 km around the map center, and the DEM fills in the elevations OSM does not carry.
+  - opening the panel switches the marked-trail tiles on, so a name in the list has a visual
+    counterpart on the map.
+- **`lib/mapHandle.ts` publishes the one map instance.** Panels outside `MapView` need to read
+  the viewport; mirroring it into the store would wake the draft writer on every pan.
 - "My routes" opens as a modal gallery: one card per saved route, its thumbnail drawn by the
   share-tile renderer (`scale` option, plan background, bare). The backdrop click closes the
   modal without reaching the map, unlike the floating panels which pass the click through.
@@ -261,6 +277,9 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   the trackpad gesture and the mouse thumb button into undo, and refills itself so the
   gesture keeps working. Deliberate: it matches the mouse-button undo of desktop editors.
   The cost is real, a visitor cannot leave the planner with the back button.
+- **A loaded OSM route can be shorter than its declared length.** `stitchWays` keeps the
+  longest continuous stretch, so a relation whose ways are broken into disconnected pieces
+  loads only its main chain. Deliberate: a walkable line beats a faithful but discontinuous one.
 - **Slope at DEM tile borders** is a one-sided derivative: the neighboring tile is not read,
   so the border pixel is slightly less accurate than the interior (it used to be understated
   by half, which read as flat ground).

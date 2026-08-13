@@ -454,6 +454,60 @@ test.describe('editing from the profile', () => {
   });
 });
 
+test.describe('hikes around', () => {
+  // Overpass is a volunteer-run API: the fixture keeps the test honest about our own code
+  const RELATION_ID = 1234;
+  const LIST = {
+    elements: [
+      { type: 'relation', id: RELATION_ID, tags: { name: 'Tour du Queyras', ref: 'GR58', network: 'nwn', distance: '130' } },
+      { type: 'relation', id: 7, tags: { name: 'Sentier du Mélezet', network: 'lwn' } },
+    ],
+  };
+  const GEOMETRY = {
+    elements: [
+      {
+        type: 'relation',
+        id: RELATION_ID,
+        members: [
+          {
+            type: 'way',
+            role: '',
+            geometry: Array.from({ length: 40 }, (_, i) => ({ lon: CEILLAC[0] + i * 0.0004, lat: CEILLAC[1] + i * 0.0002 })),
+          },
+          { type: 'node', role: 'guidepost', lon: CEILLAC[0], lat: CEILLAC[1] },
+        ],
+      },
+    ],
+  };
+
+  test('lists marked routes in view and loads one as the itinerary', async ({ page }) => {
+    await page.route('**/overpass-api.de/api/interpreter', async route => {
+      const body = route.request().postData() ?? '';
+      const payload = body.includes('out%20geom') || body.includes('out geom') ? GEOMETRY : LIST;
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify(payload) });
+    });
+    await openPlanner(page);
+
+    await page.locator('[data-control="explore"]').click();
+    await expect(page.locator('.nearby-list button')).toHaveCount(2);
+    // local first: what is walkable from here outranks the national traversal passing through
+    await expect(page.locator('.nearby-list button').first()).toContainText('Sentier du Mélezet');
+    const queyras = page.locator('.nearby-list button').nth(1);
+    await expect(queyras).toContainText('Tour du Queyras');
+    await expect(queyras.locator('.nearby-ref')).toHaveText('GR58');
+    await expect(queyras).toContainText('130.0 km');
+    // opening the panel turns the marked-trail tiles on, so the list has a visual counterpart
+    expect((await planner(page).state()).overlays.gr).toBe(true);
+
+    await queyras.click();
+    await page.waitForFunction(() => (window as unknown as TestHandles).__planner.getState().anchors.length >= 2);
+    const state = await planner(page).state();
+    expect(state.totalDistanceM).toBeGreaterThan(1000);
+    // the loaded route names itself, which is what the share tile and the save dialog reuse
+    await expect(page.locator('.mc-panel')).toBeHidden();
+  });
+});
+
 test.describe('sharing an image', () => {
   test('the studio composes a tile and keeps it exportable', async ({ page }) => {
     await openPlanner(page);

@@ -6,6 +6,9 @@ import { SLOPE_LEGEND } from '../lib/slopeTiles';
 import { useClickOutside } from '../lib/useClickOutside';
 import { useEscapeKey } from '../lib/useEscapeKey';
 import { type Overlays, usePlanner } from '../store';
+import { NearbyHikes } from './NearbyHikes';
+
+type Panel = 'explore' | 'layers' | 'options' | null;
 
 const OPTION_ROWS: { key: keyof Overlays; labelKey: MsgKey }[] = [
   { key: 'km', labelKey: 'opt_km' },
@@ -20,7 +23,7 @@ const OPTION_ROWS: { key: keyof Overlays; labelKey: MsgKey }[] = [
 
 export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) {
   const t = useT();
-  const [open, setOpen] = useState<'layers' | 'options' | null>(null);
+  const [open, setOpen] = useState<Panel>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const baseLayerId = usePlanner(s => s.baseLayerId);
   const overlays = usePlanner(s => s.overlays);
@@ -32,9 +35,12 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
   useEscapeKey(() => usePlanner.getState().stopFlyover(), flyover);
   const hasRoute = legs.some(l => (l.leg?.coords.length ?? 0) > 0);
 
-  function togglePanel(panel: 'layers' | 'options') {
+  function togglePanel(panel: Exclude<Panel, null>) {
     const next = open === panel ? null : panel;
     setOpen(next);
+    // the marked-trail tiles give the list a visual counterpart, so reading a name and seeing
+    // where it runs is one gesture instead of two
+    if (next === 'explore') usePlanner.getState().setOverlay('gr', true);
     // one thing at a time on a phone: a panel and an open sheet would fight for the screen
     if (next) onPanelOpen?.();
   }
@@ -99,6 +105,26 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
       )}
       <button
         type="button"
+        className={open === 'explore' ? 'mc-btn active' : 'mc-btn'}
+        data-control="explore"
+        title={t('nearby_hikes')}
+        onClick={() => togglePanel('explore')}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="m15.5 8.5-2 5-5 2 2-5z" />
+        </svg>
+      </button>
+      <button
+        type="button"
         className={open === 'layers' ? 'mc-btn active' : 'mc-btn'}
         data-control="layers"
         title={t('basemaps')}
@@ -136,6 +162,13 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
           <circle cx="8.5" cy="17" r="2.2" />
         </svg>
       </button>
+
+      {open === 'explore' && (
+        <div className="mc-panel">
+          <h2>{t('nearby_hikes')}</h2>
+          <NearbyHikes onLoaded={() => setOpen(null)} />
+        </div>
+      )}
 
       {open === 'layers' && (
         <div className="mc-panel">
