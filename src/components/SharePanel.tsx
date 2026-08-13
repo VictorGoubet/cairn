@@ -5,14 +5,14 @@ import { renderShareImage, type ShareFormat, type ShareImageOptions } from '../l
 import { useEscapeKey } from '../lib/useEscapeKey';
 import { routeCoords, usePlanner } from '../store';
 
-type PresetKey = 'map' | 'satellite' | 'night' | 'trace' | 'paper';
+type PresetKey = 'map' | 'satellite' | 'overlay' | 'trace' | 'paper';
 
 /** curated looks, Strava-style: one swipe picks a whole layout instead of stacking options */
 const PRESETS: { key: PresetKey; options: Omit<ShareImageOptions, 'format' | 'title'> }[] = [
   { key: 'map', options: { background: 'plan', showStats: true, showProfile: true } },
   { key: 'satellite', options: { background: 'satellite', showStats: true, showProfile: false } },
-  { key: 'night', options: { background: 'dark', showStats: true, showProfile: true } },
-  { key: 'trace', options: { background: 'dark', showStats: false, showProfile: false } },
+  { key: 'overlay', options: { background: 'transparent', showStats: true, showProfile: true } },
+  { key: 'trace', options: { background: 'transparent', showStats: false, showProfile: false } },
   { key: 'paper', options: { background: 'light', showStats: true, showProfile: true } },
 ];
 
@@ -175,20 +175,38 @@ export function SharePanel({ onClose }: { onClose: () => void }) {
           </button>
           <div className="share-networks">
             <button type="button" className="network-btn" title="Instagram" onClick={() => shareTo('instagram')}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <rect x="3" y="3" width="18" height="18" rx="5" />
-                <circle cx="12" cy="12" r="4.2" />
-                <circle cx="17.2" cy="6.8" r="1.3" fill="currentColor" stroke="none" />
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <defs>
+                  <radialGradient id="ig-grad" cx="0.3" cy="1.1" r="1.3">
+                    <stop offset="0" stopColor="#fdd575" />
+                    <stop offset="0.26" stopColor="#fa7e1e" />
+                    <stop offset="0.55" stopColor="#d62976" />
+                    <stop offset="0.8" stopColor="#962fbf" />
+                    <stop offset="1" stopColor="#4f5bd5" />
+                  </radialGradient>
+                </defs>
+                <rect x="1.5" y="1.5" width="21" height="21" rx="6" fill="url(#ig-grad)" />
+                <rect x="6.2" y="6.2" width="11.6" height="11.6" rx="3.6" fill="none" stroke="#fff" strokeWidth="1.8" />
+                <circle cx="12" cy="12" r="2.9" fill="none" stroke="#fff" strokeWidth="1.8" />
+                <circle cx="16.1" cy="7.9" r="1.15" fill="#fff" />
               </svg>
             </button>
             <button type="button" className="network-btn" title="WhatsApp" onClick={() => shareTo('whatsapp')}>
-              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M12 2.5A9.4 9.4 0 0 0 3.9 16.7L2.5 21.5l4.9-1.3A9.4 9.4 0 1 0 12 2.5zm0 2a7.4 7.4 0 1 1-3.8 13.8l-.4-.2-2.9.8.8-2.8-.3-.4A7.4 7.4 0 0 1 12 4.5zm-2.6 3.6c-.2 0-.5 0-.7.3-.2.3-.9.9-.9 2.1s.9 2.5 1 2.6c.1.2 1.8 2.8 4.4 3.8 2.2.9 2.6.7 3.1.6.5 0 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.6-.3l-2-1c-.3-.1-.5-.1-.7.1l-.9 1.1c-.2.2-.3.2-.6.1a6 6 0 0 1-1.8-1.1 6.6 6.6 0 0 1-1.2-1.6c-.1-.3 0-.4.1-.5l.5-.6c.2-.2.2-.3.3-.5v-.5L10 8.4c-.2-.4-.4-.4-.6-.4z" />
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="10.5" fill="#25d366" />
+                <path
+                  fill="#fff"
+                  d="M12 4.8a7.1 7.1 0 0 0-6.1 10.7l-1 3.7 3.8-1a7.1 7.1 0 1 0 3.3-13.4zm0 1.6a5.5 5.5 0 1 1-2.9 10.2l-.3-.2-2.2.6.6-2.1-.2-.3A5.5 5.5 0 0 1 12 6.4zM10 8.6c-.2 0-.4 0-.6.2-.2.2-.7.7-.7 1.6s.7 1.9.8 2c.1.1 1.4 2.1 3.3 2.9 1.7.7 2 .5 2.3.5.4 0 1.2-.5 1.3-.9.2-.5.2-.9.1-1 0 0-.2-.1-.4-.2l-1.5-.7c-.2-.1-.4-.1-.5.1l-.7.8c-.1.2-.3.2-.4.1a4.5 4.5 0 0 1-1.4-.9 5 5 0 0 1-.9-1.2c-.1-.2 0-.3.1-.4l.4-.5c.1-.2.1-.3.2-.4v-.4L10.5 9c-.1-.3-.3-.4-.5-.4z"
+                />
               </svg>
             </button>
             <button type="button" className="network-btn" title="X" onClick={() => shareTo('x')}>
-              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M17.7 3H21l-7.3 8.3L22.2 21h-6.7l-5.3-6.2L4.2 21H1l7.8-8.9L1.8 3h6.9l4.8 5.7L17.7 3zm-1.2 16h1.9L6.8 4.9H4.8L16.5 19z" />
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="1.5" y="1.5" width="21" height="21" rx="6" fill="#0f1419" />
+                <path
+                  fill="#fff"
+                  d="M15.9 5.5h2.2l-4.8 5.6 5.7 7.4h-4.5l-3.5-4.5-4 4.5H4.8l5.2-5.9-5.5-7.1H9l3.2 4.1 3.7-4.1zm-.8 11.7h1.2L8.4 6.7H7.1l8 10.5z"
+                />
               </svg>
             </button>
           </div>

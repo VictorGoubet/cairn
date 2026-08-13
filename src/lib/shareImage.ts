@@ -11,7 +11,7 @@ import { elevationStats, formatDistance, formatDuration, hikingDurationH, type L
 import { tNow } from './i18n';
 
 export type ShareFormat = 'square' | 'story';
-export type ShareBackground = 'plan' | 'satellite' | 'dark' | 'light';
+export type ShareBackground = 'plan' | 'satellite' | 'transparent' | 'light';
 
 export interface ShareImageOptions {
   format: ShareFormat;
@@ -19,6 +19,8 @@ export interface ShareImageOptions {
   showStats: boolean;
   showProfile: boolean;
   title: string;
+  /** shrinks the whole composition, for thumbnail previews; 1 is the shareable size */
+  scale?: number;
 }
 
 export const SHARE_SIZES: Record<ShareFormat, { w: number; h: number }> = {
@@ -54,13 +56,18 @@ export async function renderShareImage(
   coords: LonLatEle[],
   options: ShareImageOptions,
 ): Promise<void> {
-  const { w, h } = SHARE_SIZES[options.format];
+  const scale = options.scale ?? 1;
+  const w = Math.round(SHARE_SIZES[options.format].w * scale);
+  const h = Math.round(SHARE_SIZES[options.format].h * scale);
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
+  ctx.clearRect(0, 0, w, h);
   const onMap = options.background === 'plan' || options.background === 'satellite';
+  // white ink over imagery or over whatever photo the transparent tile lands on
+  const lightInk = onMap || options.background === 'transparent';
   // on a basemap the route frames the whole canvas; on a plain background it sits in the
   // upper part, leaving the lower band to the stats, or dead center when nothing else shows
   const bare = !options.showStats && !options.showProfile;
@@ -71,13 +78,18 @@ export async function renderShareImage(
       : { x: w * 0.12, y: h * 0.14, w: w * 0.76, h: h * (options.format === 'story' ? 0.5 : 0.42) };
   const view = fitView(coords, traceBox.w, traceBox.h);
 
-  drawBackground(ctx, w, h, options.background);
+  if (options.background === 'light') drawBackground(ctx, w, h);
   if (onMap) await drawTiles(ctx, view, w, h, options.background === 'plan');
   drawScrims(ctx, w, h, onMap);
+  // a soft shadow keeps white ink readable on whatever story photo sits behind the tile
+  if (options.background === 'transparent') {
+    ctx.shadowColor = 'rgba(10, 12, 16, 0.55)';
+    ctx.shadowBlur = Math.round(w * 0.012);
+  }
   drawTrace(ctx, coords, view, traceBox, onMap);
-  if (options.showProfile) drawProfile(ctx, coords, w, h, options, onMap);
-  if (options.showStats) drawStats(ctx, coords, w, h, options, onMap);
-  await drawBrand(ctx, w, onMap || options.background === 'dark');
+  if (options.showProfile) drawProfile(ctx, coords, w, h, options, lightInk);
+  if (options.showStats) drawStats(ctx, coords, w, h, options, lightInk);
+  await drawBrand(ctx, w, lightInk);
 }
 
 /** Web Mercator projection into the world square [0, 1). */
@@ -188,15 +200,10 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-function drawBackground(ctx: CanvasRenderingContext2D, w: number, h: number, background: ShareBackground): void {
+function drawBackground(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   const gradient = ctx.createLinearGradient(0, 0, 0, h);
-  if (background === 'dark') {
-    gradient.addColorStop(0, '#20242e');
-    gradient.addColorStop(1, '#12141a');
-  } else {
-    gradient.addColorStop(0, '#fbfaf7');
-    gradient.addColorStop(1, '#efece5');
-  }
+  gradient.addColorStop(0, '#fbfaf7');
+  gradient.addColorStop(1, '#efece5');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, w, h);
 }
@@ -269,7 +276,7 @@ function drawProfile(
   w: number,
   h: number,
   options: ShareImageOptions,
-  onMap: boolean,
+  lightInk: boolean,
 ): void {
   const box = { x: w * 0.08, w: w * 0.84, h: h * 0.07, y: h * (options.showStats ? 0.72 : 0.84) };
   const elevations = coords.map(c => c[2]);
@@ -283,7 +290,7 @@ function drawProfile(
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   });
-  const ink = onMap || options.background === 'dark' ? '#ffffff' : '#2b2e34';
+  const ink = lightInk ? '#ffffff' : '#2b2e34';
   ctx.strokeStyle = ink;
   ctx.lineWidth = 4;
   ctx.lineJoin = 'round';
@@ -304,7 +311,7 @@ function drawStats(
   w: number,
   h: number,
   options: ShareImageOptions,
-  onMap: boolean,
+  lightInk: boolean,
 ): void {
   const { gainM, lossM } = elevationStats(coords);
   const distanceM = pathDistanceM(coords);
@@ -314,8 +321,8 @@ function drawStats(
     [tNow('dminus'), `${Math.round(lossM)} m`],
     [tNow('duration_est'), formatDuration(hikingDurationH(distanceM, gainM, lossM))],
   ];
-  const ink = onMap || options.background === 'dark' ? '#ffffff' : '#212529';
-  const sub = onMap || options.background === 'dark' ? 'rgba(255,255,255,0.75)' : 'rgba(33,37,41,0.65)';
+  const ink = lightInk ? '#ffffff' : '#212529';
+  const sub = lightInk ? 'rgba(255,255,255,0.8)' : 'rgba(33,37,41,0.65)';
   const baseline = h * 0.9;
 
   ctx.save();
@@ -340,7 +347,7 @@ function drawStats(
 
 async function drawBrand(ctx: CanvasRenderingContext2D, w: number, lightInk: boolean): Promise<void> {
   ctx.save();
-  const size = Math.round(w * 0.095);
+  const size = Math.round(w * 0.125);
   const x = w * 0.05;
   const y = w * 0.035;
   let textX = x;
@@ -348,14 +355,14 @@ async function drawBrand(ctx: CanvasRenderingContext2D, w: number, lightInk: boo
   await loadImage(`${import.meta.env.BASE_URL}logo.png`).then(
     logo => {
       ctx.drawImage(logo, x, y, size, size);
-      textX = x + size * 1.12;
+      textX = x + size * 1.1;
     },
     () => undefined,
   );
   ctx.textAlign = 'left';
   ctx.fillStyle = lightInk ? '#ffffff' : '#212529';
-  ctx.font = `800 ${Math.round(w * 0.058)}px -apple-system, 'Segoe UI', Roboto, sans-serif`;
-  ctx.fillText('cairn', textX, y + size * 0.74);
+  ctx.font = `800 ${Math.round(w * 0.075)}px -apple-system, 'Segoe UI', Roboto, sans-serif`;
+  ctx.fillText('cairn', textX, y + size * 0.76);
   ctx.restore();
 }
 

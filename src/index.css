@@ -781,61 +781,54 @@ body {
   position: relative;
 }
 
+.routes-modal {
+  width: min(860px, 100%);
+}
+
 .routes-panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 30;
-  width: 300px;
-  max-height: 65vh;
   overflow-y: auto;
-  padding: 12px 14px;
-  background: color-mix(in srgb, var(--surface) 97%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
 }
 
-.routes-panel h2 {
-  margin: 0 0 8px;
-  font-size: 12px;
-  color: var(--ink-2);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-
-.routes-panel ul {
+.routes-grid {
   margin: 0;
   padding: 0;
   list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
 }
 
-.routes-panel li {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  border-left: 3px solid transparent;
-  border-radius: 6px;
+.routes-grid li {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
 }
 
-.routes-panel li.active {
-  border-left-color: var(--accent);
-  background: #eef3fa;
+.routes-grid li.active {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.route-thumb {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: #eef0ea;
+  border-radius: 8px;
 }
 
 .route-load {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 6px 8px;
+  gap: 2px;
+  width: 100%;
+  padding: 8px;
   text-align: left;
   color: var(--ink);
   background: none;
   border: none;
-  border-radius: 6px;
   cursor: pointer;
 }
 
@@ -854,11 +847,16 @@ body {
 }
 
 .route-remove {
-  padding: 0 8px;
-  color: var(--ink-2);
-  background: none;
-  border: none;
-  font-size: 16px;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 0 7px;
+  color: var(--ink);
+  background: rgb(255 255 255 / 88%);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 15px;
+  line-height: 1.5;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -911,6 +909,21 @@ body {
 
 .export-menu span {
   font-size: 11.5px;
+  color: var(--ink-2);
+}
+
+.share-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.share-menu svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
   color: var(--ink-2);
 }
 
@@ -1070,7 +1083,8 @@ body {
   height: auto;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: #eee;
+  /* checkerboard: a transparent tile must read as transparent in the preview */
+  background: repeating-conic-gradient(#e9e7e2 0% 25%, #f9f8f5 0% 50%) 0 0 / 22px 22px;
 }
 
 .share-preview.story canvas {
@@ -1696,10 +1710,6 @@ body {
     width: auto;
     max-height: calc(100dvh - 160px);
     overflow-y: auto;
-  }
-
-  .routes-panel {
-    width: min(320px, calc(100vw - 24px));
   }
 
   .point-editor {

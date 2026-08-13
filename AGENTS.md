@@ -218,13 +218,18 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - The style carries a `sky` and a `background` layer. Without the sky, everything above the
   horizon is unpainted and the page shows through as soon as the camera tilts.
 - Map control buttons carry `data-control` so tests never depend on their order or labels.
-- The Share button is a menu: copy the link, or open the share-image studio
+- "My routes" opens as a modal gallery: one card per saved route, its thumbnail drawn by the
+  share-tile renderer (`scale` option, plan background, bare). The backdrop click closes the
+  modal without reaching the map, unlike the floating panels which pass the click through.
+- The Share button is a compact icon menu: copy the link, or open the share-image studio
   (`components/SharePanel.tsx` over `lib/shareImage.ts`), a canvas-composed social tile the way
   Strava does them: square or story, five curated presets picked through a carousel (map,
-  satellite, night, pure trace, paper) instead of stacked toggles, a large logo + wordmark, then
-  copy / network icon buttons / download. The network buttons hand the image to the native
-  share sheet on a phone; a desktop cannot upload into a social site, so the image lands in the
-  clipboard and the site opens. The gotchas are load-bearing:
+  satellite, transparent overlay for a story photo, pure trace, paper) instead of stacked
+  toggles, a large logo + wordmark, then copy / colored network buttons / download. The network
+  buttons hand the image to the native share sheet on a phone; a desktop cannot upload into a
+  social site, so the image lands in the clipboard and the site opens. Transparent tiles keep
+  their alpha (PNG, no background paint, white ink with a soft shadow) and preview over a CSS
+  checkerboard. The gotchas are load-bearing:
   - tiles are fetched with `crossOrigin: anonymous` (Géoplateforme sends CORS) so the canvas
     stays exportable; a tainted canvas would make `toBlob` throw;
   - renders compose on an off-screen canvas and blit when done, otherwise two renders in

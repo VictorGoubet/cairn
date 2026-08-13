@@ -205,13 +205,24 @@ test.describe('saving without an account', () => {
 
   test('floating panels close when clicking elsewhere, without swallowing the click', async ({ page }) => {
     await openPlanner(page);
+    await page.locator('[data-control="layers"]').click();
+    await expect(page.locator('.mc-panel')).toBeVisible();
+
+    await clickAt(page, CEILLAC);
+    await expect(page.locator('.mc-panel')).toBeHidden();
+    // the map click went through
+    await page.waitForFunction(() => (window as unknown as TestHandles).__planner.getState().anchors.length === 1);
+  });
+
+  test('the routes gallery is a modal: the backdrop closes it and keeps the click', async ({ page }) => {
+    await openPlanner(page);
     await page.locator('.routes-wrap > button').click();
     await expect(page.locator('.routes-panel')).toBeVisible();
 
-    await clickAt(page, CEILLAC);
+    // a click on the backdrop, well clear of the centered panel
+    await page.mouse.click(40, 400);
     await expect(page.locator('.routes-panel')).toBeHidden();
-    // the map click went through
-    await page.waitForFunction(() => (window as unknown as TestHandles).__planner.getState().anchors.length === 1);
+    expect((await planner(page).state()).anchorCount).toBe(0);
   });
 });
 
