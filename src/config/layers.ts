@@ -61,14 +61,15 @@ export const FALLBACK_BASE_LAYER = 'scan25';
 /** the flyover flies over imagery: at 200 m above the ground a drawn map has nothing to show */
 export const FLYOVER_BASE_LAYER = 'ortho';
 
+// Plan IGN as raster: share images draw tiles on a canvas, where vector tiles have no place
+export const PLAN_IGN_RASTER_TILES = `${GEOPF_WMTS}&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&FORMAT=image/png`;
+export const ORTHO_RASTER_TILES = `${GEOPF_WMTS}&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&FORMAT=image/jpeg`;
+
 // fixed tile (massif des Bornes, z12) used as the thumbnail for base layers
 const THUMB_TILE = { z: 12, x: 2117, y: 1458 };
 
 export function layerThumbUrl(id: string): string {
-  const template =
-    id === 'plan-ign'
-      ? `${GEOPF_WMTS}&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&FORMAT=image/png`
-      : (RASTER_BASE_LAYERS.find(l => l.id === id)?.tiles ?? '');
+  const template = id === 'plan-ign' ? PLAN_IGN_RASTER_TILES : (RASTER_BASE_LAYERS.find(l => l.id === id)?.tiles ?? '');
   return template
     .replace('{z}', String(THUMB_TILE.z))
     .replace('{x}', String(THUMB_TILE.x))

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { onFlyoverProgress, scrubFlyover } from '../lib/flyover';
 import { type LonLatEle, nearestIndex } from '../lib/geo';
 import { tNow } from '../lib/i18n';
 import { kindDef, kindLabelKey, type PointKind } from '../lib/points';
@@ -34,11 +35,15 @@ export function ProfileChart({
   onSelectionChange: (selection: ProfileSelection | null) => void;
 }) {
   const setHoverPoint = usePlanner(s => s.setHoverPoint);
+  const flyover = usePlanner(s => s.flyover);
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 600, h: 130 });
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const dragFromMRef = useRef<number | null>(null);
   const draggedRef = useRef(false);
+  const scrubbingRef = useRef(false);
+  const progressRef = useRef<SVGGElement>(null);
+  const poiRefs = useRef(new Map<number, SVGGElement>());
 
   useEffect(() => {
     const el = containerRef.current;
@@ -101,18 +106,64 @@ export function ProfileChart({
   const yTicks = niceTicks(eleMin, eleMax, 3);
   const xTicks = niceTicks(0, totalM / 1000, 5);
 
-  function eventDistM(e: React.MouseEvent<SVGRectElement>): number {
+  // the flying dot mirrored on the profile, moved imperatively: a React render per camera
+  // frame would reconcile the whole SVG sixty times a second for one moving circle
+  useEffect(() => {
+    const marker = progressRef.current;
+    if (!flyover || !marker) return;
+    const { x: sx, y: sy } = makeScales(size.w, size.h, totalM, eleMin, eleMax);
+    let prevM: number | null = null;
+    marker.style.display = 'none';
+    const off = onFlyoverProgress(distM => {
+      const index = nearestIndex(dists, distM);
+      marker.setAttribute('transform', `translate(${sx(dists[index])},${sy(coords[index][2])})`);
+      marker.style.display = '';
+      // a crossed annotated point gets a little bounce, both ways so scrubbing pops them too
+      if (prevM !== null) {
+        const from = Math.min(prevM, distM);
+        const to = Math.max(prevM, distM);
+        for (const p of pois) {
+          if (p.distM > from && p.distM <= to) {
+            const el = poiRefs.current.get(p.distM);
+            if (el) {
+              el.classList.remove('poi-hit');
+              requestAnimationFrame(() => el.classList.add('poi-hit'));
+            }
+          }
+        }
+      }
+      prevM = distM;
+    });
+    return () => {
+      off();
+      marker.style.display = 'none';
+    };
+  }, [flyover, dists, coords, pois, size.w, size.h, totalM, eleMin, eleMax]);
+
+  function eventDistM(e: React.PointerEvent<SVGRectElement>): number {
     const rect = e.currentTarget.getBoundingClientRect();
-    return ((e.clientX - rect.left) / rect.width) * totalM;
+    const ratio = (e.clientX - rect.left) / rect.width;
+    return Math.min(Math.max(ratio, 0), 1) * totalM;
   }
 
-  function onMouseDown(e: React.MouseEvent<SVGRectElement>) {
+  function onPointerDown(e: React.PointerEvent<SVGRectElement>) {
+    // capture so a drag keeps scrubbing or selecting outside the chart
+    e.currentTarget.setPointerCapture(e.pointerId);
+    if (flyover) {
+      scrubbingRef.current = true;
+      scrubFlyover(eventDistM(e));
+      return;
+    }
     dragFromMRef.current = eventDistM(e);
     draggedRef.current = false;
   }
 
-  function onMouseMove(e: React.MouseEvent<SVGRectElement>) {
+  function onPointerMove(e: React.PointerEvent<SVGRectElement>) {
     const distM = eventDistM(e);
+    if (flyover) {
+      if (scrubbingRef.current) scrubFlyover(distM);
+      return;
+    }
     const index = nearestIndex(dists, distM);
     setHoverIndex(index);
     setHoverPoint([coords[index][0], coords[index][1]]);
@@ -123,13 +174,15 @@ export function ProfileChart({
     }
   }
 
-  function onMouseUp() {
+  function onPointerUp() {
+    scrubbingRef.current = false;
+    if (flyover) return;
     // a plain click (no drag) clears the selection
     if (dragFromMRef.current !== null && !draggedRef.current) onSelectionChange(null);
     dragFromMRef.current = null;
   }
 
-  function onMouseLeave() {
+  function onPointerLeave() {
     dragFromMRef.current = null;
     setHoverIndex(null);
     setHoverPoint(null);
@@ -174,7 +227,14 @@ export function ProfileChart({
           const px = x(dists[index]);
           const py = y(coords[index][2]);
           return (
-            <g key={`${p.distM}-${p.kind}-${p.name}`} className="viz-poi">
+            <g
+              key={`${p.distM}-${p.kind}-${p.name}`}
+              className="viz-poi"
+              ref={el => {
+                if (el) poiRefs.current.set(p.distM, el);
+                else poiRefs.current.delete(p.distM);
+              }}
+            >
               <line x1={px} x2={px} y1={py} y2={py - 12} />
               <text x={px} y={py - 15} textAnchor="middle">
                 {def.emoji}
@@ -183,23 +243,27 @@ export function ProfileChart({
             </g>
           );
         })}
+        <g ref={progressRef} className="viz-flyover-dot" style={{ display: 'none' }}>
+          <circle r={8} className="viz-flyover-glow" />
+          <circle r={3.5} className="viz-flyover-core" />
+        </g>
         {hover && (
           <g>
             <line x1={hover.cx} x2={hover.cx} y1={PAD.top} y2={PAD.top + plotH} className="viz-crosshair" />
             <circle cx={hover.cx} cy={hover.cy} r={4} className="viz-dot" />
           </g>
         )}
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer hover only, purely visual enrichment */}
         <rect
           x={PAD.left}
           y={PAD.top}
           width={Math.max(plotW, 0)}
           height={Math.max(plotH, 0)}
           fill="transparent"
-          onMouseDown={onMouseDown}
-          onMouseMove={onMouseMove}
-          onMouseUp={onMouseUp}
-          onMouseLeave={onMouseLeave}
+          style={{ touchAction: 'none' }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerLeave={onPointerLeave}
         />
       </svg>
       {hover && hoverIndex !== null && (

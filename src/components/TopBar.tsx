@@ -11,6 +11,7 @@ import { useIsMobile } from '../lib/useMediaQuery';
 import { routeCoords, routePois, usePlanner } from '../store';
 import { RoutesPanel } from './RoutesPanel';
 import { SearchBox } from './SearchBox';
+import { SharePanel } from './SharePanel';
 
 type ExportFormat = 'gpx' | 'kml' | 'tcx';
 
@@ -35,17 +36,23 @@ export function TopBar() {
   const fileRef = useRef<HTMLInputElement>(null);
   const routesWrapRef = useRef<HTMLDivElement>(null);
   const exportWrapRef = useRef<HTMLDivElement>(null);
+  const shareWrapRef = useRef<HTMLDivElement>(null);
   const [showExport, setShowExport] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [showShareImage, setShowShareImage] = useState(false);
   useClickOutside(routesWrapRef, closeRoutesPanel, showRoutes);
   useClickOutside(exportWrapRef, () => setShowExport(false), showExport);
+  useClickOutside(shareWrapRef, () => setShowShareMenu(false), showShareMenu);
   useEscapeKey(closeRoutesPanel, showRoutes);
   useEscapeKey(() => setShowExport(false), showExport);
+  useEscapeKey(() => setShowShareMenu(false), showShareMenu);
 
   const coords = routeCoords(legs);
   const hasRoute = coords.length >= 2;
   const [copied, setCopied] = useState(false);
 
   async function shareRoute() {
+    setShowShareMenu(false);
     await navigator.clipboard.writeText(await buildShareUrl());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -134,9 +141,30 @@ export function TopBar() {
         <button type="button" onClick={() => fileRef.current?.click()}>
           {t('import')}
         </button>
-        <button type="button" disabled={!hasRoute} onClick={shareRoute}>
-          {copied ? t('copied') : t('share')}
-        </button>
+        <div className="menu-wrap" ref={shareWrapRef}>
+          <button type="button" disabled={!hasRoute} onClick={() => setShowShareMenu(v => !v)}>
+            {copied ? t('copied') : t('share')}
+          </button>
+          {showShareMenu && (
+            <div className="export-menu">
+              <button type="button" onClick={shareRoute}>
+                <strong>{t('share_link')}</strong>
+                <span>{t('share_link_hint')}</span>
+              </button>
+              <button
+                type="button"
+                data-control="share-image"
+                onClick={() => {
+                  setShowShareMenu(false);
+                  setShowShareImage(true);
+                }}
+              >
+                <strong>{t('share_image')}</strong>
+                <span>{t('share_image_hint')}</span>
+              </button>
+            </div>
+          )}
+        </div>
         <div className="menu-wrap" ref={exportWrapRef}>
           <button type="button" className="primary" disabled={!hasRoute} onClick={() => setShowExport(v => !v)}>
             {t('export')} ▾
@@ -153,6 +181,8 @@ export function TopBar() {
           )}
         </div>
       </div>
+
+      {showShareImage && <SharePanel onClose={() => setShowShareImage(false)} />}
 
       <input
         ref={fileRef}

@@ -276,6 +276,8 @@ test.describe('reading the route', () => {
         (window as unknown as TestHandles).__map.getStyle().layers.some(l => l.id === 'flyover-dot-core'),
       );
     expect(await dotVisible()).toBe(true);
+    // and its twin walks the elevation profile
+    await expect(page.locator('.viz-flyover-dot')).toBeVisible({ timeout: 10_000 });
 
     // the flight waits briefly for tiles before taking off, then the view keeps evolving. On a
     // short route the look-at point settles on the finish, so the framing moves through zoom
@@ -361,6 +363,45 @@ test.describe('reading the route', () => {
     const state = await planner(page).state();
     expect(state.anchorCount).toBe(3);
     expect(state.legCoordCounts.every(count => count > 1)).toBe(true);
+  });
+});
+
+test.describe('sharing an image', () => {
+  test('the studio composes a tile and keeps it exportable', async ({ page }) => {
+    await openPlanner(page);
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 1);
+
+    await page.locator('.topbar .menu-wrap button', { hasText: /Partager|Share/ }).click();
+    await page.locator('[data-control="share-image"]').click();
+    await expect(page.locator('.share-panel')).toBeVisible();
+
+    // the dark background needs no network, so the render is deterministic
+    await page.locator('.share-options .segmented').nth(1).locator('button').nth(2).click();
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const canvas = document.querySelector<HTMLCanvasElement>('[data-control="share-canvas"]');
+            if (!canvas || canvas.width === 0) return 0;
+            // an exportable, non-blank canvas: tainting or an empty draw would fail both checks
+            return canvas.toDataURL('image/png').length;
+          }),
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThan(30_000);
+
+    // story format re-renders at the taller size
+    await page.locator('.share-options .segmented').nth(0).locator('button').nth(1).click();
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.querySelector<HTMLCanvasElement>('[data-control="share-canvas"]')?.height ?? 0),
+      )
+      .toBe(1920);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.share-panel')).toBeHidden();
   });
 });
 

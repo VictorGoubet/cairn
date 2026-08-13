@@ -1,10 +1,13 @@
 /**
  * Drone-like flight along the route, the way Strava plays an activity back.
  *
- * Built on the two-path technique Mapbox documents for camera paths: the camera rides one path
- * while a glowing dot runs ahead of it on the route, and `calculateCameraOptionsFromTo` derives
- * center, zoom, pitch and bearing from that geometry (MapLibre has no FreeCameraOptions).
- * Letting geometry drive the camera beats animating pitch and zoom by hand.
+ * A glowing dot walks the whole route in a near-constant time while the camera chases it, and
+ * `calculateCameraOptionsFromTo` derives center, zoom, pitch and bearing from that geometry
+ * (MapLibre has no FreeCameraOptions). Letting geometry drive the camera beats animating pitch
+ * and zoom by hand. Constant playback time means the ground speed grows with the route, so the
+ * look-ahead (and with it the camera height) scales with the length: the imagery ahead is
+ * always requested a constant few seconds before the camera reaches it, and a long route reads
+ * as a higher overview pass while a short loop keeps the low grazing shot.
  *
  * Smoothness is C2 by construction, not filtered after the fact. A hiking track is piecewise
  * linear: position is continuous but velocity jumps at every vertex, and the eye reads each
@@ -12,45 +15,42 @@
  * window-averaged control points, which has continuous acceleration; its altitude comes from a
  * clearance envelope precomputed over the whole route and sampled through the same spline; and
  * ground speed follows a trapezoidal velocity profile, so the flight also starts and ends
- * without a jolt. Every frame is a pure function of elapsed time, with no filter state that
- * would behave differently at 60 fps and at 25.
+ * without a jolt. Every frame is a pure function of the dot's position, with no filter state
+ * that would behave differently at 60 fps and at 25.
  *
- * This module only drives the camera and the dot. The scene it flies through is the caller's
- * job (imagery, a coarser DEM, no markers and no labels), and terrain exaggeration is pinned
- * to 1 there: MapLibre drops the closest tiles when terrain is on, and the effect grows with
- * exaggeration (maplibre-gl-js issue 1241), which is what makes chunks of the map vanish
- * mid-flight.
+ * The flight opens with the camera over the start, tilting from top-down to grazing as the dot
+ * pulls ahead, then follows. Holding the 3D chase distance whenever the dot is closer than the
+ * look-ahead is what keeps the derived zoom steady through that opening.
+ *
+ * Scrubbing on the elevation profile takes over playback: the first scrub event latches the
+ * flight into manual mode, and the dot then follows the pointer until the flight is closed.
+ *
+ * This module only drives the camera, the dot and the crossing pulses. The scene it flies
+ * through is the caller's job (imagery, a coarser DEM, no markers and no labels), and terrain
+ * exaggeration is pinned to 1 there: MapLibre drops the closest tiles when terrain is on, and
+ * the effect grows with exaggeration (maplibre-gl-js issue 1241), which is what makes chunks of
+ * the map vanish mid-flight.
  */
 
 import { type GeoJSONSource, LngLat, type Map as MapLibreMap } from 'maplibre-gl';
 import { cumulativeDistancesM, type LonLatEle, nearestIndex } from './geo';
 
-/** short routes stretch to about this long, so a two kilometre loop is not over in a blink */
-const FLIGHT_SECONDS = 20;
-/**
- * Ground speed cap, and with it the playback time of a long route. It is bounded by tiles rather
- * than by taste: the imagery has to arrive before the camera gets there.
- */
-const MAX_SPEED_M_S = 170;
+/** near-constant playback: the dot crosses the route in about this long, plus the ramps */
+const FLIGHT_SECONDS = 10;
 /** speed ramps up and down over this long, the trapezoidal profile of motion control */
 const RAMP_SECONDS = 2.5;
 /**
- * How far ahead the camera looks, and how high it flies. Together they set the pitch and the
- * zoom MapLibre derives: measured at these latitudes, looking 1150 m ahead from 220 m up lands
- * near zoom 15.5 and pitch 79, which is the low grazing shot. Keeping the ratio holds that
- * framing on short routes too. Pitch flattens as soon as the height approaches the look-ahead,
- * and a much closer camera derives a zoom past 16.5, where tiles stop keeping up.
+ * Look-ahead and cruise height, tied by the ratio that frames the low grazing shot (measured:
+ * 1150 m ahead from 220 m up lands near zoom 15.5 and pitch 79 at our latitudes). The look-ahead
+ * scales with the route so the tile lead time stays constant at any speed; the floor keeps a
+ * short route from deriving a zoom past 16.5 (200 m of look-ahead framed a hedge), and the cap
+ * bounds the highest pass on very long routes.
  */
-const MAX_AHEAD_M = 1150;
 const HEIGHT_TO_AHEAD = 220 / 1150;
-/**
- * Short routes look ahead a fraction of their length, or the flight starts staring at the end.
- * The floor is what keeps a one kilometre route from deriving a zoom past 16.5: the look-ahead
- * sets the zoom, and 200 m of it framed a hedge.
- */
 const AHEAD_FRACTION = 0.4;
 const MIN_AHEAD_M = 700;
-/** the camera parks this short of the finish, two coincident points derive no bearing */
+const MAX_AHEAD_M = 6000;
+/** the dot keeps this lead over the camera park position, two coincident points derive no bearing */
 const MIN_SEPARATION_M = 40;
 /** flight path resampling step, and the averaging window that irons out switchbacks */
 const RESAMPLE_STEP_M = 25;
@@ -66,12 +66,44 @@ export const FLYOVER_EXAGGERATION = 1;
  * imagery the flight flies over is only requested when play is pressed.
  */
 const TAKEOFF_TIMEOUT_MS = 3000;
+/** how long a crossing pulse lives on screen */
+const PULSE_MS = 1100;
 
 const DOT_SOURCE = 'flyover-dot';
-export const DOT_LAYERS = ['flyover-dot-glow', 'flyover-dot-core'] as const;
+const PULSE_SOURCE = 'flyover-pulse';
+export const DOT_LAYERS = ['flyover-pulse-ring', 'flyover-dot-glow', 'flyover-dot-core'] as const;
+
+const PROGRESS_EVENT = 'cairn:flyover-progress';
+const SCRUB_EVENT = 'cairn:flyover-scrub';
+
+export interface FlyoverPoi {
+  lon: number;
+  lat: number;
+  distM: number;
+}
 
 export interface FlyoverHandle {
   stop(): void;
+}
+
+/**
+ * Subscribes to the dot's position while a flight is running.
+ *
+ * Args:
+ *   listener: receives the dot's distance along the route, once per rendered frame.
+ *
+ * Returns:
+ *   An unsubscribe function.
+ */
+export function onFlyoverProgress(listener: (distM: number) => void): () => void {
+  const handler = (e: Event) => listener((e as CustomEvent<number>).detail);
+  window.addEventListener(PROGRESS_EVENT, handler);
+  return () => window.removeEventListener(PROGRESS_EVENT, handler);
+}
+
+/** Moves the running flight to a position on the route; playback stays manual afterwards. */
+export function scrubFlyover(distM: number): void {
+  window.dispatchEvent(new CustomEvent<number>(SCRUB_EVENT, { detail: distM }));
 }
 
 interface Path {
@@ -96,15 +128,21 @@ function positionAt(path: Path, distanceM: number): LonLatEle {
  * Args:
  *   map: map to drive; its camera is taken over for the duration.
  *   coords: route geometry with elevations, at least two points.
+ *   pois: annotated points that pulse when the dot crosses them.
  *   onEnd: called once, when the flight finishes or is stopped.
  *
  * Returns:
  *   A handle to stop the flight early.
  */
-export function startFlyover(map: MapLibreMap, coords: LonLatEle[], onEnd: () => void): FlyoverHandle {
+export function startFlyover(
+  map: MapLibreMap,
+  coords: LonLatEle[],
+  pois: FlyoverPoi[],
+  onEnd: () => void,
+): FlyoverHandle {
   const track: Path = { coords, dists: cumulativeDistancesM(coords) };
   const totalM = track.dists[track.dists.length - 1];
-  const speed = Math.min(MAX_SPEED_M_S, totalM / FLIGHT_SECONDS);
+  const speed = totalM / FLIGHT_SECONDS;
   const aheadM = Math.max(MIN_AHEAD_M, Math.min(MAX_AHEAD_M, totalM * AHEAD_FRACTION));
   const heightM = aheadM * HEIGHT_TO_AHEAD;
   // chase distance in 3D; holding it also holds the zoom MapLibre derives from it
@@ -115,21 +153,24 @@ export function startFlyover(map: MapLibreMap, coords: LonLatEle[], onEnd: () =>
   // stays under 85: that close to the horizon the near plane starts clipping the ground
   const previousMaxPitch = map.getMaxPitch();
   map.setMaxPitch(82);
-  addDot(map);
+  addLayers(map);
 
   let frame = 0;
   let done = false;
   let startedAt = 0;
+  let manualDist: number | null = null;
+  let renderedDist: number | null = null;
+  let pulses: { poi: FlyoverPoi; bornAt: number }[] = [];
 
-  // the whole frame is a pure function of the distance flown: the camera rides the spline while
-  // the dot runs `aheadM` ahead on the real track, and the camera keeps looking at it
-  const frameFor = (travelledM: number) => {
-    const camDist = Math.min(travelledM, totalM - MIN_SEPARATION_M);
-    const dotDist = Math.min(travelledM + aheadM, totalM);
+  // the whole frame is a pure function of the dot's position: the camera trails it by the
+  // look-ahead, parked over the start while the dot pulls away, and keeps looking at it
+  const frameFor = (dotDist: number) => {
+    const camDist = Math.min(Math.max(dotDist - aheadM, 0), totalM - MIN_SEPARATION_M);
     const camera = splineAt(flight.points, camDist);
     const target = splineAt(flight.points, dotDist);
-    // near the finish the dot parks and the camera closes in; raising the camera to hold the 3D
-    // chase distance keeps the zoom steady and turns the arrival into a pull-up over the finish
+    // while the dot is closer than the look-ahead (the opening, or a scrub near the start),
+    // raising the camera to hold the 3D chase distance keeps the derived zoom steady and tilts
+    // the shot from top-down to grazing as the separation grows
     const separationM = dotDist - camDist;
     const holdDropM = Math.sqrt(Math.max(chaseM * chaseM - separationM * separationM, heightM * heightM));
     const altitude = Math.max(scalarSplineAt(flight.clearance, camDist), target[2] + holdDropM);
@@ -142,16 +183,49 @@ export function startFlyover(map: MapLibreMap, coords: LonLatEle[], onEnd: () =>
     return { options, dot: positionAt(track, dotDist) };
   };
 
+  const renderAt = (dotDist: number, now: number) => {
+    if (renderedDist !== null) {
+      const from = Math.min(renderedDist, dotDist);
+      const to = Math.max(renderedDist, dotDist);
+      for (const poi of pois) {
+        if (poi.distM > from && poi.distM <= to) pulses.push({ poi, bornAt: now });
+      }
+    }
+    const hadPulses = pulses.length > 0;
+    pulses = pulses.filter(p => now - p.bornAt < PULSE_MS);
+    if (dotDist !== renderedDist) {
+      const { options, dot } = frameFor(dotDist);
+      map.jumpTo(options);
+      (map.getSource(DOT_SOURCE) as GeoJSONSource).setData(dotFeature(dot));
+      renderedDist = dotDist;
+      window.dispatchEvent(new CustomEvent<number>(PROGRESS_EVENT, { detail: dotDist }));
+    }
+    if (hadPulses || pulses.length > 0) {
+      (map.getSource(PULSE_SOURCE) as GeoJSONSource).setData({
+        type: 'FeatureCollection',
+        features: pulses.map(p => ({
+          type: 'Feature',
+          properties: { progress: (now - p.bornAt) / PULSE_MS },
+          geometry: { type: 'Point', coordinates: [p.poi.lon, p.poi.lat] },
+        })),
+      });
+    }
+  };
+
   const step = (now: number) => {
     if (done) return;
     if (!startedAt) startedAt = now;
-    const travelled = travelledAt((now - startedAt) / 1000, speed, totalM);
-    const { options, dot } = frameFor(travelled);
-    map.jumpTo(options);
-    (map.getSource(DOT_SOURCE) as GeoJSONSource).setData(dotFeature(dot));
-    if (travelled >= totalM) return finish();
+    const auto = manualDist === null;
+    const travelled = auto ? travelledAt((now - startedAt) / 1000, speed, totalM) : (manualDist as number);
+    renderAt(Math.min(Math.max(travelled, MIN_SEPARATION_M), totalM), now);
+    if (auto && travelled >= totalM) return finish();
     frame = requestAnimationFrame(step);
   };
+
+  const onScrub = (e: Event) => {
+    manualDist = (e as CustomEvent<number>).detail;
+  };
+  window.addEventListener(SCRUB_EVENT, onScrub);
 
   function takeOff() {
     if (done || startedAt) return;
@@ -164,16 +238,17 @@ export function startFlyover(map: MapLibreMap, coords: LonLatEle[], onEnd: () =>
     done = true;
     cancelAnimationFrame(frame);
     window.clearTimeout(takeOffFallback);
+    window.removeEventListener(SCRUB_EVENT, onScrub);
     map.off('idle', takeOff);
     map.setMaxPitch(previousMaxPitch);
-    removeDot(map);
+    removeLayers(map);
     onEnd();
   }
 
   // frame the start and let its tiles arrive before moving: a flight that begins over a blank
   // map never catches up. Applied twice on purpose, the first jumpTo lands short when terrain
   // is on (maplibre-gl-js issue 4688).
-  const start = frameFor(0);
+  const start = frameFor(MIN_SEPARATION_M);
   map.jumpTo(start.options);
   map.jumpTo(start.options);
   (map.getSource(DOT_SOURCE) as GeoJSONSource).setData(dotFeature(start.dot));
@@ -222,10 +297,11 @@ function buildFlight(track: Path, aheadM: number, heightM: number): Flight {
   // required altitude: clear the highest raw relief inside the look-ahead window. A sliding max
   // has corners, so it is blurred wide and re-clamped onto the requirement a few times: the
   // result is a smooth envelope that never dips below the relief it must clear.
-  const window = Math.max(1, Math.round(aheadM / RESAMPLE_STEP_M));
+  const lookaheadSteps = Math.max(1, Math.round(aheadM / RESAMPLE_STEP_M));
   const required = even.map((point, i) => {
     let ceiling = point[2];
-    for (let j = i + 1; j <= Math.min(i + window, even.length - 1); j++) ceiling = Math.max(ceiling, even[j][2]);
+    for (let j = i + 1; j <= Math.min(i + lookaheadSteps, even.length - 1); j++)
+      ceiling = Math.max(ceiling, even[j][2]);
     return ceiling + heightM;
   });
   let clearance = required;
@@ -297,10 +373,24 @@ function travelledAt(elapsedS: number, speedM: number, totalM: number): number {
   return speedM * (elapsedS - RAMP_SECONDS / 2);
 }
 
-/** the moving dot: a warm glow with a white core, riding the point the camera is looking at */
-function addDot(map: MapLibreMap): void {
+/** the moving dot (warm glow, white core) and the expanding rings pulsed at crossed points */
+function addLayers(map: MapLibreMap): void {
   if (map.getSource(DOT_SOURCE)) return;
   map.addSource(DOT_SOURCE, { type: 'geojson', data: dotFeature([0, 0, 0]) });
+  map.addSource(PULSE_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  map.addLayer({
+    id: 'flyover-pulse-ring',
+    type: 'circle',
+    source: PULSE_SOURCE,
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['get', 'progress'], 0, 6, 1, 38],
+      'circle-color': '#ffb703',
+      'circle-opacity': ['interpolate', ['linear'], ['get', 'progress'], 0, 0.35, 1, 0],
+      'circle-stroke-color': '#ffb703',
+      'circle-stroke-width': 2.5,
+      'circle-stroke-opacity': ['interpolate', ['linear'], ['get', 'progress'], 0, 0.95, 1, 0],
+    },
+  });
   map.addLayer({
     id: 'flyover-dot-glow',
     type: 'circle',
@@ -320,11 +410,13 @@ function addDot(map: MapLibreMap): void {
   });
 }
 
-function removeDot(map: MapLibreMap): void {
+function removeLayers(map: MapLibreMap): void {
   for (const layer of DOT_LAYERS) {
     if (map.getLayer(layer)) map.removeLayer(layer);
   }
-  if (map.getSource(DOT_SOURCE)) map.removeSource(DOT_SOURCE);
+  for (const source of [DOT_SOURCE, PULSE_SOURCE]) {
+    if (map.getSource(source)) map.removeSource(source);
+  }
 }
 
 function dotFeature(position: LonLatEle): GeoJSON.Feature<GeoJSON.Point> {

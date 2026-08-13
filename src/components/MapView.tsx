@@ -20,8 +20,8 @@ import {
   SLOPES_TILES,
   TERRARIUM_TILES,
 } from '../config/layers';
-import { FLYOVER_EXAGGERATION, startFlyover } from '../lib/flyover';
-import { cumulativeDistancesM, kmMarkerPoints, nearestIndex } from '../lib/geo';
+import { FLYOVER_EXAGGERATION, type FlyoverPoi, startFlyover } from '../lib/flyover';
+import { cumulativeDistancesM, haversineM, kmMarkerPoints, type LonLatEle, nearestIndex } from '../lib/geo';
 import { fetchHiddenTrails, HIDDEN_TRAILS_MIN_ZOOM } from '../lib/hiddenTrails';
 import { tNow } from '../lib/i18n';
 import { bindLongPress, bindMiddleDragRotate, bindRotateCursor } from '../lib/mapGestures';
@@ -41,6 +41,8 @@ import { routeCoords, usePlanner } from '../store';
 // standard reroute cadence while dragging (see Leaflet Routing Machine's routeDragInterval)
 const DRAG_REROUTE_MS = 450;
 const CONTOUR_SOURCE_LAYER = 'oro_courbe';
+// off-route points farther than this from the trail do not pulse during the flyover
+const OFF_ROUTE_PULSE_MAX_M = 400;
 
 // 3D terrain exaggeration adapted to the visible relief: classic cartographic rule (Imhof),
 // flatland needs 2-3x to read, high mountains are already spectacular around 1x
@@ -528,7 +530,7 @@ export function MapView() {
     // frame budget goes on a 4K screen; at this speed the softer image goes unnoticed
     map.setPixelRatio(1);
 
-    const handle = startFlyover(map, coords, () => usePlanner.getState().stopFlyover());
+    const handle = startFlyover(map, coords, flyoverPois(coords), () => usePlanner.getState().stopFlyover());
     return () => {
       handle.stop();
       map.setPixelRatio(previous.pixelRatio);
@@ -580,6 +582,32 @@ let suppressNextTap = false;
  * Returns:
  *   A disposer for the window listener, since the button can be released outside the canvas.
  */
+// annotated points projected onto the route, for the crossing pulses of the flyover: route
+// points carry their cumulative distance, off-route points snap to the nearest route vertex
+function flyoverPois(coords: LonLatEle[]): FlyoverPoi[] {
+  const { anchors, legs, offRoutePoints } = usePlanner.getState();
+  const dists = cumulativeDistancesM(coords);
+  const pois: FlyoverPoi[] = [];
+  let cum = 0;
+  anchors.forEach((anchor, i) => {
+    if (i > 0) cum += legs[i - 1]?.leg?.distanceM ?? 0;
+    if (anchor.kind !== 'checkpoint' || anchor.name) pois.push({ lon: anchor.lon, lat: anchor.lat, distM: cum });
+  });
+  for (const point of offRoutePoints) {
+    let best = 0;
+    let bestD = Number.POSITIVE_INFINITY;
+    coords.forEach((c, i) => {
+      const d = haversineM([point.lon, point.lat], [c[0], c[1]]);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    if (bestD <= OFF_ROUTE_PULSE_MAX_M) pois.push({ lon: point.lon, lat: point.lat, distM: dists[best] });
+  }
+  return pois.sort((a, b) => a.distM - b.distM);
+}
+
 function adaptiveExaggeration(map: MapLibreMap, applied: number): number | null {
   const canvas = map.getCanvas();
   const width = canvas.clientWidth;

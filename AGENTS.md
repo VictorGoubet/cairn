@@ -118,7 +118,8 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - Escape closes whatever floats (`lib/useEscapeKey.ts`, alongside `useClickOutside`) and stops
   the flyover. Backspace and the mouse back button undo.
 - Selecting a stretch on the profile stores it (`profileSelection`) and the map draws it over
-  the route, so numbers and geometry always agree.
+  the route, so numbers and geometry always agree. The chart listens to pointer events, so
+  selection and flyover scrubbing work with a finger as well as a mouse.
 - Points reorder by dragging their row; `reorderAnchor` recomputes the legs around both
   positions and leaves frozen legs alone.
 - The play button flies the route like a drone (`lib/flyover.ts`). It follows the two-path
@@ -138,21 +139,31 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
     smooth curve that never dips below the relief. Sampled through the same B-spline. Measuring
     altitude from the target rather than the ground under the camera is what keeps a climb from
     tipping the derived pitch into the sky.
+  - **Playback time is near constant** (~10 s of cruise plus the ramps): the dot walks the whole
+    route whatever its length, so the ground speed grows with the route, and the look-ahead
+    (hence camera height) scales with it. That keeps the tile lead time constant at any speed:
+    a long route reads as a higher overview pass, a short loop keeps the low grazing shot.
   - **Speed follows a trapezoidal velocity profile** (2.5 s ramps): constant speed from a
     standing start is a velocity discontinuity, and the takeoff reads as a jolt.
-  - **The 3D chase distance is held near the finish.** The dot parks on the finish while the
-    camera closes in; raising the camera to keep the camera-to-dot distance constant keeps the
-    derived zoom steady (no end-of-flight tile starvation) and turns the arrival into a pull-up
-    over the finish.
+  - **The frame is a pure function of the dot's position.** The camera trails the dot by the
+    look-ahead; while the dot is closer than that (the opening, or a scrub near the start) the
+    camera parks and holds the 3D chase distance by rising, which keeps the derived zoom steady
+    and tilts the shot from top-down to grazing as the dot pulls away.
   - **Framing is calibrated, not guessed.** Looking 1150 m ahead from 220 m up lands near zoom
     15.5 and pitch 79 at our latitudes, the low grazing pass; the height-to-lookahead ratio is
-    kept so short routes stay framed the same way. Going closer derives a zoom past 16.5, where
-    tiles stop keeping up, which is also why the look-ahead has a floor: a one kilometre route
-    would otherwise frame a hedge. The pitch cap stays at 82, since nearer the horizon the near
-    plane starts clipping the ground.
+    kept at any length. A closer camera derives a zoom past 16.5, where tiles stop keeping up,
+    which is why the look-ahead has a floor: a one kilometre route would otherwise frame a
+    hedge. The pitch cap stays at 82, since nearer the horizon the near plane starts clipping
+    the ground.
   - **The dot is two circle layers** (warm glow + white core) on a one-point GeoJSON source that
-    `flyover.ts` owns: added at takeoff, moved every frame to the point the camera looks at,
-    removed on exit.
+    `flyover.ts` owns: added at takeoff, moved every frame, removed on exit. Annotated points
+    (named route points, off-route points within 400 m of the trail) pulse an expanding ring
+    when the dot crosses them, both directions, so scrubbing pops them too.
+  - **Progress and scrubbing travel as window events** (`onFlyoverProgress` / `scrubFlyover`),
+    not store writes: a zustand set per camera frame would re-render subscribers and re-arm the
+    draft writer sixty times a second. The profile chart mirrors the dot imperatively (one SVG
+    transform per event) and bounces its POI markers when crossed; dragging on the chart during
+    a flight scrubs it, and the first scrub latches the flight into manual mode until closed.
   - **Terrain exaggeration is pinned to 1** while flying. MapLibre drops the closest tiles with
     terrain on and it worsens sharply with exaggeration (maplibre-gl-js issue 1241), which is
     exactly the "chunks vanishing" symptom.
@@ -174,12 +185,22 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
       plan readable, the others recompute on every viewport change.
   - **Raster base layers carry `raster-fade-duration: 0`.** The default cross-fade reads as the
     imagery blinking once the camera is moving.
-  - **Playback time comes from a ground speed cap, not from a target duration.** Holding a route
-    to a fixed number of seconds would mean flying a long one so fast that the imagery cannot
-    arrive; the cap is the honest limit, and a short route is stretched to a floor instead.
 - The style carries a `sky` and a `background` layer. Without the sky, everything above the
   horizon is unpainted and the page shows through as soon as the camera tilts.
 - Map control buttons carry `data-control` so tests never depend on their order or labels.
+- The Share button is a menu: copy the link, or open the share-image studio
+  (`components/SharePanel.tsx` over `lib/shareImage.ts`), a canvas-composed social tile the way
+  Strava does them: square or story, basemap (plan or ortho WMTS raster tiles) or plain
+  dark/light background, stats and mini elevation profile toggles, then copy / native share
+  sheet / download. The gotchas are load-bearing:
+  - tiles are fetched with `crossOrigin: anonymous` (Géoplateforme sends CORS) so the canvas
+    stays exportable; a tainted canvas would make `toBlob` throw;
+  - renders compose on an off-screen canvas and blit when done, otherwise two renders in
+    flight (tiles are async) interleave on the visible one;
+  - the clipboard gets `ClipboardItem({ 'image/png': blobPromise })` with the promise, which is
+    what Safari requires to keep the write inside the user gesture;
+  - `navigator.share` with files is the road to Instagram and WhatsApp on a phone; where
+    unsupported it falls back to the clipboard.
 
 ## Known trade-offs
 
