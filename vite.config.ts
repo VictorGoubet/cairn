@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
@@ -5,4 +6,11 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: { exclude: ['maplibre-gl'] },
+  // unit and regression tests; the browser paths live in tests/e2e under playwright
+  test: {
+    // jsdom for the modules that touch DOMParser or localStorage
+    environment: 'jsdom',
+    include: ['tests/unit/**/*.test.ts'],
+    restoreMocks: true,
+  },
 });

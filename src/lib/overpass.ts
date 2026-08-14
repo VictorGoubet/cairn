@@ -10,7 +10,13 @@
 
 import { fetchWithTimeout } from './http';
 
-const ENDPOINTS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+// in fallback order: the reference instance, its sibling server (a rate-limit ban is
+// per-server), then the VK-hosted instance as the only independent one still open and CORS-ready
+const ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://lz4.overpass-api.de/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+];
 /** what overpass-api.de grants a single IP */
 const MAX_CONCURRENT = 2;
 /** busy instances hold a query in queue well past our default deadline */

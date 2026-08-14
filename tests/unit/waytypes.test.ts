@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { LonLatEle } from '../src/lib/geo';
-import { aggregateBy, parseWaySegments, SAC_WARNING_LEVEL, sacStats, type WaySegment } from '../src/lib/waytypes';
+import type { LonLatEle } from '../../src/lib/geo';
+import { aggregateBy, parseWaySegments, SAC_WARNING_LEVEL, sacStats, type WaySegment } from '../../src/lib/waytypes';
 
 const COORDS: LonLatEle[] = [
   [6.5, 44.6, 1000],

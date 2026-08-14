@@ -12,7 +12,7 @@ import {
   pathDistanceM,
   pointToPathDistanceM,
   simplifyIndices,
-} from '../src/lib/geo';
+} from '../../src/lib/geo';
 
 describe('haversineM', () => {
   it('measures a known distance', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { kindDef, kindFromGarminSym, kindLabelKey, parseKind, POINT_KINDS } from '../src/lib/points';
+import { kindDef, kindFromGarminSym, kindLabelKey, parseKind, POINT_KINDS } from '../../src/lib/points';
 
 describe('parseKind', () => {
   it('accepts current identifiers unchanged', () => {

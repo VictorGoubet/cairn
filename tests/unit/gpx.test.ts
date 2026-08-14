@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { LonLatEle } from '../src/lib/geo';
-import { buildGpx, type GpxWaypoint, parseGpx } from '../src/lib/gpx';
+import type { LonLatEle } from '../../src/lib/geo';
+import { buildGpx, type GpxWaypoint, parseGpx } from '../../src/lib/gpx';
 
 const COORDS: LonLatEle[] = [
   [6.5, 44.6, 1000],

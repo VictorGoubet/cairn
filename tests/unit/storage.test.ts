@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadDraft, loadRoutes, persistDraft, persistRoutes } from '../src/lib/storage';
-import type { Anchor, LegSlot, SavedRoute } from '../src/store';
+import { loadDraft, loadRoutes, persistDraft, persistRoutes } from '../../src/lib/storage';
+import type { Anchor, LegSlot, SavedRoute } from '../../src/store';
 
 const DRAFT_KEY = 'cairn.draft.v1';
 const ROUTES_KEY = 'cairn.routes.v1';

@@ -4,7 +4,7 @@ import { type MsgKey, useT } from '../lib/i18n';
 import { kindDef, kindLabelKey } from '../lib/points';
 import { type Anchor, isClosedRoute, usePlanner } from '../store';
 
-const ROUTING_PRESETS: readonly RoutingPreset[] = ['balanced', 'avoid_roads', 'easy_up'];
+const ROUTING_PRESETS: readonly RoutingPreset[] = ['balanced', 'shortest', 'avoid_roads', 'easy_up'];
 
 export function Sidebar() {
   const t = useT();

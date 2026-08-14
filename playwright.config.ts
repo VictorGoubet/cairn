@@ -6,7 +6,7 @@ const PREVIEW_PORT = 4322;
 // the app talks to live open-data services (IGN, BRouter, Terrarium), so e2e runs stay
 // serial and generous on timeouts: a flaky third party must not look like a broken app
 export default defineConfig({
-  testDir: './e2e',
+  testDir: './tests/e2e',
   fullyParallel: false,
   workers: 1,
   // one retry everywhere: a slow tile or routing answer must not read as a broken app

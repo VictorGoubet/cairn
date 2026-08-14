@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cachedFetch, type Cell, cellBounds, cellsInBounds } from '../src/lib/tileGrid';
+import { cachedFetch, type Cell, cellBounds, cellsInBounds } from '../../src/lib/tileGrid';
 
 describe('cellsInBounds', () => {
   it('covers a small viewport with a single cell', () => {

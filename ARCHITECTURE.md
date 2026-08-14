@@ -23,13 +23,13 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 
 ## Tests
 
-- `tests/**/*.test.ts`: the pure modules, where regressions hurt most. Storage and share
+- `tests/unit/**/*.test.ts`: the pure modules, where regressions hurt most. Storage and share
   migrations are covered kind by kind, since a rename there silently breaks saved routes.
-- `e2e/planner.spec.ts`: the critical paths (draw, insert on trace, undo/redo including the
+- `tests/e2e/planner.spec.ts`: the critical paths (draw, insert on trace, undo/redo including the
   mouse back button, POIs, overlays, 3D, save and reload, click-outside, language switch).
   Every past regression gets a test here, that is the point of the file.
 - e2e drive the app through `window.__planner` and `window.__map`, exposed in dev builds
-  only: clicking real pixels is projected via `map.project` (see `e2e/helpers.ts`), never
+  only: clicking real pixels is projected via `map.project` (see `tests/e2e/helpers.ts`), never
   hardcoded. They hit live services, hence one retry and generous timeouts.
 
 ## Architecture

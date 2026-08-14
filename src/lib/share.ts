@@ -15,7 +15,7 @@ import { parseKind } from './points';
 const SHARE_PREFIX = '#r=1.';
 const PRECISION_DEG = 1e5;
 const PRECISION_ELE = 10;
-const PRESETS: readonly RoutingPreset[] = ['balanced', 'avoid_roads', 'easy_up'];
+const PRESETS: readonly RoutingPreset[] = ['balanced', 'avoid_roads', 'easy_up', 'shortest'];
 
 type SharedPoint = [number, number, string, string];
 

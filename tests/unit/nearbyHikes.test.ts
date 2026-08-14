@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { LonLat } from '../src/lib/geo';
-import { clipAround, stitchWays } from '../src/lib/nearbyHikes';
+import type { LonLat } from '../../src/lib/geo';
+import { clipAround, stitchWays } from '../../src/lib/nearbyHikes';
 
 /** ~111 m per 0.001 degree of latitude, which keeps the fixtures readable */
 const at = (i: number): LonLat => [6.5, 44.6 + i * 0.001];

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildKml, buildTcx, escXml, type ExportPoint } from '../src/lib/exportFormats';
-import type { LonLatEle } from '../src/lib/geo';
+import { buildKml, buildTcx, escXml, type ExportPoint } from '../../src/lib/exportFormats';
+import type { LonLatEle } from '../../src/lib/geo';
 
 const COORDS: LonLatEle[] = [
   [6.5, 44.6, 1000],

@@ -11,9 +11,12 @@ const PRESET_PATCHES: Record<RoutingPreset, [RegExp, string][]> = {
   balanced: [],
   avoid_roads: [[/^assign {3}path_preference {10}0\.0/m, 'assign   path_preference          20.0']],
   easy_up: [[/^assign {3}consider_elevation {5}= false/m, 'assign   consider_elevation     = true']],
+  // the template's own switch: every walkable way costs its length, roads included; foot
+  // access keeps its veto, so a motorway stays at 100000 whatever the distance saved
+  shortest: [[/^assign {3}shortest_way {13}0/m, 'assign   shortest_way             1']],
 };
 
-export type RoutingPreset = 'balanced' | 'avoid_roads' | 'easy_up';
+export type RoutingPreset = 'balanced' | 'avoid_roads' | 'easy_up' | 'shortest';
 
 export interface RouteLeg {
   coords: LonLatEle[];

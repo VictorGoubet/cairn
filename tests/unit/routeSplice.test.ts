@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { pathDistanceM } from '../src/lib/geo';
-import { spliceIntoTrace } from '../src/lib/routeSplice';
-import type { Anchor, LegSlot } from '../src/store';
+import { pathDistanceM } from '../../src/lib/geo';
+import { spliceIntoTrace } from '../../src/lib/routeSplice';
+import type { Anchor, LegSlot } from '../../src/store';
 
 function anchor(lon: number, lat: number): Anchor {
   return { id: crypto.randomUUID(), lon, lat, kind: 'checkpoint', name: '' };

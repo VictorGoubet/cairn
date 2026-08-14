@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { LonLatEle } from '../src/lib/geo';
-import { fitView, mercator } from '../src/lib/shareImage';
+import type { LonLatEle } from '../../src/lib/geo';
+import { fitView, mercator } from '../../src/lib/shareImage';
 
 const CEILLAC_LOOP: LonLatEle[] = [
   [6.7452, 44.6158, 1900],
