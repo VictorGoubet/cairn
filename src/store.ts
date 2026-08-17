@@ -142,6 +142,7 @@ interface PlannerState {
   removeAnchor: (id: string) => void;
   reorderAnchor: (from: number, to: number) => void;
   slideAnchor: (id: string, to: number, p: LonLat) => void;
+  routeStraightLegs: () => void;
   undo: () => void;
   redo: () => void;
   clear: () => void;
@@ -519,6 +520,16 @@ export const usePlanner = create<PlannerState>((set, get) => {
 
     // swapping two points changes the shape of the route: every leg between them, plus the
     // one before and after, is recomputed. Frozen legs (import, manual) keep their geometry.
+    // an imported trace whose points are joined by beelines (a list of geocaches, a hand-drawn
+    // sketch) becomes a walkable itinerary: every straight leg is sent to the router
+    routeStraightLegs: () => {
+      const { anchors, legs } = get();
+      if (anchors.length < 2 || !legs.some(l => l.manual)) return;
+      pushHistory();
+      set(s => ({ legs: s.legs.map(slot => (slot.manual ? newSlot(false) : slot)) }));
+      ensureLegs();
+    },
+
     slideAnchor: (id, to, p) => {
       const { anchors, manualMode } = get();
       const from = anchors.findIndex(a => a.id === id);
@@ -636,7 +647,26 @@ export const usePlanner = create<PlannerState>((set, get) => {
     },
 
     importRoute: (coords, waypoints) => {
-      if (coords.length < 2) return;
+      // a geocaching export carries waypoints and no track: the markers land on the map and the
+      // current itinerary is left alone, which is what makes them usable as things to route by
+      if (coords.length < 2) {
+        if (waypoints.length === 0) return;
+        pushHistory();
+        set(s => ({
+          offRoutePoints: [
+            ...s.offRoutePoints,
+            ...waypoints.map(w => ({ id: crypto.randomUUID(), lon: w.lon, lat: w.lat, kind: w.kind, name: w.name })),
+          ],
+          editing: null,
+          flyTo: {
+            bounds: [
+              [Math.min(...waypoints.map(w => w.lon)), Math.min(...waypoints.map(w => w.lat))],
+              [Math.max(...waypoints.map(w => w.lon)), Math.max(...waypoints.map(w => w.lat))],
+            ],
+          },
+        }));
+        return;
+      }
       pushHistory();
       // the imported trace is split into legs between anchors: moving an anchor only recomputes
       // its two neighbors, instead of erasing half the GPX

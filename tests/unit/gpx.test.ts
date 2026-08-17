@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LonLatEle } from '../../src/lib/geo';
-import { buildGpx, type GpxWaypoint, parseGpx } from '../../src/lib/gpx';
+import { buildGpx, type GpxWaypoint, mergeTracks, parseGpx } from '../../src/lib/gpx';
 
 const COORDS: LonLatEle[] = [
   [6.5, 44.6, 1000],
@@ -122,5 +122,33 @@ describe('parseGpx', () => {
 
   it('rejects a file that is not XML at all', () => {
     expect(() => parseGpx('not a gpx file')).toThrow();
+  });
+});
+
+describe('mergeTracks', () => {
+  const first: LonLatEle[] = [
+    [6.5, 44.6, 1000],
+    [6.51, 44.6, 1100],
+  ];
+
+  it('chains tracks in the order they were picked', () => {
+    const second: LonLatEle[] = [
+      [6.52, 44.6, 1200],
+      [6.53, 44.6, 1300],
+    ];
+    expect(mergeTracks([first, second]).map(c => c[0])).toEqual([6.5, 6.51, 6.52, 6.53]);
+  });
+
+  it('reverses a track exported backwards, so the line keeps going', () => {
+    const backwards: LonLatEle[] = [
+      [6.53, 44.6, 1300],
+      [6.52, 44.6, 1200],
+    ];
+    expect(mergeTracks([first, backwards]).map(c => c[0])).toEqual([6.5, 6.51, 6.52, 6.53]);
+  });
+
+  it('ignores files that carry no track, like a geocache export', () => {
+    expect(mergeTracks([[], first, [[6.9, 44.9, 900]]])).toEqual(first);
+    expect(mergeTracks([])).toEqual([]);
   });
 });

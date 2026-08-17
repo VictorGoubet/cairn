@@ -454,6 +454,114 @@ test.describe('editing from the profile', () => {
   });
 });
 
+test.describe('importing gpx', () => {
+  const trackFile = (name: string, lonFrom: number) => ({
+    name: `${name}.gpx`,
+    mimeType: 'application/gpx+xml',
+    buffer: Buffer.from(
+      `<?xml version="1.0"?><gpx version="1.1"><trk><name>${name}</name><trkseg>` +
+        Array.from(
+          { length: 12 },
+          (_, i) =>
+            `<trkpt lat="${CEILLAC[1] + i * 0.0004}" lon="${lonFrom + i * 0.0006}"><ele>${1800 + i * 10}</ele></trkpt>`,
+        ).join('') +
+        `</trkseg></trk></gpx>`,
+    ),
+  });
+
+  test('two tracks merge into one itinerary', async ({ page }) => {
+    await openPlanner(page);
+    await page.locator('input[type="file"]').setInputFiles([
+      trackFile('first', CEILLAC[0]),
+      trackFile('second', CEILLAC[0] + 0.008),
+    ]);
+    await page.waitForFunction(() => (window as unknown as TestHandles).__planner.getState().anchors.length >= 2);
+    const state = await planner(page).state();
+    // both files are in: the merged trace is longer than either half
+    expect(state.totalDistanceM).toBeGreaterThan(1500);
+  });
+
+  test('beeline legs become real paths on demand', async ({ page }) => {
+    await openPlanner(page);
+    // a sketch: three points joined by straight lines, which is what a cache list looks like
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'caches-line.gpx',
+      mimeType: 'application/gpx+xml',
+      buffer: Buffer.from(
+        `<?xml version="1.0"?><gpx version="1.1"><trk><trkseg>` +
+          `<trkpt lat="44.6318" lon="6.7752"><ele>1650</ele></trkpt>` +
+          `<trkpt lat="44.6400" lon="6.7850"><ele>1800</ele></trkpt>` +
+          `<trkpt lat="44.6465" lon="6.7920"><ele>1900</ele></trkpt>` +
+          `</trkseg></trk></gpx>`,
+      ),
+    });
+    await page.waitForFunction(() => (window as unknown as TestHandles).__planner.getState().anchors.length >= 2);
+    const straight = await planner(page).state();
+
+    await page.locator('[data-control="route-straight"]').click();
+    // the router answers with real geometry: many more vertices than the three imported points
+    await expect
+      .poll(async () => (await planner(page).state()).legCoordCounts.reduce((a, b) => a + b, 0), { timeout: 30_000 })
+      .toBeGreaterThan(straight.legCoordCounts.reduce((a, b) => a + b, 0) + 10);
+    await expect(page.locator('[data-control="route-straight"]')).toBeHidden();
+  });
+
+  test('a waypoints-only export lands as markers and keeps the current route', async ({ page }) => {
+    await openPlanner(page);
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 1);
+    const before = await planner(page).state();
+
+    // what geocaching.com hands out for a set of caches: waypoints, no track
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'caches.gpx',
+      mimeType: 'application/gpx+xml',
+      buffer: Buffer.from(
+        `<?xml version="1.0"?><gpx version="1.1">` +
+          `<wpt lat="44.641" lon="6.781"><name>GC1ABCD Cache du col</name><sym>Geocache</sym></wpt>` +
+          `<wpt lat="44.646" lon="6.792"><name>GC2EFGH Cache du lac</name><sym>Geocache</sym></wpt>` +
+          `</gpx>`,
+      ),
+    });
+    await page.waitForFunction(() => (window as unknown as TestHandles).__planner.getState().offRoutePoints.length === 2);
+    const after = await planner(page).state();
+    expect(after.anchorCount).toBe(before.anchorCount);
+    expect(after.totalDistanceM).toBeCloseTo(before.totalDistanceM, 0);
+    await expect(page.locator('.side .poi-list:not(.anchor-list)')).toContainText('Cache du col');
+  });
+});
+
+test.describe('search as a route builder', () => {
+  test('typed coordinates become a route point, twice over', async ({ page }) => {
+    await openPlanner(page);
+    const input = page.locator('.search-box input');
+
+    // the geocaching notation, answered locally with no geocoder involved
+    await input.fill('N 44° 37.908 E 006° 46.512');
+    await expect(page.locator('.search-results .result-name')).toHaveText('44.63180, 6.77520');
+    await page.locator('.result-add').click();
+    await page.waitForFunction(() => (window as unknown as TestHandles).__planner.getState().anchors.length === 1);
+
+    // a second cache, in plain decimal: the two points get routed together
+    await input.fill('44.6465, 6.7920');
+    await page.locator('.result-add').click();
+    await waitForRouting(page, 1);
+    const state = await planner(page).state();
+    expect(state.anchorCount).toBe(2);
+    expect(state.totalDistanceM).toBeGreaterThan(500);
+  });
+
+  test('a place is centered by the row and appended by the plus', async ({ page }) => {
+    await openPlanner(page);
+    await page.locator('.search-box input').fill('Ceillac');
+    await expect(page.locator('.search-results li').first()).toBeVisible();
+    await page.locator('.search-results .result-go').first().click();
+    // centering leaves the itinerary alone
+    expect((await planner(page).state()).anchorCount).toBe(0);
+  });
+});
+
 test.describe('hikes around', () => {
   // Overpass is a volunteer-run API: the fixture keeps the test honest about our own code
   const RELATION_ID = 1234;
@@ -553,10 +661,10 @@ test.describe('language', () => {
     await openPlanner(page);
     await page.locator('.lang-seg button', { hasText: 'EN' }).click();
     await expect(page.locator('.side-section h2').first()).toHaveText('Route');
-    await expect(page.locator('.search-box input')).toHaveAttribute('placeholder', /Search/);
+    await expect(page.locator('.search-box input')).toHaveAttribute('placeholder', /coordinates/);
 
     await page.locator('.lang-seg button', { hasText: 'FR' }).click();
     await expect(page.locator('.side-section h2').first()).toHaveText('Parcours');
-    await expect(page.locator('.search-box input')).toHaveAttribute('placeholder', /Rechercher/);
+    await expect(page.locator('.search-box input')).toHaveAttribute('placeholder', /coordonnées/);
   });
 });

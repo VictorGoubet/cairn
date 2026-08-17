@@ -81,6 +81,16 @@ body {
   padding: 3px;
 }
 
+/* five routing presets do not fit on one line of a 264px sidebar */
+.segmented.wrap {
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.segmented.wrap button {
+  flex: 1 0 45%;
+}
+
 .segmented button {
   flex: 1;
   padding: 6px 0;
@@ -146,6 +156,21 @@ body {
 .side-row button:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.side-wide {
+  width: 100%;
+  padding: 7px 4px;
+  font-size: 12.5px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.side-wide:hover {
+  background: #eef3fa;
 }
 
 .poi-list {
@@ -423,6 +448,17 @@ body {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
+.search-results li {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.search-results .result-go {
+  min-width: 0;
+  flex: 1;
+}
+
 .search-results button {
   width: 100%;
   padding: 6px 8px;
@@ -437,6 +473,16 @@ body {
 
 .search-results button:hover {
   background: #eef3fa;
+}
+
+/* the row centers the map, the plus appends the place to the itinerary */
+.search-results .result-add {
+  width: 34px;
+  flex: 0 0 34px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--accent);
+  text-align: center;
 }
 
 .result-name {

@@ -8,6 +8,7 @@ const PATCHES: [string, RegExp, string][] = [
   ['avoid_roads', /^assign {3}path_preference {10}0\.0/m, 'assign   path_preference          20.0'],
   ['easy_up', /^assign {3}consider_elevation {5}= false/m, 'assign   consider_elevation     = true'],
   ['shortest', /^assign {3}shortest_way {13}0/m, 'assign   shortest_way             1'],
+  ['fastest', /^assign {3}hiking_routes_preference 0\.20/m, 'assign   hiking_routes_preference 0.00'],
 ];
 
 describe('routing preset patches', () => {

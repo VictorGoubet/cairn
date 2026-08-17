@@ -70,6 +70,23 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   (development, an ad blocker), and the events stay coarse and non-identifying: `flyover`,
   `share-link`, `share-image` (how / preset / format), `export` (format / rounded km),
   `import-gpx`, `save-route`.
+- **Routing presets** patch the bundled BRouter profile by regex (`lib/brouter.ts`), and the
+  patches are pinned by tests because a silent no-match would route with the standard profile
+  while the UI claims a preset is on. `shortest` and `fastest` both flip switches the template
+  already ships: distance-only costing, and elevation-aware costing with no bonus for staying on
+  a waymarked route. Neither touches `accesspenalty`, so a motorway stays forbidden whatever it
+  would save.
+- **The search box is also a route builder.** Coordinates typed by hand are answered locally
+  (`lib/coordinates.ts`: decimal, degrees + decimal minutes as geocaching publishes them, and
+  DMS), and every result carries a plus that appends it to the itinerary. That is how a list of
+  geocaches becomes a route: paste each coordinate, press plus, the legs route themselves.
+- **Importing accepts several GPX files at once**: their tracks are chained (`mergeTracks`,
+  reversing a file exported backwards) and every waypoint follows. A file with waypoints and no
+  track (what geocaching.com exports for a set of caches) drops its markers on the map and
+  leaves the current itinerary alone.
+- **`routeStraightLegs` turns beelines into paths.** An imported leg keeps `manual: true`, so a
+  sketch of points joined by straight lines can be handed to the router in one click; the button
+  only shows while such a leg exists.
 - **Share links** (`src/lib/share.ts`): payload `#r=1.<base64url(deflate-raw(JSON))>`.
   Routed legs travel as anchors only (recomputed on open); frozen legs travel as a polyline
   (Google algorithm, lat/lon at 1e-5, elevation at 0.1 m). `''` = manual leg still computing

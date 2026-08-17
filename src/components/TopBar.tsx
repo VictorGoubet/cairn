@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { track } from '../lib/analytics';
 import { buildKml, buildTcx, downloadTextFile, type ExportPoint } from '../lib/exportFormats';
-import { downloadGpx, type GpxWaypoint, parseGpx } from '../lib/gpx';
+import { downloadGpx, type GpxWaypoint, mergeTracks, parseGpx } from '../lib/gpx';
 import { type MsgKey, tNow, useT } from '../lib/i18n';
 import type { Lang } from '../lib/lang';
 import { kindDef, kindLabelKey } from '../lib/points';
@@ -78,14 +78,27 @@ export function TopBar() {
     }
   }
 
-  async function importGpx(file: File) {
-    try {
-      const { coords: imported, waypoints: importedWpts } = parseGpx(await file.text());
-      track('import-gpx');
-      usePlanner.getState().importRoute(imported, importedWpts);
-    } catch {
+  async function importGpx(files: File[]) {
+    const parsed = await Promise.all(
+      files.map(file =>
+        file
+          .text()
+          .then(parseGpx)
+          .catch(() => null),
+      ),
+    );
+    const usable = parsed.filter(p => p !== null);
+    if (usable.length === 0) {
       usePlanner.setState({ error: 'err_gpx' });
+      return;
     }
+    // several files become one itinerary: their tracks are chained and every waypoint follows,
+    // which is also how a waypoints-only export (geocaches) lands as markers to route by
+    track('import-gpx', { files: usable.length });
+    usePlanner.getState().importRoute(
+      mergeTracks(usable.map(p => p.coords)),
+      usable.flatMap(p => p.waypoints),
+    );
   }
 
   return (
@@ -142,7 +155,7 @@ export function TopBar() {
           </button>
           <RoutesPanel />
         </div>
-        <button type="button" onClick={() => fileRef.current?.click()}>
+        <button type="button" title={t('import_hint')} onClick={() => fileRef.current?.click()}>
           {t('import')}
         </button>
         <div className="menu-wrap" ref={shareWrapRef}>
@@ -213,10 +226,11 @@ export function TopBar() {
         ref={fileRef}
         type="file"
         accept=".gpx"
+        multiple
         hidden
         onChange={e => {
-          const file = e.target.files?.[0];
-          if (file) importGpx(file);
+          const files = [...(e.target.files ?? [])];
+          if (files.length > 0) void importGpx(files);
           e.target.value = '';
         }}
       />

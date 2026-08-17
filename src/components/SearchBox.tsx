@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
+import { formatCoordinates, parseCoordinates } from '../lib/coordinates';
 import { type GeocodeResult, searchPlaces } from '../lib/geocode';
 import { useT } from '../lib/i18n';
 import { usePlanner } from '../store';
 
 export function SearchBox() {
   const t = useT();
+  // read inside the effect without making the translation a dependency of the search
+  const tRef = useRef(t);
+  tRef.current = t;
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GeocodeResult[]>([]);
   const [open, setOpen] = useState(false);
@@ -22,6 +26,16 @@ export function SearchBox() {
       setOpen(false);
       return;
     }
+    // coordinates are answered locally: typing a cache listing must not wait on a geocoder
+    // that would only shrug at "N 44 37.908 E 006 46.512"
+    const typed = parseCoordinates(query);
+    if (typed) {
+      setResults([
+        { name: formatCoordinates(typed), detail: tRef.current('coordinates'), lon: typed[0], lat: typed[1] },
+      ]);
+      setOpen(true);
+      return;
+    }
     debounceRef.current = window.setTimeout(() => {
       searchPlaces(query)
         .then(r => {
@@ -37,6 +51,15 @@ export function SearchBox() {
     skipSearchRef.current = true;
     usePlanner.getState().setFlyTo({ center: [result.lon, result.lat], zoom: 13 });
     setQuery(result.name);
+    setResults([]);
+    setOpen(false);
+  }
+
+  /** the search doubles as a route builder: hop from place to place, or from cache to cache */
+  function append(result: GeocodeResult) {
+    usePlanner.getState().addAnchor([result.lon, result.lat]);
+    usePlanner.getState().setFlyTo({ center: [result.lon, result.lat], zoom: 14 });
+    setQuery('');
     setResults([]);
     setOpen(false);
   }
@@ -59,9 +82,18 @@ export function SearchBox() {
         <ul className="search-results">
           {results.map(r => (
             <li key={`${r.lon},${r.lat},${r.name}`}>
-              <button type="button" onMouseDown={() => select(r)}>
+              <button type="button" className="result-go" onMouseDown={() => select(r)}>
                 <span className="result-name">{r.name}</span>
                 <span className="result-detail">{r.detail}</span>
+              </button>
+              <button
+                type="button"
+                className="result-add"
+                title={t('add_to_route')}
+                aria-label={t('add_to_route')}
+                onMouseDown={() => append(r)}
+              >
+                +
               </button>
             </li>
           ))}

@@ -14,9 +14,15 @@ const PRESET_PATCHES: Record<RoutingPreset, [RegExp, string][]> = {
   // the template's own switch: every walkable way costs its length, roads included; foot
   // access keeps its veto, so a motorway stays at 100000 whatever the distance saved
   shortest: [[/^assign {3}shortest_way {13}0/m, 'assign   shortest_way             1']],
+  // walking time rather than distance: climbing costs (Naismith's rule lives in the profile's
+  // uphill/downhill costs), and no detour is worth taking to stay on a waymarked route
+  fastest: [
+    [/^assign {3}consider_elevation {5}= false/m, 'assign   consider_elevation     = true'],
+    [/^assign {3}hiking_routes_preference 0\.20/m, 'assign   hiking_routes_preference 0.00'],
+  ],
 };
 
-export type RoutingPreset = 'balanced' | 'avoid_roads' | 'easy_up' | 'shortest';
+export type RoutingPreset = 'balanced' | 'shortest' | 'fastest' | 'avoid_roads' | 'easy_up';
 
 export interface RouteLeg {
   coords: LonLatEle[];

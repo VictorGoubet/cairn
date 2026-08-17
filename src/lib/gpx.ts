@@ -47,6 +47,30 @@ ${trkpts}
 `;
 }
 
+/**
+ * Chains several imported tracks into one, in the order they were given.
+ *
+ * Each track is appended to the end of the chain, reversed when its far end is the closer one:
+ * files exported in whatever direction still merge into a line that goes somewhere instead of
+ * zigzagging. Nothing is dropped, so a gap between two tracks stays visible as a long leg the
+ * router will bridge.
+ *
+ * Args:
+ *   tracks: track geometries, in the order the user picked the files.
+ */
+export function mergeTracks(tracks: LonLatEle[][]): LonLatEle[] {
+  const usable = tracks.filter(t => t.length >= 2);
+  if (usable.length === 0) return [];
+  let merged = usable[0];
+  for (const track of usable.slice(1)) {
+    const end = merged[merged.length - 1];
+    const toStart = haversineM([end[0], end[1]], [track[0][0], track[0][1]]);
+    const toEnd = haversineM([end[0], end[1]], [track[track.length - 1][0], track[track.length - 1][1]]);
+    merged = [...merged, ...(toEnd < toStart ? [...track].reverse() : track)];
+  }
+  return merged;
+}
+
 export function parseGpx(text: string): {
   coords: LonLatEle[];
   waypoints: { lon: number; lat: number; name: string; kind: PointKind }[];

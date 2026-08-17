@@ -4,7 +4,7 @@ import { type MsgKey, useT } from '../lib/i18n';
 import { kindDef, kindLabelKey } from '../lib/points';
 import { type Anchor, isClosedRoute, usePlanner } from '../store';
 
-const ROUTING_PRESETS: readonly RoutingPreset[] = ['balanced', 'shortest', 'avoid_roads', 'easy_up'];
+const ROUTING_PRESETS: readonly RoutingPreset[] = ['balanced', 'shortest', 'fastest', 'avoid_roads', 'easy_up'];
 
 export function Sidebar() {
   const t = useT();
@@ -26,6 +26,8 @@ export function Sidebar() {
   const future = usePlanner(s => s.future);
   const hasRoute = legs.some(l => (l.leg?.coords.length ?? 0) > 0);
   const isLoop = isClosedRoute(anchors);
+  // a leg stays manual when it was imported as a beeline or drawn in manual mode
+  const hasStraightLegs = legs.some(l => l.manual);
 
   function anchorLabel(anchor: Anchor, index: number): string {
     if (anchor.name) return anchor.name;
@@ -61,7 +63,7 @@ export function Sidebar() {
         {!manualMode && (
           <>
             <p className="side-label">{t('routing_preset')}</p>
-            <div className="segmented">
+            <div className="segmented wrap">
               {ROUTING_PRESETS.map(preset => (
                 <button
                   type="button"
@@ -114,6 +116,17 @@ export function Sidebar() {
                 {t('clear_route')}
               </button>
             </div>
+            {hasStraightLegs && (
+              <button
+                type="button"
+                className="side-wide"
+                data-control="route-straight"
+                title={t('route_straight_hint')}
+                onClick={() => usePlanner.getState().routeStraightLegs()}
+              >
+                {t('route_straight')}
+              </button>
+            )}
           </div>
         )}
       </section>
