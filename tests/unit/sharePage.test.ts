@@ -32,7 +32,7 @@ describe('sharePage', () => {
     }
     // the generic tags the static page carries must not compete with the route own
     expect(html).not.toContain('cairn · planificateur');
-    expect(html).not.toContain('vercel.app/logo.png');
+    expect(html).not.toContain('vercel.app/og.jpg');
   });
 
   it('escapes a route name that would break the document', () => {
@@ -48,6 +48,18 @@ describe('sharePage', () => {
 
   it('sends a visitor home rather than nowhere when the link has no usable id', () => {
     expect(sharePage(null, '../secret', TITLE, DESCRIPTION, IMAGE, PAGE_URL)).toContain('content="0;url=/"');
+  });
+});
+
+describe('the card the site itself previews with', () => {
+  it('is what index.html advertises, at the size and weight crawlers accept', () => {
+    expect(INDEX).toContain('content="https://cairn-swart-gamma.vercel.app/og.jpg"');
+    expect(INDEX).toContain('<meta name="twitter:card" content="summary_large_image" />');
+
+    const card = readFileSync(resolve(process.cwd(), 'public/og.jpg'));
+    // whatsapp gives up past ~300 kB, and every platform wants 1200x630 to show it uncropped
+    expect(card.length).toBeLessThan(300_000);
+    expect(jpegSize(card)).toEqual({ width: 1200, height: 630 });
   });
 });
 
@@ -78,3 +90,24 @@ describe('validId', () => {
     expect(validId(null)).toBe(false);
   });
 });
+
+/** width and height read off the jpeg SOF marker */
+function jpegSize(data: Buffer): { width: number; height: number } {
+  let i = 2;
+  while (i < data.length - 9) {
+    if (data[i] !== 0xff) {
+      i += 1;
+      continue;
+    }
+    const marker = data[i + 1];
+    if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
+      return { height: data.readUInt16BE(i + 5), width: data.readUInt16BE(i + 7) };
+    }
+    if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
+      i += 2;
+      continue;
+    }
+    i += 2 + data.readUInt16BE(i + 2);
+  }
+  throw new Error('no jpeg dimensions');
+}

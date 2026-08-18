@@ -68,6 +68,7 @@ Everything is queried straight from the browser: the deployed site is pure stati
 | `make format` | fixes formatting and lint (biome) |
 | `make test` | unit and regression tests (vitest) |
 | `make test-e2e` | browser suite (playwright, real APIs) |
+| `make og-card` | regenerates `public/og.jpg`, the link preview of the site itself |
 
 A pre-commit hook lints the staged files, and CI runs `make check` on every push. The
 end-to-end suite queries IGN, BRouter and Overpass, so it stays a local command rather than a

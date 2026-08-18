@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup dev check format lint typecheck test test-e2e build preview
+.PHONY: help setup dev check format lint typecheck test test-e2e build preview og-card
 
 help:
 	@echo "make setup      install deps, the playwright browser and the git hooks"
@@ -12,6 +12,7 @@ help:
 	@echo "make test-e2e   end-to-end tests against a real browser (playwright)"
 	@echo "make build      production build into dist/"
 	@echo "make preview    serve the production build locally"
+	@echo "make og-card    regenerate public/og.jpg, the link preview of the site itself"
 
 check: lint typecheck test build
 
@@ -43,3 +44,6 @@ build:
 
 preview:
 	pnpm preview
+
+og-card:
+	node scripts/make-og-card.mjs

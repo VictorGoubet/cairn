@@ -20,7 +20,7 @@ export async function GET(request) {
   const title = record?.name ? `${record.name} · cairn` : 'cairn · itinéraire partagé';
   const description = record?.description || 'Itinéraire de randonnée partagé avec cairn';
   // .jpg in the URL: several mobile parsers only trust an image they can name
-  const image = validId(id) ? `${url.origin}/p/${id}.jpg` : `${url.origin}/logo.png`;
+  const image = validId(id) ? `${url.origin}/p/${id}.jpg` : `${url.origin}/og.jpg`;
 
   const page = await fetch(new URL('/index.html', url.origin)).then(
     res => (res.ok ? res.text() : null),
