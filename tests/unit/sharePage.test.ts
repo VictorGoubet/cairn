@@ -9,21 +9,24 @@ const INDEX = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
 
 const TITLE = 'Tour du Queyras · cairn';
 const DESCRIPTION = '130 km · +7 200 m · 42 h 10';
-const IMAGE = 'https://cairn.test/api/preview?id=abc1234567';
+const IMAGE = 'https://cairn.test/p/abc1234567.jpg';
+const PAGE_URL = 'https://cairn.test/s/abc1234567';
 
 describe('sharePage', () => {
   it('dresses the app page with the route own title, description and thumbnail', () => {
-    const html = sharePage(INDEX, 'abc1234567', TITLE, DESCRIPTION, IMAGE);
+    const html = sharePage(INDEX, 'abc1234567', TITLE, DESCRIPTION, IMAGE, PAGE_URL);
     expect(html).toContain(`<title>${TITLE}</title>`);
     expect(html).toContain(`<meta property="og:title" content="${TITLE}">`);
     expect(html).toContain(`<meta property="og:image" content="${IMAGE}">`);
+    expect(html).toContain(`<meta property="og:url" content="${PAGE_URL}">`);
+    expect(html).toContain('<meta property="og:image:type" content="image/jpeg">');
     expect(html).toContain(`<meta property="og:description" content="${DESCRIPTION}">`);
     // and it is still the app: the bundle entry survives the rewrite
     expect(html).toContain('/src/main.tsx');
   });
 
   it('leaves exactly one of every tag a preview bot reads', () => {
-    const html = sharePage(INDEX, 'abc1234567', TITLE, DESCRIPTION, IMAGE);
+    const html = sharePage(INDEX, 'abc1234567', TITLE, DESCRIPTION, IMAGE, PAGE_URL);
     for (const tag of ['property="og:title"', 'property="og:image"', 'property="og:description"', '<title>']) {
       expect(html.split(tag)).toHaveLength(2);
     }
@@ -33,18 +36,18 @@ describe('sharePage', () => {
   });
 
   it('escapes a route name that would break the document', () => {
-    const html = sharePage(INDEX, 'abc1234567', 'Col "haut" & <raide>', DESCRIPTION, IMAGE);
+    const html = sharePage(INDEX, 'abc1234567', 'Col "haut" & <raide>', DESCRIPTION, IMAGE, PAGE_URL);
     expect(html).toContain('<meta property="og:title" content="Col &quot;haut&quot; &amp; &lt;raide&gt;">');
   });
 
   it('still previews and still opens when the app page cannot be read', () => {
-    const html = sharePage(null, 'abc1234567', TITLE, DESCRIPTION, IMAGE);
+    const html = sharePage(null, 'abc1234567', TITLE, DESCRIPTION, IMAGE, PAGE_URL);
     expect(html).toContain(`<meta property="og:image" content="${IMAGE}">`);
     expect(html).toContain('content="0;url=/#s=abc1234567"');
   });
 
   it('sends a visitor home rather than nowhere when the link has no usable id', () => {
-    expect(sharePage(null, '../secret', TITLE, DESCRIPTION, IMAGE)).toContain('content="0;url=/"');
+    expect(sharePage(null, '../secret', TITLE, DESCRIPTION, IMAGE, PAGE_URL)).toContain('content="0;url=/"');
   });
 });
 

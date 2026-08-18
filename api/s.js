@@ -19,13 +19,14 @@ export async function GET(request) {
   const record = validId(id) ? await readShare(id) : null;
   const title = record?.name ? `${record.name} · cairn` : 'cairn · itinéraire partagé';
   const description = record?.description || 'Itinéraire de randonnée partagé avec cairn';
-  const image = validId(id) ? `${url.origin}/api/preview?id=${id}` : `${url.origin}/logo.png`;
+  // .jpg in the URL: several mobile parsers only trust an image they can name
+  const image = validId(id) ? `${url.origin}/p/${id}.jpg` : `${url.origin}/logo.png`;
 
   const page = await fetch(new URL('/index.html', url.origin)).then(
     res => (res.ok ? res.text() : null),
     () => null,
   );
-  return new Response(sharePage(page, id, title, description, image), {
+  return new Response(sharePage(page, id, title, description, image, `${url.origin}/s/${id}`), {
     headers: {
       'content-type': 'text/html; charset=utf-8',
       // shared links get hit by every preview bot in the chat, let the edge answer them
@@ -42,37 +43,43 @@ export async function GET(request) {
  * @param {string} title page and Open Graph title.
  * @param {string} description one line of stats.
  * @param {string} image absolute URL of the thumbnail.
+ * @param {string} pageUrl canonical URL of the share page itself.
  * @returns {string}
  */
-export function sharePage(page, id, title, description, image) {
-  if (!page) return fallback(id, title, description, image);
+export function sharePage(page, id, title, description, image, pageUrl) {
+  if (!page) return fallback(id, title, description, image, pageUrl);
   return page
     .replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`)
     .replace(/<meta\s+name="description"[^>]*>/, '')
     // the static page carries the generic tags, this route's own must win
     .replace(/\s*<meta\s+(?:property|name)="(?:og|twitter):[^"]*"[^>]*>/g, '')
-    .replace('</head>', `${tags(title, description, image)}</head>`);
+    .replace('</head>', `${tags(title, description, image, pageUrl)}</head>`);
 }
 
 /** when the static page cannot be read, a bare document that still previews and still opens */
-function fallback(id, title, description, image) {
+function fallback(id, title, description, image, pageUrl) {
   const target = validId(id) ? `/#s=${id}` : '/';
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${esc(title)}</title>
-${tags(title, description, image)}<meta http-equiv="refresh" content="0;url=${target}"></head>
+${tags(title, description, image, pageUrl)}<meta http-equiv="refresh" content="0;url=${target}"></head>
 <body><a href="${target}">cairn</a></body></html>`;
 }
 
-function tags(title, description, image) {
+function tags(title, description, image, pageUrl) {
   return [
     `<meta name="description" content="${esc(description)}">`,
     '<meta property="og:type" content="website">',
     '<meta property="og:site_name" content="cairn">',
+    `<meta property="og:url" content="${esc(pageUrl)}">`,
     `<meta property="og:title" content="${esc(title)}">`,
     `<meta property="og:description" content="${esc(description)}">`,
     `<meta property="og:image" content="${esc(image)}">`,
+    `<meta property="og:image:secure_url" content="${esc(image)}">`,
+    '<meta property="og:image:type" content="image/jpeg">',
     '<meta property="og:image:width" content="1200">',
     '<meta property="og:image:height" content="630">',
     '<meta name="twitter:card" content="summary_large_image">',
+    `<meta name="twitter:title" content="${esc(title)}">`,
+    `<meta name="twitter:description" content="${esc(description)}">`,
     `<meta name="twitter:image" content="${esc(image)}">`,
   ].join('\n');
 }

@@ -62,6 +62,15 @@ describe('durationH', () => {
     expect(steep).toBeGreaterThan(gentle / 3);
   });
 
+  it('keeps one absurd elevation point at minutes, not years', () => {
+    // a DEM seam or a bogus <ele>: 60 m of climb over a 10 m step, in an otherwise normal walk
+    const spiked = track(50, 100, 0);
+    spiked[25] = [spiked[25][0], spiked[25][1], spiked[25][2] + 60];
+    const hours = durationH(spiked);
+    expect(hours).toBeGreaterThan(durationH(track(50, 100, 0)));
+    expect(hours).toBeLessThan(3);
+  });
+
   it('is monotonic in distance and returns nothing for a single point', () => {
     expect(durationH(track(100, 100, 0))).toBeGreaterThan(durationH(track(50, 100, 0)));
     expect(durationH([[6.7, 44.6, 1500]])).toBe(0);

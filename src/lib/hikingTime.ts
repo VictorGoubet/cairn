@@ -63,6 +63,9 @@ const MIN_LOAD_FACTOR = 0.7;
 const TERRAIN_FACTOR = 1.2;
 /** kcal per kJ */
 const KCAL_PER_KJ = 0.239;
+/** steepest slope fed to Tobler: beyond ~40° nobody walks, and a bad elevation point (a DEM
+ * seam, a bogus <ele> in a GPX) must cost minutes, not millions of hours */
+const MAX_SLOPE = 0.8;
 
 /**
  * Walking speed on a given slope, in m/s.
@@ -72,7 +75,8 @@ const KCAL_PER_KJ = 0.239;
  *   profile: the hiker.
  */
 export function speedMs(slope: number, profile: HikerProfile): number {
-  const tobler = 6 * Math.exp(-3.5 * Math.abs(slope + 0.05));
+  const clamped = Math.max(-MAX_SLOPE, Math.min(MAX_SLOPE, slope));
+  const tobler = 6 * Math.exp(-3.5 * Math.abs(clamped + 0.05));
   return (tobler * 1000 * paceFactor(profile)) / 3600;
 }
 
