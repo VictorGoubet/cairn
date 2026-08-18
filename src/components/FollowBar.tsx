@@ -68,28 +68,29 @@ export function FollowBar() {
         <span className="follow-message">{denied ? t('follow_denied') : t('follow_waiting')}</span>
       ) : (
         <>
-          <div className="follow-item follow-next">
-            <span className="follow-label">{t('follow_next')}</span>
-            <span className="follow-value">
-              {fix.next
-                ? `${fix.next.name} · ${formatDistance(fix.next.distanceM)}${
-                    fix.next.gainM >= 20 ? ` · +${Math.round(fix.next.gainM)} m` : ''
-                  }`
-                : t('follow_finish')}
-            </span>
-          </div>
+          {!(fix.nextCamp && fix.next && Math.abs(fix.next.distanceM - fix.nextCamp.distanceM) < 1) && (
+            <div className="follow-item follow-next">
+              <span className="follow-label">{t('follow_next')}</span>
+              <span className="follow-value">
+                {fix.next
+                  ? `${fix.next.name} · ${formatDistance(fix.next.distanceM)} · ${upDown(fix.next)}`
+                  : t('follow_finish')}
+              </span>
+            </div>
+          )}
           {fix.nextCamp && fix.nextCamp.distanceM < fix.remainingM - 5 && (
             <div className="follow-item">
               <span className="follow-label">{t('follow_next_camp')}</span>
               <span className="follow-value">
-                {fix.nextCamp.name} · {formatDistance(fix.nextCamp.distanceM)} · {formatDuration(fix.nextCamp.hours)}
+                {fix.nextCamp.name} · {formatDistance(fix.nextCamp.distanceM)} · {upDown(fix.nextCamp)} ·{' '}
+                {formatDuration(fix.nextCamp.hours)}
               </span>
             </div>
           )}
           <div className="follow-item">
             <span className="follow-label">{t('follow_finish')}</span>
             <span className="follow-value">
-              {formatDistance(fix.remainingM)} · +{Math.round(fix.remainingGainM)} m ·{' '}
+              {formatDistance(fix.remainingM)} · {upDown({ gainM: fix.remainingGainM, lossM: fix.remainingLossM })} ·{' '}
               {formatDuration(fix.remainingHours)}
             </span>
           </div>
@@ -101,4 +102,9 @@ export function FollowBar() {
       </button>
     </div>
   );
+}
+
+/** what a leg costs, in the plus/minus everyone reads on trail signs */
+function upDown({ gainM, lossM }: { gainM: number; lossM: number }): string {
+  return `+${Math.round(gainM)} / -${Math.round(lossM)} m`;
 }

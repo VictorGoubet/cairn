@@ -30,11 +30,12 @@ export interface FollowFix {
   travelledM: number;
   remainingM: number;
   remainingGainM: number;
+  remainingLossM: number;
   remainingHours: number;
   /** the next annotated point ahead, with what it takes to get there */
-  next: { name: string; distanceM: number; gainM: number } | null;
+  next: { name: string; distanceM: number; gainM: number; lossM: number; hours: number } | null;
   /** the next camp ahead: tonight's target, distinct from whatever small point comes first */
-  nextCamp: { name: string; distanceM: number; gainM: number; hours: number } | null;
+  nextCamp: { name: string; distanceM: number; gainM: number; lossM: number; hours: number } | null;
 }
 
 export interface FollowHandle {
@@ -135,15 +136,17 @@ export function locate(
   const totalM = dists[dists.length - 1];
   const travelledM = dists[index];
   const rest = coords.slice(index);
-  const { gainM } = elevationStats(rest);
+  const { gainM, lossM } = elevationStats(rest);
   const next = pois.find(p => p.distM > travelledM + 5) ?? null;
   const camp = pois.find(p => p.camp && p.distM > travelledM + 5) ?? null;
   const toPoi = (poi: FollowPoi) => {
     const slice = coords.slice(index, nearestBefore(dists, poi.distM) + 1);
+    const stats = elevationStats(slice);
     return {
       name: poi.name,
       distanceM: poi.distM - travelledM,
-      gainM: elevationStats(slice).gainM,
+      gainM: stats.gainM,
+      lossM: stats.lossM,
       hours: durationH(slice, profile),
     };
   };
@@ -154,6 +157,7 @@ export function locate(
     travelledM,
     remainingM: totalM - travelledM,
     remainingGainM: gainM,
+    remainingLossM: lossM,
     remainingHours: durationH(rest, profile),
     next: next ? toPoi(next) : null,
     nextCamp: camp ? toPoi(camp) : null,

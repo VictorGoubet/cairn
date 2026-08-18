@@ -2374,8 +2374,22 @@ body {
     gap: 4px 12px;
   }
 
-  .follow-next {
+  /* read at arm's length on a trail: every row full width, values in large type */
+  .follow-item {
     flex: 1 0 100%;
+  }
+
+  .follow-label {
+    font-size: 11.5px;
+  }
+
+  .follow-value {
+    font-size: 19px;
+    white-space: normal;
+  }
+
+  .follow-warn {
+    font-size: 15px;
   }
 
   .follow-stop {
