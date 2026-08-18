@@ -109,8 +109,7 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   also lists every leg between its points (`leg-row`, distance + "straight line" when it is a
   beeline), and a row opens `LegEditor` with the same choice. A leg cannot be removed from the
   middle outright because a hole would leave two disjoint itineraries, so deleting one is always
-  the choice of the half that survives. An eraser mode was tried and retired: the point editor
-  already reaches everything, one gesture fewer to learn.
+  the choice of the half that survives.
 - **`routeStraightLegs` turns beelines into paths.** An imported leg keeps `manual: true`, so a
   sketch of points joined by straight lines can be handed to the router in one click; the button
   only shows while such a leg exists.
