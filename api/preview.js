@@ -3,9 +3,13 @@
  * browser rendered when the link was created, stored alongside the route.
  */
 
-import { json, kvConfigured, readShare, validId } from './_kv.ts';
+import { json, kvConfigured, readShare, validId } from './_kv.js';
 
-export default async function handler(request: Request): Promise<Response> {
+/**
+ * @param {Request} request
+ * @returns {Promise<Response>}
+ */
+export default async function handler(request) {
   if (!kvConfigured()) return json({ error: 'no store configured' }, 503);
   const id = new URL(request.url).searchParams.get('id');
   if (!validId(id)) return json({ error: 'bad id' }, 400);

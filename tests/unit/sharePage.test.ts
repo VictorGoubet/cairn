@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { validId } from '../../api/_kv';
-import { sharePage } from '../../api/s';
+import { validId } from '../../api/_kv.js';
+import { sharePage } from '../../api/s.js';
 
 /** the very page vercel serves, so the test breaks if its head stops matching the injection */
 const INDEX = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');

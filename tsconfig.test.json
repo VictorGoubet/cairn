@@ -7,6 +7,8 @@
     // vite/client: the tests import app modules that use import.meta.env and import.meta.hot
     "types": ["vitest/globals", "node", "geojson", "vite/client"],
     "allowArbitraryExtensions": true,
+    // the vercel functions under api/ are plain javascript, typed by jsdoc
+    "allowJs": true,
     "skipLibCheck": true,
 
     /* Bundler mode */

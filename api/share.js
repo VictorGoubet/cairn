@@ -5,14 +5,18 @@
  * stores what the browser encoded and hands it back untouched.
  */
 
-import { json, kvConfigured, readShare, validId, writeShare } from './_kv.ts';
+import { json, kvConfigured, readShare, validId, writeShare } from './_kv.js';
 
 /** a very long route still fits, and a hostile body does not */
 const MAX_PAYLOAD_CHARS = 300_000;
 /** base64 of a jpeg preview, ~450 kB of image */
 const MAX_IMAGE_CHARS = 600_000;
 
-export default async function handler(request: Request): Promise<Response> {
+/**
+ * @param {Request} request
+ * @returns {Promise<Response>}
+ */
+export default async function handler(request) {
   if (!kvConfigured()) return json({ error: 'no store configured' }, 503);
 
   if (request.method === 'GET') {
@@ -26,7 +30,7 @@ export default async function handler(request: Request): Promise<Response> {
 
   if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
 
-  const body = (await request.json().catch(() => null)) as Partial<Record<string, unknown>> | null;
+  const body = await request.json().catch(() => null);
   const payload = typeof body?.payload === 'string' ? body.payload : '';
   const image = typeof body?.image === 'string' ? body.image : '';
   if (!payload || payload.length > MAX_PAYLOAD_CHARS || image.length > MAX_IMAGE_CHARS) {

@@ -43,7 +43,9 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   `demElevation` (client-side DEM reads), `storage` (localStorage + migrations),
   `hiddenTrails` / `refugesInfo` (on-the-fly overlays), `tileGrid` (per-cell caching).
 - `api/`: the only server-side code, three vercel functions serving share links (`share`
-  records, `preview` image, `s` the previewable page) over one key-value store (`_kv`).
+  records, `preview` image, `s` the previewable page) over one key-value store (`_kv`). Plain
+  javascript typed by jsdoc: vercel's function builder type-checks a typescript function with the
+  project's own typescript, and it cannot drive the version this repo runs.
 
 ### Core model
 

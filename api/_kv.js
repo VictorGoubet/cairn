@@ -5,41 +5,40 @@
  * Nothing here is required for the app to work. When no store is configured the share endpoints
  * answer 503 and the client falls back to the self-contained link that carries the whole route
  * in its fragment, which is how cairn shared routes before short links existed.
+ *
+ * These functions are plain javascript on purpose: vercel type-checks a typescript function with
+ * the project's own typescript, and this repo runs a version its function builder cannot drive.
  */
 
 /** a shared link stays alive a year, long enough for a season of hikes */
 const TTL_S = 60 * 60 * 24 * 365;
 
-export interface ShareRecord {
-  /** the route, in the same encoding the #r= fragment uses */
-  payload: string;
-  name: string;
-  /** one line of stats, shown as the link description */
-  description: string;
-  /** base64 jpeg shown as the link thumbnail */
-  image: string;
-}
+/**
+ * @typedef {object} ShareRecord
+ * @property {string} payload the route, in the same encoding the #r= fragment uses
+ * @property {string} name
+ * @property {string} description one line of stats, shown as the link description
+ * @property {string} image base64 jpeg shown as the link thumbnail
+ */
 
-export function kvConfigured(): boolean {
+/** @returns {boolean} */
+export function kvConfigured() {
   return Boolean(endpoint() && token());
 }
 
 /**
  * Reads a share record.
  *
- * Args:
- *   id: short identifier from the link.
- *
- * Returns:
- *   The record, or null when it never existed or expired.
+ * @param {string} id short identifier from the link.
+ * @returns {Promise<ShareRecord | null>} the record, or null when it never existed or expired.
  */
-export async function readShare(id: string): Promise<ShareRecord | null> {
+export async function readShare(id) {
   const res = await fetch(`${endpoint()}/get/${key(id)}`, { headers: { Authorization: `Bearer ${token()}` } });
   if (!res.ok) return null;
-  const { result } = (await res.json()) as { result: string | null };
+  const { result } = await res.json();
   if (!result) return null;
   try {
-    return JSON.parse(result) as ShareRecord;
+    return JSON.parse(result);
   } catch {
     return null;
   }
@@ -48,13 +47,10 @@ export async function readShare(id: string): Promise<ShareRecord | null> {
 /**
  * Stores a share record under a fresh identifier.
  *
- * Args:
- *   record: route, name, description and thumbnail.
- *
- * Returns:
- *   The identifier to put in the link, or null when the store refused.
+ * @param {ShareRecord} record route, name, description and thumbnail.
+ * @returns {Promise<string | null>} the identifier to put in the link, or null when the store refused.
  */
-export async function writeShare(record: ShareRecord): Promise<string | null> {
+export async function writeShare(record) {
   const id = crypto.randomUUID().replace(/-/g, '').slice(0, 10);
   const res = await fetch(`${endpoint()}/set/${key(id)}?EX=${TTL_S}`, {
     method: 'POST',
@@ -64,12 +60,23 @@ export async function writeShare(record: ShareRecord): Promise<string | null> {
   return res.ok ? id : null;
 }
 
-/** an id from a URL indexes nothing else in the store, and only these characters ever appear */
-export function validId(id: string | null): id is string {
+/**
+ * An id from a URL indexes nothing else in the store, and only these characters ever appear.
+ *
+ * @param {string | null} id
+ * @returns {boolean}
+ */
+export function validId(id) {
   return typeof id === 'string' && /^[0-9a-f]{4,32}$/.test(id);
 }
 
-export function json(body: unknown, status = 200, cacheSeconds = 0): Response {
+/**
+ * @param {unknown} body
+ * @param {number} [status]
+ * @param {number} [cacheSeconds]
+ * @returns {Response}
+ */
+export function json(body, status = 200, cacheSeconds = 0) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -79,14 +86,15 @@ export function json(body: unknown, status = 200, cacheSeconds = 0): Response {
   });
 }
 
-function endpoint(): string | undefined {
+function endpoint() {
   return process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
 }
 
-function token(): string | undefined {
+function token() {
   return process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
 }
 
-function key(id: string): string {
+/** @param {string} id */
+function key(id) {
   return `cairn:share:${id}`;
 }

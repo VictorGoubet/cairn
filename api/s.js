@@ -7,9 +7,13 @@
  * then loads the app as usual and reads the id from the path.
  */
 
-import { readShare, validId } from './_kv.ts';
+import { readShare, validId } from './_kv.js';
 
-export default async function handler(request: Request): Promise<Response> {
+/**
+ * @param {Request} request
+ * @returns {Promise<Response>}
+ */
+export default async function handler(request) {
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
   const record = validId(id) ? await readShare(id) : null;
@@ -33,20 +37,14 @@ export default async function handler(request: Request): Promise<Response> {
 /**
  * The document served for a share link: the app's own page wearing this route's tags.
  *
- * Args:
- *   page: the static index.html, or null when it could not be read.
- *   id: share identifier, used by the fallback document to hand over to the app.
- *   title: page and Open Graph title.
- *   description: one line of stats.
- *   image: absolute URL of the thumbnail.
+ * @param {string | null} page the static index.html, or null when it could not be read.
+ * @param {string | null} id share identifier, used by the fallback document to hand over to the app.
+ * @param {string} title page and Open Graph title.
+ * @param {string} description one line of stats.
+ * @param {string} image absolute URL of the thumbnail.
+ * @returns {string}
  */
-export function sharePage(
-  page: string | null,
-  id: string | null,
-  title: string,
-  description: string,
-  image: string,
-): string {
+export function sharePage(page, id, title, description, image) {
   if (!page) return fallback(id, title, description, image);
   return page
     .replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`)
@@ -57,14 +55,14 @@ export function sharePage(
 }
 
 /** when the static page cannot be read, a bare document that still previews and still opens */
-function fallback(id: string | null, title: string, description: string, image: string): string {
+function fallback(id, title, description, image) {
   const target = validId(id) ? `/#s=${id}` : '/';
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${esc(title)}</title>
 ${tags(title, description, image)}<meta http-equiv="refresh" content="0;url=${target}"></head>
 <body><a href="${target}">cairn</a></body></html>`;
 }
 
-function tags(title: string, description: string, image: string): string {
+function tags(title, description, image) {
   return [
     `<meta name="description" content="${esc(description)}">`,
     '<meta property="og:type" content="website">',
@@ -72,13 +70,14 @@ function tags(title: string, description: string, image: string): string {
     `<meta property="og:title" content="${esc(title)}">`,
     `<meta property="og:description" content="${esc(description)}">`,
     `<meta property="og:image" content="${esc(image)}">`,
-    '<meta property="og:image:width" content="1080">',
-    '<meta property="og:image:height" content="1080">',
+    '<meta property="og:image:width" content="1200">',
+    '<meta property="og:image:height" content="630">',
     '<meta name="twitter:card" content="summary_large_image">',
     `<meta name="twitter:image" content="${esc(image)}">`,
   ].join('\n');
 }
 
-function esc(text: string): string {
+/** @param {string} text */
+function esc(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
