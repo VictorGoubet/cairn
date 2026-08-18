@@ -21,9 +21,10 @@ const HTML = `<!doctype html>
   .row { display: flex; align-items: center; gap: 60px; padding: 74px 84px 0; }
   img { width: 268px; height: 268px; flex-shrink: 0; }
   h1 { font-size: 100px; font-weight: 800; letter-spacing: -2px; color: #212529; line-height: 1; }
-  p { font-size: 34px; color: #52514e; margin-top: 18px; line-height: 1.35; max-width: 600px; }
-  .rule { width: 124px; height: 7px; border-radius: 4px; background: #e8590c; margin-top: 26px; }
-  .foot { font-size: 25px; font-weight: 600; color: #7d7b74; letter-spacing: 0.3px; margin-top: 24px; }
+  p { font-size: 40px; color: #52514e; margin-top: 20px; line-height: 1.3; max-width: 620px; }
+  .rule { width: 124px; height: 7px; border-radius: 4px; background: #e8590c; margin-top: 28px; }
+  /* the app is bilingual, so the card says it once in each language */
+  .fr { font-size: 28px; color: #7d7b74; margin-top: 26px; letter-spacing: 0.2px; }
   /* the relief and the trace of the app itself, so the card reads as a hiking tool */
   svg { position: absolute; left: 0; bottom: 0; width: 100%; height: 250px; }
 </style></head>
@@ -32,9 +33,9 @@ const HTML = `<!doctype html>
     <img src="data:image/png;base64,${logo}" alt="">
     <div>
       <h1>cairn</h1>
-      <p>Planificateur de randonnée et trek, sur les cartes IGN. Gratuit, sans compte.</p>
+      <p>Free hiking and trek planner</p>
       <div class="rule"></div>
-      <div class="foot">Sentiers réels · profil · relief 3D · GPX</div>
+      <div class="fr">Planificateur de rando et trek gratuit</div>
     </div>
   </div>
   <svg viewBox="0 0 1200 250" preserveAspectRatio="none">

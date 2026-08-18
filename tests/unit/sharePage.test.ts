@@ -31,7 +31,7 @@ describe('sharePage', () => {
       expect(html.split(tag)).toHaveLength(2);
     }
     // the generic tags the static page carries must not compete with the route own
-    expect(html).not.toContain('cairn · planificateur');
+    expect(html).not.toContain('free hiking and trek planner');
     expect(html).not.toContain('vercel.app/og.jpg');
   });
 
