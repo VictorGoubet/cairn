@@ -28,6 +28,21 @@ describe('locate', () => {
     expect(fix.next?.gainM).toBeCloseTo(140, 0);
   });
 
+  it('tells tonight\'s camp apart from whatever small point comes first', () => {
+    const pois = [
+      { name: 'Source', distM: DISTS[6] },
+      { name: 'Bivouac du col', distM: DISTS[14], camp: true },
+      { name: 'Sommet', distM: DISTS[20] },
+    ];
+    const fix = locate(ROUTE, DISTS, pois, [ROUTE[3][0], 44.6], 5);
+    expect(fix.next?.name).toBe('Source');
+    expect(fix.nextCamp?.name).toBe('Bivouac du col');
+    expect(fix.nextCamp?.distanceM).toBeCloseTo(DISTS[14] - DISTS[3], 0);
+    expect(fix.nextCamp?.hours).toBeGreaterThan(0);
+    // past the camp, no next camp is left to announce
+    expect(locate(ROUTE, DISTS, pois, [ROUTE[16][0], 44.6], 5).nextCamp).toBeNull();
+  });
+
   it('moves on to the following point once one is passed', () => {
     const fix = locate(ROUTE, DISTS, POIS, [ROUTE[12][0], 44.6], 5);
     expect(fix.next?.name).toBe('Sommet');

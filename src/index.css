@@ -1039,6 +1039,35 @@ body {
   color: var(--ink-2);
 }
 
+.route-offline {
+  position: absolute;
+  top: 12px;
+  right: 48px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.route-offline svg {
+  width: 16px;
+  height: 16px;
+}
+
+.route-offline.saved {
+  color: var(--start);
+  border-color: var(--start);
+}
+
 .route-remove {
   position: absolute;
   top: 12px;
@@ -1256,7 +1285,40 @@ body {
   gap: 10px;
 }
 
-.stages-head h2 {
+.stages-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 2px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.stages-toggle .chevron {
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--ink-2);
+  border-bottom: 2px solid var(--ink-2);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.stages-toggle .chevron.open {
+  transform: rotate(45deg);
+}
+
+.stages-count {
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.stages-toggle {
   margin: 0;
   font-size: 11px;
   font-weight: 600;
@@ -1335,9 +1397,11 @@ body {
 
 .follow-bar {
   position: absolute;
-  bottom: 12px;
-  left: 12px;
-  right: 62px;
+  /* top of the map: at the bottom it sat exactly on the elevation chart it feeds */
+  top: 12px;
+  left: 46px;
+  right: auto;
+  max-width: min(760px, calc(100% - 240px));
   z-index: 8;
   display: flex;
   align-items: center;
@@ -1867,14 +1931,30 @@ body {
   transform: scale(1.3);
 }
 
-.anchor-start {
-  border-color: var(--start);
+/* the ends wear flags, pole planted on the point */
+.anchor-flag {
+  display: block;
+  width: 26px;
+  height: 34px;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 35%));
+  transition: transform 0.1s ease;
+  transform-origin: bottom left;
 }
 
-/* the last point is always the end, styled automatically */
-.anchor-end {
-  background: var(--route);
-  border-color: #fff;
+.anchor-flag svg {
+  width: 100%;
+  height: 100%;
+}
+
+.anchor-flag .pole {
+  stroke: #3f3e3b;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.anchor-wrap:hover .anchor-flag {
+  transform: scale(1.15);
 }
 
 .km-marker {
@@ -2271,8 +2351,10 @@ body {
 @media (max-width: 760px) {
   /* above the sheet's peek, and stacked: two lines read better than four columns at 360px */
   .follow-bar {
+    top: auto;
     left: 8px;
     right: 8px;
+    max-width: none;
     /* clear of the sheet's 88px peek (PEEK_PX in BottomSheet) */
     bottom: 96px;
     flex-wrap: wrap;

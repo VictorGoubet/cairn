@@ -117,13 +117,12 @@ test.describe('map options', () => {
     await expect.poll(() => page.locator('.km-marker').count()).toBe(0);
   });
 
-  test('slopes, GR trails and hidden paths switch their layers', async ({ page }) => {
+  test('slopes and GR trails switch their layers', async ({ page }) => {
     await openPlanner(page);
     await page.locator('[data-control="options"]').click();
     for (const [label, layerId] of [
       [/Pentes|Slopes/, 'overlay-slopes'],
       [/Sentiers balisés|Marked trails/, 'overlay-gr'],
-      [/discrets|faint/i, 'overlay-hidden'],
     ] as const) {
       await page.locator('.option-row', { hasText: label }).locator('input[type="checkbox"]').check();
       const visibility = await page.evaluate(
@@ -138,7 +137,8 @@ test.describe('map options', () => {
 test.describe('point editing', () => {
   test('a point takes a kind and a name, shown on its marker', async ({ page }) => {
     await drawManualRoute(page);
-    await page.locator('.maplibregl-marker .anchor-marker').first().click();
+    // the ends wear flags now: the start flag opens the same editor a dot would
+    await page.locator('.maplibregl-marker .anchor-flag').first().click();
     await expect(page.locator('.point-editor')).toBeVisible();
     await page.locator('.kind-option', { hasText: /eau|Water/ }).click();
     await page.locator('.point-name').fill('Fontaine du village');
@@ -151,7 +151,7 @@ test.describe('point editing', () => {
     await clickAt(page, [CEILLAC[0] + 0.008, CEILLAC[1] - 0.003]);
     await waitForRouting(page, 2);
     // the middle anchor: not the start, not the end
-    await page.locator('.maplibregl-marker .anchor-marker').nth(1).click();
+    await page.locator('.maplibregl-marker .anchor-marker').first().click();
     await expect(page.locator('.point-editor')).toBeVisible();
     await page.locator('[data-control="trim-before"]').click();
     const state = await planner(page).state();

@@ -12,8 +12,10 @@ import { fetchWithTimeout } from './http';
 
 // in fallback order: the reference instance, its sibling server (a rate-limit ban is
 // per-server), then the VK-hosted instance as the only independent one still open and CORS-ready
+export const OVERPASS_PRIMARY = 'https://overpass-api.de/api/interpreter';
+
 const ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter',
+  OVERPASS_PRIMARY,
   'https://lz4.overpass-api.de/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
@@ -51,11 +53,8 @@ export async function overpassQuery<T>(query: string): Promise<T[]> {
     let refused = false;
     for (const endpoint of ENDPOINTS) {
       try {
-        const res = await fetchWithTimeout(
-          endpoint,
-          { method: 'POST', body: `data=${encodeURIComponent(query)}` },
-          TIMEOUT_MS,
-        );
+        // GET, not POST: the service worker can only serve cached GETs when offline
+        const res = await fetchWithTimeout(overpassUrl(endpoint, query), undefined, TIMEOUT_MS);
         if (!res.ok) {
           refused ||= res.status === 406 || res.status === 429;
           throw new Error(`overpass ${res.status}`);
@@ -71,6 +70,11 @@ export async function overpassQuery<T>(query: string): Promise<T[]> {
   } finally {
     release();
   }
+}
+
+/** the exact URL a query hits on `endpoint`, exported for the offline download */
+export function overpassUrl(endpoint: string, query: string): string {
+  return `${endpoint}?data=${encodeURIComponent(query)}`;
 }
 
 function acquire(): Promise<void> {

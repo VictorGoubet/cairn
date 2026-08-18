@@ -17,6 +17,8 @@ export const OFF_ROUTE_M = 60;
 export interface FollowPoi {
   name: string;
   distM: number;
+  /** true for a camp / stage end: the day's real target, shown on its own */
+  camp?: boolean;
 }
 
 export interface FollowFix {
@@ -31,6 +33,8 @@ export interface FollowFix {
   remainingHours: number;
   /** the next annotated point ahead, with what it takes to get there */
   next: { name: string; distanceM: number; gainM: number } | null;
+  /** the next camp ahead: tonight's target, distinct from whatever small point comes first */
+  nextCamp: { name: string; distanceM: number; gainM: number; hours: number } | null;
 }
 
 export interface FollowHandle {
@@ -133,6 +137,16 @@ export function locate(
   const rest = coords.slice(index);
   const { gainM } = elevationStats(rest);
   const next = pois.find(p => p.distM > travelledM + 5) ?? null;
+  const camp = pois.find(p => p.camp && p.distM > travelledM + 5) ?? null;
+  const toPoi = (poi: FollowPoi) => {
+    const slice = coords.slice(index, nearestBefore(dists, poi.distM) + 1);
+    return {
+      name: poi.name,
+      distanceM: poi.distM - travelledM,
+      gainM: elevationStats(slice).gainM,
+      hours: durationH(slice, profile),
+    };
+  };
   return {
     position: here,
     accuracyM,
@@ -141,13 +155,8 @@ export function locate(
     remainingM: totalM - travelledM,
     remainingGainM: gainM,
     remainingHours: durationH(rest, profile),
-    next: next
-      ? {
-          name: next.name,
-          distanceM: next.distM - travelledM,
-          gainM: elevationStats(coords.slice(index, nearestBefore(dists, next.distM) + 1)).gainM,
-        }
-      : null,
+    next: next ? toPoi(next) : null,
+    nextCamp: camp ? toPoi(camp) : null,
   };
 }
 

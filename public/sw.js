@@ -12,17 +12,23 @@
 const SHELL_CACHE = 'cairn-shell-v1';
 const ASSET_CACHE = 'cairn-assets-v1';
 const TILE_CACHE = 'cairn-tiles-v1';
+/** filled by the in-app "download for offline": never trimmed, checked before everything */
+const OFFLINE_CACHE = 'cairn-offline-v1';
 const TILE_MAX_ENTRIES = 4000;
 
 /** hosts whose answers are worth keeping for the trail: tiles, DEM, POIs */
 const TILE_HOSTS = [
   'data.geopf.fr',
+  'tile.openstreetmap.org',
   'a.tile.openstreetmap.org',
   'b.tile.openstreetmap.org',
   'c.tile.openstreetmap.org',
   's3.amazonaws.com',
   'tile.waymarkedtrails.org',
   'www.refuges.info',
+  'overpass-api.de',
+  'lz4.overpass-api.de',
+  'maps.mail.ru',
 ];
 
 self.addEventListener('install', event => {
@@ -42,7 +48,7 @@ async function precache() {
 }
 
 self.addEventListener('activate', event => {
-  const keep = [SHELL_CACHE, ASSET_CACHE, TILE_CACHE];
+  const keep = [SHELL_CACHE, ASSET_CACHE, TILE_CACHE, OFFLINE_CACHE];
   event.waitUntil(
     caches
       .keys()
@@ -81,6 +87,10 @@ async function networkFirst(request) {
 }
 
 async function cacheFirst(cacheName, request, maxEntries) {
+  // a downloaded corridor answers first: those entries were asked for by name and never expire
+  const offline = await caches.open(OFFLINE_CACHE);
+  const kept = await offline.match(request, { ignoreVary: true });
+  if (kept) return kept;
   const cache = await caches.open(cacheName);
   // ignoreVary: servers send `Vary: Origin` on cors answers, and a crossorigin <script> carries
   // an Origin header the precached request lacked; the URL alone is the identity of an asset

@@ -11,7 +11,8 @@ import { overpassQuery } from './overpass';
 import { type Cell, cachedFetch, cellBounds, cellsInBounds, type ViewBounds } from './tileGrid';
 
 // z10 cells (~30 km per side): dense metros hold ~1500 fountains per cell, one request each
-const CELL_ZOOM = 10;
+export const FOUNTAINS_CELL_ZOOM = 10;
+const CELL_ZOOM = FOUNTAINS_CELL_ZOOM;
 const MAX_CELLS_PER_VIEW = 6;
 const CACHE_MAX_CELLS = 64;
 const MAX_POINTS_PER_CELL = 1500;
@@ -42,15 +43,22 @@ export async function fetchDrinkingWater(bounds: ViewBounds): Promise<GeoJSON.Fe
   return results.flat();
 }
 
-async function queryCell(cell: Cell): Promise<GeoJSON.Feature[]> {
+/** the exact query a cell makes, exported so the offline download caches the same URL */
+export function fountainsCellQuery(cell: Cell): string {
   const b = cellBounds(cell, CELL_ZOOM);
   const bbox = `${b.south},${b.west},${b.north},${b.east}`;
   // a private tap behind a fence quenches nobody
-  const query =
+  return (
     `[out:json][timeout:20];` +
     `node["amenity"="drinking_water"]["access"!~"^(private|no)$"](${bbox});` +
-    `out ${MAX_POINTS_PER_CELL};`;
-  const elements = await overpassQuery<{ lon: number; lat: number; tags?: Record<string, string> }>(query);
+    `out ${MAX_POINTS_PER_CELL};`
+  );
+}
+
+async function queryCell(cell: Cell): Promise<GeoJSON.Feature[]> {
+  const elements = await overpassQuery<{ lon: number; lat: number; tags?: Record<string, string> }>(
+    fountainsCellQuery(cell),
+  );
   return elements
     .filter(el => Number.isFinite(el.lon) && Number.isFinite(el.lat))
     .map(el => ({

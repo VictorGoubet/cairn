@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { formatDistance } from '../lib/geo';
 import { useT } from '../lib/i18n';
 import { dateLocale } from '../lib/lang';
+import { downloadRouteOffline, markOfflineSaved, offlineSavedAt } from '../lib/offline';
 import { renderShareImage } from '../lib/shareImage';
 import { useEscapeKey } from '../lib/useEscapeKey';
 import { routeCoords, type SavedRoute, usePlanner } from '../store';
@@ -107,6 +108,7 @@ function RouteCard({
           {new Date(route.updatedAt).toLocaleDateString(dateLocale(lang))}
         </span>
       </button>
+      <OfflineButton route={route} />
       <button
         type="button"
         className={confirming ? 'route-remove armed' : 'route-remove'}
@@ -117,5 +119,67 @@ function RouteCard({
         {confirming ? t('confirm') : '×'}
       </button>
     </>
+  );
+}
+
+/** downloads the route's corridor into the cache, and says so once it is there */
+function OfflineButton({ route }: { route: SavedRoute }) {
+  const t = useT();
+  const [percent, setPercent] = useState<number | null>(null);
+  const [saved, setSaved] = useState(() => offlineSavedAt(route.id) !== null);
+
+  async function download() {
+    if (percent !== null) return;
+    setPercent(0);
+    try {
+      await downloadRouteOffline(routeCoords(route.legs), ({ done, total }) =>
+        setPercent(Math.round((done / total) * 100)),
+      );
+      markOfflineSaved(route.id);
+      setSaved(true);
+    } catch {
+      usePlanner.setState({ error: 'err_offline' });
+    } finally {
+      setPercent(null);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className={saved ? 'route-offline saved' : 'route-offline'}
+      data-control="route-offline"
+      title={saved ? t('offline_saved_hint') : t('offline_download_hint')}
+      disabled={percent !== null}
+      onClick={download}
+    >
+      {percent !== null ? (
+        `${percent}%`
+      ) : saved ? (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
+          <path d="m5 12 5 5L19 8" />
+        </svg>
+      ) : (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5" />
+          <path d="M4 19.5h16" />
+        </svg>
+      )}
+    </button>
   );
 }

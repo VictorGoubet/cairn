@@ -1,6 +1,6 @@
 // the trek features: multi-day stages, weather, qr handoff, offline shell
 import { expect, test } from '@playwright/test';
-import { CEILLAC, clickAt, openPlanner, waitForRouting } from './helpers';
+import { CEILLAC, clickAt, openPlanner, type TestHandles, waitForRouting } from './helpers';
 
 // all three inside the z14 viewport: a click projected past its edge lands on nothing
 const FURTHER: [number, number] = [CEILLAC[0] + 0.008, CEILLAC[1] + 0.001];
@@ -14,7 +14,7 @@ async function drawTrek(page: import('@playwright/test').Page): Promise<void> {
   await clickAt(page, BEYOND);
   await waitForRouting(page, 2);
   // the middle point becomes a camp: that cut is what makes it a trek
-  await page.locator('.maplibregl-marker .anchor-marker').nth(1).click();
+  await page.locator('.maplibregl-marker .anchor-marker').first().click();
   await page.locator('.kind-option', { hasText: /Bivouac|Camp/ }).click();
   await page.locator('.point-name').fill('Bivouac du lac');
   await page.keyboard.press('Escape');
@@ -28,6 +28,12 @@ test.describe('multi-day stages', () => {
     await expect(rows.first()).toContainText('J1');
     await expect(rows.first()).toContainText('Bivouac du lac');
     await expect(rows.first()).toContainText(/min|h/);
+    // the block folds away when the panel gets crowded, and remembers nothing: a session choice
+    await page.locator('.stages-toggle').click();
+    await expect(page.locator('.stages-list')).toHaveCount(0);
+    await page.locator('.stages-toggle').click();
+    await expect(rows).toHaveCount(2);
+
     // removing the camp merges the days back
     await page.locator('.wp-marker .poi-icon').first().click();
     await page.locator('.point-editor button', { hasText: /Supprimer|Delete/ }).click();
@@ -79,6 +85,49 @@ test.describe('multi-day stages', () => {
     await page.reload();
     await page.waitForFunction(() => '__planner' in window);
     await expect(page.locator('.stages-date input')).toHaveValue(today);
+  });
+});
+
+test.describe('offline download', () => {
+  test('the routes gallery downloads a corridor into the cache storage', async ({ page }) => {
+    // the corridor is fetched for real otherwise: tiny stand-ins keep the test hermetic
+    await page.route('**data.geopf.fr/**', route => route.fulfill({ body: 'tile' }));
+    await page.route('**refuges.info/**', route =>
+      route.fulfill({ contentType: 'application/json', body: '{"features":[]}' }),
+    );
+    await page.route('**overpass-api.de/**', route =>
+      route.fulfill({ contentType: 'application/json', body: '{"elements":[]}' }),
+    );
+    await openPlanner(page);
+    await page.locator('.segmented button', { hasText: /Manuel|Manual/ }).click();
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 1);
+    await page.evaluate(() => (window as unknown as TestHandles).__planner.getState().saveCurrentRoute('hors ligne'));
+
+    await page.locator('.topbar button', { hasText: /itinéraires|routes/i }).click();
+    await page.locator('[data-control="route-offline"]').click();
+    await expect(page.locator('[data-control="route-offline"].saved')).toBeVisible({ timeout: 30_000 });
+
+    const cached = await page.evaluate(async () => {
+      const cache = await caches.open('cairn-offline-v1');
+      const keys = await cache.keys();
+      return {
+        total: keys.length,
+        tiles: keys.filter(k => k.url.includes('PLAN.IGN/14/')).length,
+        pois: keys.filter(k => k.url.includes('refuges.info')).length,
+        fountains: keys.filter(k => k.url.includes('overpass-api.de')).length,
+      };
+    });
+    expect(cached.tiles).toBeGreaterThan(0);
+    expect(cached.pois).toBeGreaterThan(0);
+    expect(cached.fountains).toBeGreaterThan(0);
+
+    // the badge survives a reopen: the state lives with the saved routes
+    await page.reload();
+    await page.waitForFunction(() => '__planner' in window);
+    await page.locator('.topbar button', { hasText: /itinéraires|routes/i }).click();
+    await expect(page.locator('[data-control="route-offline"].saved')).toBeVisible();
   });
 });
 

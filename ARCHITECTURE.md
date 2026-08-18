@@ -47,7 +47,7 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - `src/lib/`: pure logic, one module per concern; `brouter` (routing), `share` (link
   encoding), `gpx` + `exportFormats` (GPX/KML/TCX), `routeSplice` (insert point in trace),
   `demElevation` (client-side DEM reads), `storage` (localStorage + migrations),
-  `hiddenTrails` / `refugesInfo` (on-the-fly overlays), `tileGrid` (per-cell caching).
+  `refugesInfo` / `drinkingWater` (on-the-fly overlays), `tileGrid` (per-cell caching).
 - `api/`: the only server-side code, three vercel functions serving share links (`share`
   records, `preview` image, `s` the previewable page) over one key-value store (`_kv`). Plain
   javascript typed by jsdoc: vercel's function builder type-checks a typescript function with the
@@ -137,10 +137,13 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - **Stages** (`lib/stages.ts`): derived, never stored: a stage is what lies between two `camp`
   points. GPX export writes one named `<trk>` per day. With a start date (`startDate`, in the
   draft), each stage shows its Open-Meteo forecast (`lib/weather.ts`, 16-day horizon, no key).
-- **Offline** (`public/sw.js`): the install precaches the shell and its hashed assets; tiles and
-  open-data answers cache on use (capped FIFO). Cache matches use `ignoreVary`: cors answers
-  carry `Vary: Origin` and a crossorigin script's Origin header would never match the precache.
-  Registered in prod only.
+- **Offline** (`public/sw.js` + `lib/offline.ts`): the install precaches the shell and its
+  hashed assets; tiles and open-data answers cache on use (capped FIFO). The download button on
+  a saved route fills `cairn-offline-v1` (never trimmed, checked first) with the corridor: Plan
+  IGN vector tiles z6-14 (~1.5 km buffer), style/sprite/fonts, refuges.info and fountain cells,
+  reusing the exact URLs the live overlays request (Overpass runs on GET for this). Cache matches
+  use `ignoreVary`: cors answers carry `Vary: Origin` and a crossorigin script's Origin header
+  would never match the precache. Registered in prod only.
 - **QR handoff** (`components/QrPanel.tsx`): the short share link as a code, plan big, scan, go.
 - **Share links** (`src/lib/share.ts`): payload `#r=1.<base64url(deflate-raw(JSON))>`.
   Routed legs travel as anchors only (recomputed on open); frozen legs travel as a polyline
@@ -169,11 +172,11 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - **Client-side elevations** (`demElevation.ts`): Terrarium tiles at z13, bilinear
   interpolation, LRU of 64 decoded tiles. No calls to the IGN altimetry API except for
   manual legs' profiles (`elevation.ts`).
-- **Overlay data** (hidden trails, refuges.info): fetched per tile-grid cell (z11 Overpass,
-  z9 refuges.info) with an LRU cache, refreshed on `moveend`, only while the overlay is on. A
-  failing cell yields an empty list so the map survives, and warns so the failure is findable.
-  Below the overlay's zoom floor a `.zoom-hint` pill says "zoom in": switched on over a wide
-  view, an empty layer reads as broken rather than as "come closer".
+- **Overlay data** (refuges.info z9, fountains z10) is fetched per tile-grid cell with an LRU
+  cache, refreshed on `moveend`, only while the overlay is on. A failing cell yields an empty
+  list so the map survives, and warns so the failure is findable. Below the overlay's zoom floor
+  a `.zoom-hint` pill says "zoom in": switched on over a wide view, an empty layer reads as
+  broken rather than as "come closer".
 - **Water points come from two sources** (`refugesInfo.ts` + `drinkingWater.ts`): refuges.info
   knows the springs of the mountains but holds zero points over a city, where OSM maps every
   fountain (`amenity=drinking_water`, private taps filtered out). Both land in the same layer

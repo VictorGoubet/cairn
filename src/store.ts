@@ -103,7 +103,6 @@ export interface Overlays {
   hillshade: boolean;
   slopes: boolean;
   gr: boolean;
-  hidden: boolean;
   refuges: boolean;
   terrain3d: boolean;
 }
@@ -380,11 +379,10 @@ export const usePlanner = create<PlannerState>((set, get) => {
     baseLayerId: DEFAULT_BASE_LAYER,
     overlays: {
       km: true,
-      contours: true,
+      contours: false,
       hillshade: false,
       slopes: false,
       gr: false,
-      hidden: false,
       refuges: false,
       terrain3d: false,
     },

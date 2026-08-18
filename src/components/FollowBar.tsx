@@ -38,7 +38,7 @@ export function FollowBar() {
     const pois = anchors.flatMap((anchor, i) => {
       if (i > 0) cum += legs[i - 1]?.leg?.distanceM ?? 0;
       const named = anchor.name || (anchor.kind !== 'checkpoint' ? t(`kind_${anchor.kind}`) : '');
-      return named ? [{ name: named, distM: cum }] : [];
+      return named ? [{ name: named, distM: cum, camp: anchor.kind === 'camp' }] : [];
     });
     const handle = startFollow(
       coords,
@@ -78,8 +78,16 @@ export function FollowBar() {
                 : t('follow_finish')}
             </span>
           </div>
+          {fix.nextCamp && fix.nextCamp.distanceM < fix.remainingM - 5 && (
+            <div className="follow-item">
+              <span className="follow-label">{t('follow_next_camp')}</span>
+              <span className="follow-value">
+                {fix.nextCamp.name} · {formatDistance(fix.nextCamp.distanceM)} · {formatDuration(fix.nextCamp.hours)}
+              </span>
+            </div>
+          )}
           <div className="follow-item">
-            <span className="follow-label">{t('follow_remaining')}</span>
+            <span className="follow-label">{t('follow_finish')}</span>
             <span className="follow-value">
               {formatDistance(fix.remainingM)} · +{Math.round(fix.remainingGainM)} m ·{' '}
               {formatDuration(fix.remainingHours)}

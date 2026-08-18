@@ -104,7 +104,7 @@ test('empty states and rapid fire stay clean', async ({ page }) => {
 
   // one point only, then delete it from its editor
   await clickAt(page, CEILLAC);
-  await page.locator('.maplibregl-marker .anchor-marker').first().click();
+  await page.locator('.maplibregl-marker .anchor-flag, .maplibregl-marker .anchor-marker').first().click();
   await page.locator('.point-editor button', { hasText: /Supprimer|Delete/ }).click();
 
   // click the same spot 6 times fast, then clear while legs may be routing

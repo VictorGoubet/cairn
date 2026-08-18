@@ -13,6 +13,7 @@ export function StagesPanel({ stages }: { stages: Stage[] }) {
   const t = useT();
   const startDate = usePlanner(s => s.startDate);
   const [forecasts, setForecasts] = useState<(DayForecast | null)[]>([]);
+  const [open, setOpen] = useState(true);
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const horizon = useMemo(() => addDays(today, FORECAST_DAYS - 1), [today]);
@@ -39,7 +40,11 @@ export function StagesPanel({ stages }: { stages: Stage[] }) {
   return (
     <div className="stages" data-control="stages">
       <div className="stages-head">
-        <h2>{t('stages')}</h2>
+        <button type="button" className="stages-toggle" aria-expanded={open} onClick={() => setOpen(v => !v)}>
+          <span className={open ? 'chevron open' : 'chevron'} aria-hidden="true" />
+          {t('stages')}
+          <span className="stages-count">{stages.length}</span>
+        </button>
         <label className="stages-date">
           {t('stage_start')}
           <input
@@ -50,31 +55,33 @@ export function StagesPanel({ stages }: { stages: Stage[] }) {
           />
         </label>
       </div>
-      <ul className="stages-list">
-        {stages.map((stage, i) => {
-          const forecast = forecasts[i];
-          return (
-            <li key={stage.fromAnchor}>
-              <span className="stage-day">
-                J{i + 1}
-                {startDate && <small>{shortDate(addDays(startDate, i))}</small>}
-              </span>
-              <span className="stage-name">{stage.name || (i === stages.length - 1 ? t('end') : t('stage'))}</span>
-              <span className="stage-stats">
-                {formatDistance(stage.distanceM)} · +{Math.round(stage.gainM)} m · -{Math.round(stage.lossM)} m ·{' '}
-                {formatDuration(stage.hours)}
-              </span>
-              {forecast && (
-                <span className="stage-weather" title={`${t('stage_wind')} ${Math.round(forecast.windKmH)} km/h`}>
-                  {weatherEmoji(forecast.code)} {Math.round(forecast.minC)}° / {Math.round(forecast.maxC)}°
-                  {forecast.precipitationMm >= 1 && ` · ${Math.round(forecast.precipitationMm)} mm`}
+      {open && (
+        <ul className="stages-list">
+          {stages.map((stage, i) => {
+            const forecast = forecasts[i];
+            return (
+              <li key={stage.fromAnchor}>
+                <span className="stage-day">
+                  J{i + 1}
+                  {startDate && <small>{shortDate(addDays(startDate, i))}</small>}
                 </span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-      {startDate && addDays(startDate, stages.length - 1) > horizon && (
+                <span className="stage-name">{stage.name || (i === stages.length - 1 ? t('end') : t('stage'))}</span>
+                <span className="stage-stats">
+                  {formatDistance(stage.distanceM)} · +{Math.round(stage.gainM)} m · -{Math.round(stage.lossM)} m ·{' '}
+                  {formatDuration(stage.hours)}
+                </span>
+                {forecast && (
+                  <span className="stage-weather" title={`${t('stage_wind')} ${Math.round(forecast.windKmH)} km/h`}>
+                    {weatherEmoji(forecast.code)} {Math.round(forecast.minC)}° / {Math.round(forecast.maxC)}°
+                    {forecast.precipitationMm >= 1 && ` · ${Math.round(forecast.precipitationMm)} mm`}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {open && startDate && addDays(startDate, stages.length - 1) > horizon && (
         <p className="side-hint">{t('stage_forecast_horizon')}</p>
       )}
     </div>

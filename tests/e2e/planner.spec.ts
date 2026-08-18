@@ -113,7 +113,7 @@ test.describe('points of interest', () => {
 });
 
 test.describe('map layers and overlays', () => {
-  test('contour lines and their elevation labels can be switched off', async ({ page }) => {
+  test('contour lines are off until asked for, then switch cleanly', async ({ page }) => {
     await openPlanner(page);
     const contourLayersVisible = () =>
       page.evaluate(() => {
@@ -124,11 +124,12 @@ test.describe('map layers and overlays', () => {
           .filter(l => map.getLayoutProperty(l.id, 'visibility') !== 'none').length;
       });
 
-    expect(await contourLayersVisible()).toBeGreaterThan(0);
-    await planner(page).call('toggleOverlay', 'contours');
+    // a bare map reads better: the curves wait for the hiker who wants them
     expect(await contourLayersVisible()).toBe(0);
     await planner(page).call('toggleOverlay', 'contours');
     expect(await contourLayersVisible()).toBeGreaterThan(0);
+    await planner(page).call('toggleOverlay', 'contours');
+    expect(await contourLayersVisible()).toBe(0);
   });
 
   test('satellite keeps the vector labels and trails on top', async ({ page }) => {
@@ -712,9 +713,10 @@ test.describe('hikes around', () => {
   };
 
   test('lists marked routes in view and loads one as the itinerary', async ({ page }) => {
-    await page.route('**/overpass-api.de/api/interpreter', async route => {
-      const body = route.request().postData() ?? '';
-      const payload = body.includes('out%20geom') || body.includes('out geom') ? GEOMETRY : LIST;
+    await page.route('**/overpass-api.de/api/interpreter*', async route => {
+      // queries travel as GET so the offline cache can hold them
+      const query = decodeURIComponent(route.request().url());
+      const payload = query.includes('out geom') ? GEOMETRY : LIST;
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify(payload) });
     });
     await openPlanner(page);

@@ -9,6 +9,7 @@ import { fetchWithTimeout } from './http';
 import { type Cell, cachedFetch, cellBounds, cellsInBounds, type ViewBounds } from './tileGrid';
 
 export const REFUGES_MIN_ZOOM = 10;
+export const REFUGES_CELL_ZOOM = 9;
 export const REFUGES_ATTRIBUTION = '© <a href="https://www.refuges.info" target="_blank">refuges.info</a>';
 
 export type RefugeCategory = 'hut' | 'water' | 'summit' | 'tricky' | 'other';
@@ -32,7 +33,7 @@ export const REFUGE_CATEGORY_EMOJI: Record<RefugeCategory, string> = {
 const API_URL = 'https://www.refuges.info/api/bbox';
 /** every type in the cell; `type_points` takes ids, and a bogus value makes the API answer text */
 const MAX_POINTS_PER_CELL = 500;
-const CELL_ZOOM = 9;
+const CELL_ZOOM = REFUGES_CELL_ZOOM;
 const MAX_CELLS_PER_VIEW = 6;
 const CACHE_MAX_CELLS = 32;
 const CATEGORY_BY_TYPE: Record<string, RefugeCategory> = {
@@ -71,10 +72,14 @@ export async function fetchRefugePoints(bounds: ViewBounds): Promise<GeoJSON.Fea
   return results.flat();
 }
 
-async function queryCell(cell: Cell): Promise<GeoJSON.Feature[]> {
+/** the exact request a cell makes, exported so the offline download caches the same URL */
+export function refugesCellUrl(cell: Cell): string {
   const b = cellBounds(cell, CELL_ZOOM);
-  const bbox = `${b.west},${b.south},${b.east},${b.north}`;
-  const res = await fetchWithTimeout(`${API_URL}?bbox=${bbox}&format=geojson&nb_points=${MAX_POINTS_PER_CELL}`);
+  return `${API_URL}?bbox=${b.west},${b.south},${b.east},${b.north}&format=geojson&nb_points=${MAX_POINTS_PER_CELL}`;
+}
+
+async function queryCell(cell: Cell): Promise<GeoJSON.Feature[]> {
+  const res = await fetchWithTimeout(refugesCellUrl(cell));
   if (!res.ok) throw new Error(`refuges.info ${res.status}`);
   // the API answers 200 with a plain-text message when a parameter is wrong, so an ok status
   // proves nothing: without this check a rejected request reads as an empty area

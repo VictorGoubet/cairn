@@ -24,7 +24,6 @@ import { fetchDrinkingWater } from '../lib/drinkingWater';
 import { FLYOVER_EXAGGERATION, type FlyoverPoi, startFlyover } from '../lib/flyover';
 import { onFollowFix } from '../lib/follow';
 import { cumulativeDistancesM, haversineM, kmMarkerPoints, type LonLatEle, nearestIndex } from '../lib/geo';
-import { fetchHiddenTrails, HIDDEN_TRAILS_MIN_ZOOM } from '../lib/hiddenTrails';
 import { tNow, useT } from '../lib/i18n';
 import { bindLongPress, bindMiddleDragRotate, bindRotateCursor } from '../lib/mapGestures';
 import { setMapInstance } from '../lib/mapHandle';
@@ -39,7 +38,7 @@ import {
 } from '../lib/refugesInfo';
 import { registerSlopeProtocol } from '../lib/slopeTiles';
 import { SURFACE_COLORS, type SurfaceCategory, WAY_COLORS, type WayCategory } from '../lib/waytypes';
-import { routeCoords, usePlanner } from '../store';
+import { isClosedRoute, routeCoords, usePlanner } from '../store';
 
 // standard reroute cadence while dragging (see Leaflet Routing Machine's routeDragInterval)
 const DRAG_REROUTE_MS = 450;
@@ -69,7 +68,6 @@ const ROUTE_SOURCE = 'route';
 const DRAG_SOURCE = 'drag-line';
 const HIGHLIGHT_SOURCE = 'waytype-highlight';
 const SELECTION_SOURCE = 'profile-selection';
-const HIDDEN_TRAILS_SOURCE = 'hidden-trails';
 const REFUGES_SOURCE = 'refuge-points';
 const FOLLOW_SOURCE = 'follow-position';
 const EMPTY_ROUTE: GeoJSON.GeoJSON = { type: 'FeatureCollection', features: [] };
@@ -196,18 +194,7 @@ export function MapView() {
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: { 'line-color': '#2a78d6', 'line-width': 8, 'line-opacity': 0.55 },
         });
-        // faint OSM trails + refuges.info points, loaded on the fly per cell (see tileGrid)
-        map.addSource(HIDDEN_TRAILS_SOURCE, { type: 'geojson', data: EMPTY_ROUTE });
-        map.addLayer(
-          {
-            id: 'overlay-hidden',
-            type: 'line',
-            source: HIDDEN_TRAILS_SOURCE,
-            layout: { 'line-cap': 'round', visibility: 'none' },
-            paint: { 'line-color': '#9c36b5', 'line-width': 1.8, 'line-dasharray': [2, 2], 'line-opacity': 0.9 },
-          },
-          'route-casing',
-        );
+        // refuges.info points + OSM fountains, loaded on the fly per cell (see tileGrid)
         map.addSource(REFUGES_SOURCE, {
           type: 'geojson',
           data: EMPTY_ROUTE,
@@ -354,7 +341,6 @@ export function MapView() {
     map.setLayoutProperty('overlay-hillshade', 'visibility', overlays.hillshade ? 'visible' : 'none');
     map.setLayoutProperty('overlay-slopes', 'visibility', overlays.slopes ? 'visible' : 'none');
     map.setLayoutProperty('overlay-gr', 'visibility', overlays.gr ? 'visible' : 'none');
-    map.setLayoutProperty('overlay-hidden', 'visibility', overlays.hidden ? 'visible' : 'none');
     map.setLayoutProperty('overlay-refuges', 'visibility', overlays.refuges ? 'visible' : 'none');
     map.setTerrain(
       overlays.terrain3d
@@ -384,9 +370,9 @@ export function MapView() {
   // both on-the-fly overlays keep their data in sync with the viewport while they are active
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || (!overlays.hidden && !overlays.refuges)) return;
+    if (!map || !mapReady || !overlays.refuges) return;
     const refresh = () => {
-      void refreshPoiOverlays(map, overlays.hidden, overlays.refuges);
+      void refreshPoiOverlays(map);
     };
     refresh();
     // only once the camera settles: zooming fires a moveend per notch, and firing a burst of
@@ -401,7 +387,7 @@ export function MapView() {
       window.clearTimeout(timer);
       map.off('moveend', onMoveEnd);
     };
-  }, [overlays.hidden, overlays.refuges, mapReady]);
+  }, [overlays.refuges, mapReady]);
 
   // the zoom level drives the "come closer" hint of the on-the-fly overlays
   useEffect(() => {
@@ -497,12 +483,21 @@ export function MapView() {
     // position on every frame, and that bill grows with the route
     if (flyover) return;
     anchorMarkersRef.current = anchors.map((anchor, index) => {
+      const isStart = index === 0;
+      const isEnd = index === anchors.length - 1 && anchors.length > 1;
       const el =
         anchor.kind === 'checkpoint'
-          ? checkpointElement(index === 0, index === anchors.length - 1 && anchors.length > 1)
+          ? checkpointElement(isStart, isEnd, (isStart || isEnd) && isClosedRoute(anchors))
           : pointElement(anchor.kind, anchor.name);
       attachEditOnClick(el, anchor.id);
-      const marker = new Marker({ element: el, draggable: true }).setLngLat([anchor.lon, anchor.lat]).addTo(map);
+      // a flag plants its pole on the point; a dot sits centered on it
+      const marker = new Marker({
+        element: el,
+        draggable: true,
+        anchor: el.classList.contains('flag-wrap') ? 'bottom-left' : 'center',
+      })
+        .setLngLat([anchor.lon, anchor.lat])
+        .addTo(map);
       // during the drag: elastic line on every frame + throttled route recompute; on drop: final routing
       const setDragLine = (cursor: [number, number] | null) => {
         const source = map.getSource(DRAG_SOURCE) as GeoJSONSource | undefined;
@@ -654,7 +649,7 @@ export function MapView() {
     usePlanner.getState().setOverlay('terrain3d', true);
     // hillshading exists to make the plan readable in 3D; over imagery it only costs DEM tiles.
     // The rest recompute on every viewport change, which here means on every frame.
-    for (const heavy of ['hillshade', 'slopes', 'gr', 'hidden', 'refuges'] as const) {
+    for (const heavy of ['hillshade', 'slopes', 'gr', 'refuges'] as const) {
       usePlanner.getState().setOverlay(heavy, false);
     }
     // one device pixel instead of two means a quarter of the pixels to shade, which is where the
@@ -688,11 +683,7 @@ export function MapView() {
 
   // an overlay waiting for zoom must say so: switched on over a wide view it shows nothing,
   // which reads as broken rather than as "come closer"
-  const overlayFloor = Math.min(
-    overlays.refuges ? REFUGES_MIN_ZOOM : Number.POSITIVE_INFINITY,
-    overlays.hidden ? HIDDEN_TRAILS_MIN_ZOOM : Number.POSITIVE_INFINITY,
-  );
-  const needsZoom = Number.isFinite(overlayFloor) && zoomLevel < overlayFloor;
+  const needsZoom = overlays.refuges && zoomLevel < REFUGES_MIN_ZOOM;
 
   return (
     <div ref={containerRef} className="map">
@@ -783,21 +774,12 @@ function adaptiveExaggeration(map: MapLibreMap, applied: number): number | null 
   return Math.min(TERRAIN_EXAGGERATION_MAX, Math.max(TERRAIN_EXAGGERATION_MIN, target));
 }
 
-async function refreshPoiOverlays(map: MapLibreMap, hidden: boolean, refuges: boolean): Promise<void> {
+async function refreshPoiOverlays(map: MapLibreMap): Promise<void> {
   const token = ++poiRefreshToken;
   const zoom = map.getZoom();
   const b = map.getBounds();
   const bounds = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
-  if (hidden) {
-    const features = zoom >= HIDDEN_TRAILS_MIN_ZOOM ? await fetchHiddenTrails(bounds) : [];
-    if (token === poiRefreshToken) {
-      (map.getSource(HIDDEN_TRAILS_SOURCE) as GeoJSONSource | undefined)?.setData({
-        type: 'FeatureCollection',
-        features,
-      });
-    }
-  }
-  if (refuges) {
+  {
     // two sources, one layer: refuges.info knows the mountains, OSM knows the town fountains.
     // Each paints as soon as it lands, so a slow overpass never holds the huts hostage
     const sources = zoom >= REFUGES_MIN_ZOOM ? [fetchRefugePoints(bounds), fetchDrinkingWater(bounds)] : [];
@@ -866,13 +848,27 @@ function refugePopupContent(props: Record<string, unknown>): HTMLDivElement {
   return el;
 }
 
-function checkpointElement(isStart: boolean, isEnd: boolean): HTMLDivElement {
+function checkpointElement(isStart: boolean, isEnd: boolean, isLoop: boolean): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'anchor-wrap';
-  el.title = isStart ? tNow('start') : isEnd ? tNow('end') : tNow('title_point');
-  const dot = document.createElement('span');
-  dot.className = isStart ? 'anchor-marker anchor-start' : isEnd ? 'anchor-marker anchor-end' : 'anchor-marker';
-  el.append(dot);
+  if (!isStart && !isEnd) {
+    el.title = tNow('title_point');
+    const dot = document.createElement('span');
+    dot.className = 'anchor-marker';
+    el.append(dot);
+    return el;
+  }
+  // the ends wear flags: green for the start, checkered for the finish, both when it is a loop
+  el.title = isLoop ? tNow('loop_point') : isStart ? tNow('start') : tNow('end');
+  el.classList.add('flag-wrap');
+  const flag = document.createElement('span');
+  flag.className = isLoop ? 'anchor-flag loop' : isStart ? 'anchor-flag start' : 'anchor-flag end';
+  flag.innerHTML = isLoop
+    ? `<svg viewBox="0 0 20 26" aria-hidden="true"><path d="M4 25V2" class="pole"/><path d="M4 3h12l-3 4 3 4H4z" fill="#008300"/><path d="M4 11h12l-3 4 3 4H4z" fill="#212529"/></svg>`
+    : isStart
+      ? `<svg viewBox="0 0 20 26" aria-hidden="true"><path d="M4 25V2" class="pole"/><path d="M4 3h12l-3 4.5 3 4.5H4z" fill="#008300"/></svg>`
+      : `<svg viewBox="0 0 20 26" aria-hidden="true"><path d="M4 25V2" class="pole"/><path d="M4 3h12v9H4z" fill="#fff" stroke="#212529"/><path d="M4 3h4v4.5H4zM12 3h4v4.5h-4zM8 7.5h4V12H8z" fill="#212529"/></svg>`;
+  el.append(flag);
   return el;
 }
 

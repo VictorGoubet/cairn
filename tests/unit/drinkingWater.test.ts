@@ -24,10 +24,11 @@ describe('fetchDrinkingWater', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const points = await fetchDrinkingWater(VINCENNES);
-    const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
-    expect(body).toContain('drinking_water');
+    // GET with the query in the URL: what the service worker can cache and serve offline
+    const url = decodeURIComponent(String(fetchMock.mock.calls[0][0]));
+    expect(url).toContain('drinking_water');
     // a private tap behind a fence quenches nobody
-    expect(body).toContain('access');
+    expect(url).toContain('access');
     expect(points).toHaveLength(2);
     expect(points[0].properties).toMatchObject({ nom: 'Fontaine Wallace', cat: 'water' });
     expect(points[1].properties?.nom).toBe('');

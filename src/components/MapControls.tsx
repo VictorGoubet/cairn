@@ -19,7 +19,6 @@ const OPTION_ROWS: { key: keyof Overlays; labelKey: MsgKey }[] = [
   { key: 'hillshade', labelKey: 'opt_hillshade' },
   { key: 'slopes', labelKey: 'opt_slopes' },
   { key: 'gr', labelKey: 'opt_gr' },
-  { key: 'hidden', labelKey: 'opt_hidden' },
   { key: 'refuges', labelKey: 'opt_refuges' },
   { key: 'terrain3d', labelKey: 'opt_3d' },
 ];
@@ -237,7 +236,7 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
               />
             </label>
           ))}
-          {(overlays.hidden || overlays.refuges) && <p className="mc-hint">{t('opt_poi_hint')}</p>}
+          {overlays.refuges && <p className="mc-hint">{t('opt_poi_hint')}</p>}
           <h2 className="mc-subhead">{t('hiker_profile')}</h2>
           <div className="segmented wrap">
             {PACES.map(pace => (
