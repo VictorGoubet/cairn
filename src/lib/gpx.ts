@@ -14,7 +14,22 @@ export interface GpxWaypoint {
 /** a waypoint this close to the track inherits the track's elevation */
 const WPT_ELEVATION_MAX_M = 120;
 
-export function buildGpx(name: string, coords: LonLatEle[], waypoints: GpxWaypoint[]): string {
+/**
+ * GPX 1.1 document for the route.
+ *
+ * Args:
+ *   name: route name, written in the metadata and on the track.
+ *   coords: full geometry with elevations.
+ *   waypoints: markers to embed.
+ *   stages: optional day cuts; each becomes its own named `<trk>` ("Jour 1 · Refuge X"), which
+ *     watches and other planners read natively, so a trek arrives already split into days.
+ */
+export function buildGpx(
+  name: string,
+  coords: LonLatEle[],
+  waypoints: GpxWaypoint[],
+  stages: { name: string; coords: LonLatEle[] }[] = [],
+): string {
   const wpts = waypoints
     .map(w => {
       // devices show richer waypoint pages when elevation is present; a marker close to the
@@ -26,23 +41,15 @@ export function buildGpx(name: string, coords: LonLatEle[], waypoints: GpxWaypoi
       return `  <wpt lat="${w.lat.toFixed(6)}" lon="${w.lon.toFixed(6)}">${ele}<name>${esc(w.name)}</name>${sym}${type}</wpt>`;
     })
     .join('\n');
-  const trkpts = coords
-    .map(
-      ([lon, lat, ele]) =>
-        `      <trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}"><ele>${ele.toFixed(1)}</ele></trkpt>`,
-    )
-    .join('\n');
+  const tracks =
+    stages.length > 0
+      ? stages.map((s, i) => track(`Jour ${i + 1}${s.name ? ` · ${s.name}` : ''}`, s.coords))
+      : [track(name, coords)];
   return `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="cairn" xmlns="http://www.topografix.com/GPX/1/1">
   <metadata><name>${esc(name)}</name><time>${new Date().toISOString()}</time></metadata>
 ${wpts}
-  <trk>
-    <name>${esc(name)}</name>
-    <type>hiking</type>
-    <trkseg>
-${trkpts}
-    </trkseg>
-  </trk>
+${tracks.join('\n')}
 </gpx>
 `;
 }
@@ -139,8 +146,13 @@ export function parseGpx(text: string): {
   return { tracks, waypoints, name, hasElevation };
 }
 
-export function downloadGpx(name: string, coords: LonLatEle[], waypoints: GpxWaypoint[]): void {
-  downloadTextFile(`${name}.gpx`, 'application/gpx+xml', buildGpx(name, coords, waypoints));
+export function downloadGpx(
+  name: string,
+  coords: LonLatEle[],
+  waypoints: GpxWaypoint[],
+  stages: { name: string; coords: LonLatEle[] }[] = [],
+): void {
+  downloadTextFile(`${name}.gpx`, 'application/gpx+xml', buildGpx(name, coords, waypoints, stages));
 }
 
 function waypointKind(wpt: Element): PointKind {
@@ -162,6 +174,22 @@ function nearestTrackPoint(coords: LonLatEle[], lon: number, lat: number): { ele
 /** a corrupt point (lat 944, lon 700) would poison every projection downstream */
 function onEarth(lon: number, lat: number): boolean {
   return Number.isFinite(lon) && Number.isFinite(lat) && Math.abs(lon) <= 180 && Math.abs(lat) <= 90;
+}
+
+function track(name: string, coords: LonLatEle[]): string {
+  const trkpts = coords
+    .map(
+      ([lon, lat, ele]) =>
+        `      <trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}"><ele>${ele.toFixed(1)}</ele></trkpt>`,
+    )
+    .join('\n');
+  return `  <trk>
+    <name>${esc(name)}</name>
+    <type>hiking</type>
+    <trkseg>
+${trkpts}
+    </trkseg>
+  </trk>`;
 }
 
 function attrNumber(el: Element, name: string): number {

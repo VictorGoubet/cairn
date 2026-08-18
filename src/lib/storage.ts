@@ -14,6 +14,7 @@ export interface Draft {
   offRoutePoints: OffRoutePoint[];
   currentRouteId: string | null;
   currentRouteName: string;
+  startDate: string | null;
 }
 
 // legacy data: free points dropped by right-click were stored under "waypoints"
@@ -77,6 +78,7 @@ export function loadDraft(): Draft | null {
   return {
     currentRouteId: typeof rest.currentRouteId === 'string' ? rest.currentRouteId : null,
     currentRouteName: typeof rest.currentRouteName === 'string' ? rest.currentRouteName : '',
+    startDate: /^\d{4}-\d{2}-\d{2}$/.test(String(rest.startDate)) ? (rest.startDate as string) : null,
     ...sanitizeRouteShape(rest, waypoints),
   };
 }

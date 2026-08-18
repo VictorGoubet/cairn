@@ -59,7 +59,8 @@ test.describe('route operations', () => {
     expect(manualLeg.leg?.coords.length).toBeGreaterThanOrEqual(2);
 
     await page.locator('.segmented button', { hasText: /Auto/ }).click();
-    await clickAt(page, [FURTHER[0] + 0.005, FURTHER[1]]);
+    // south of the line and west of the map-controls column, where a click reaches the canvas
+    await clickAt(page, [CEILLAC[0] + 0.008, CEILLAC[1] - 0.003]);
     await waitForRouting(page, 2);
     const state = await planner(page).state();
     // the routed leg follows trails, so it carries far more vertices than a straight line
@@ -110,7 +111,7 @@ test.describe('map options', () => {
     await expect.poll(() => page.locator('.km-marker').count()).toBeGreaterThan(0);
     await page.locator('[data-control="options"]').click();
     await page
-      .locator('.option-row', { hasText: /Bornes|milestones|Kilometre/i })
+      .locator('.option-row', { hasText: /Bornes|Kilometer/i })
       .locator('input[type="checkbox"]')
       .uncheck();
     await expect.poll(() => page.locator('.km-marker').count()).toBe(0);
@@ -147,7 +148,7 @@ test.describe('point editing', () => {
 
   test('cut here from a middle point keeps the chosen half', async ({ page }) => {
     await drawManualRoute(page);
-    await clickAt(page, [FURTHER[0] + 0.006, FURTHER[1] + 0.002]);
+    await clickAt(page, [CEILLAC[0] + 0.008, CEILLAC[1] - 0.003]);
     await waitForRouting(page, 2);
     // the middle anchor: not the start, not the end
     await page.locator('.maplibregl-marker .anchor-marker').nth(1).click();

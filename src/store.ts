@@ -132,6 +132,8 @@ interface PlannerState {
   savedRoutes: SavedRoute[];
   currentRouteId: string | null;
   currentRouteName: string;
+  /** ISO day the trek starts, driving the per-stage weather; null when undated */
+  startDate: string | null;
   showRoutes: boolean;
   /** id of the point (anchor or off-route) being edited in the metadata panel */
   editing: string | null;
@@ -169,6 +171,7 @@ interface PlannerState {
   removeOffRoutePoint: (id: string) => void;
   setEditing: (id: string | null) => void;
   setEditingLeg: (index: number | null) => void;
+  setStartDate: (date: string | null) => void;
   updateEditingPoint: (kind: PointKind, name: string) => void;
   removeEditingPoint: () => void;
   saveCurrentRoute: (name: string) => void;
@@ -401,6 +404,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
     savedRoutes: loadRoutes(),
     currentRouteId: draft?.currentRouteId ?? null,
     currentRouteName: draft?.currentRouteName ?? '',
+    startDate: draft?.startDate ?? null,
     showRoutes: false,
     dragging: false,
     editing: null,
@@ -783,6 +787,10 @@ export const usePlanner = create<PlannerState>((set, get) => {
       set({ editingLeg: index, editing: null });
     },
 
+    setStartDate: startDate => {
+      set({ startDate });
+    },
+
     // a single undo step per editing session, not one per keystroke
     updateEditingPoint: (kind, name) => {
       const { editing } = get();
@@ -936,6 +944,7 @@ function writeDraft() {
     offRoutePoints: s.offRoutePoints,
     currentRouteId: s.currentRouteId,
     currentRouteName: s.currentRouteName,
+    startDate: s.startDate,
   });
   // silence here would let a full quota eat the work; the guard keeps the error from
   // re-triggering this very subscriber in a loop

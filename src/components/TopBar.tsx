@@ -8,10 +8,12 @@ import { type MsgKey, tNow, useT } from '../lib/i18n';
 import type { Lang } from '../lib/lang';
 import { kindDef, kindLabelKey } from '../lib/points';
 import { buildPreviewableShareUrl } from '../lib/share';
+import { computeStages } from '../lib/stages';
 import { useClickOutside } from '../lib/useClickOutside';
 import { useEscapeKey } from '../lib/useEscapeKey';
 import { useIsMobile } from '../lib/useMediaQuery';
 import { routeCoords, routeDistanceM, routePois, usePlanner } from '../store';
+import { QrPanel } from './QrPanel';
 import { RoutesPanel } from './RoutesPanel';
 import { SearchBox } from './SearchBox';
 import { SharePanel } from './SharePanel';
@@ -44,6 +46,7 @@ export function TopBar() {
   const [showExport, setShowExport] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [showShareImage, setShowShareImage] = useState(false);
+  const [showQr, setShowQr] = useState(false);
   useClickOutside(routesWrapRef, closeRoutesPanel, showRoutes);
   useClickOutside(exportWrapRef, () => setShowExport(false), showExport);
   useClickOutside(shareWrapRef, () => setShowShareMenu(false), showShareMenu);
@@ -75,7 +78,8 @@ export function TopBar() {
     const name = currentRouteName || `cairn-${new Date().toISOString().slice(0, 10)}`;
     if (format === 'gpx') {
       const wpts: GpxWaypoint[] = allPoints.map(p => ({ ...p, sym: kindDef(p.kind).garminSym ?? undefined }));
-      downloadGpx(name, coords, wpts);
+      // a trek cut into days exports one named track per stage, which watches read natively
+      downloadGpx(name, coords, wpts, computeStages(anchors, legs, usePlanner.getState().profile));
     } else if (format === 'kml') {
       downloadTextFile(`${name}.kml`, 'application/vnd.google-earth.kml+xml', buildKml(name, coords, allPoints));
     } else {
@@ -230,6 +234,29 @@ export function TopBar() {
                 </svg>
                 {t('share_image')}
               </button>
+              <button
+                type="button"
+                data-control="share-qr"
+                onClick={() => {
+                  setShowShareMenu(false);
+                  setShowQr(true);
+                }}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
+                  <rect x="4" y="4" width="6" height="6" rx="1" />
+                  <rect x="14" y="4" width="6" height="6" rx="1" />
+                  <rect x="4" y="14" width="6" height="6" rx="1" />
+                  <path d="M14 14h3v3h-3zM20 14v1M20 19v1h-4" />
+                </svg>
+                {t('share_qr')}
+              </button>
             </div>
           )}
         </div>
@@ -251,6 +278,7 @@ export function TopBar() {
       </div>
 
       {showShareImage && <SharePanel onClose={() => setShowShareImage(false)} />}
+      {showQr && <QrPanel onClose={() => setShowQr(false)} />}
 
       <input
         ref={fileRef}

@@ -21,13 +21,13 @@ export default defineConfig({
   projects: [
     {
       name: 'dev',
-      testIgnore: /production\.spec\.ts/,
+      testIgnore: /production\./,
       use: { baseURL: `http://localhost:${DEV_PORT}` },
     },
     {
       // the built site is the one users get, and bundling has its own failure modes
       name: 'production',
-      testMatch: /production\.spec\.ts/,
+      testMatch: /production\./,
       use: { baseURL: `http://localhost:${PREVIEW_PORT}` },
     },
   ],

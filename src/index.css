@@ -1218,6 +1218,117 @@ body {
   white-space: nowrap;
 }
 
+/* --- qr handoff --- */
+
+.qr-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 10px 40px rgb(0 0 0 / 30%);
+}
+
+.qr-panel .point-editor-head {
+  width: 100%;
+}
+
+.qr-canvas {
+  border-radius: 8px;
+}
+
+/* --- multi-day stages --- */
+
+.stages {
+  padding: 4px 0 2px;
+  border-top: 1px solid var(--border);
+}
+
+.stages-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stages-head h2 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.stages-date {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+
+.stages-date input {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font: inherit;
+  color: var(--ink);
+}
+
+.stages-list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.stages-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.stage-day {
+  flex-shrink: 0;
+  min-width: 52px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.stage-day small {
+  margin-left: 4px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.stage-name {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.stage-stats {
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.stage-weather {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
 /* --- follow mode --- */
 
 .follow-bar {

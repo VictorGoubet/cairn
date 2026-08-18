@@ -2,9 +2,11 @@ import { type ReactNode, useEffect, useMemo } from 'react';
 import { cumulativeDistancesM, elevationStats, formatDistance, formatDuration, nearestIndex } from '../lib/geo';
 import { durationH, energyKcal } from '../lib/hikingTime';
 import { type MsgKey, useT } from '../lib/i18n';
+import { computeStages } from '../lib/stages';
 import { aggregateBy, SURFACE_CATEGORIES, SURFACE_COLORS, sacStats, WAY_CATEGORIES, WAY_COLORS } from '../lib/waytypes';
 import { routeCoords, routeDistanceM, usePlanner, type WayHighlight } from '../store';
 import { ProfileChart } from './ProfileChart';
+import { StagesPanel } from './StagesPanel';
 
 export function BottomPanel() {
   const t = useT();
@@ -19,6 +21,7 @@ export function BottomPanel() {
   const wayTotals = useMemo(() => aggregateBy(resolvedLegs, 'category'), [resolvedLegs]);
   const surfaceTotals = useMemo(() => aggregateBy(resolvedLegs, 'surface'), [resolvedLegs]);
   const sac = useMemo(() => sacStats(resolvedLegs), [resolvedLegs]);
+  const stages = useMemo(() => computeStages(anchors, legs, profile), [anchors, legs, profile]);
   // the distribution only makes sense if at least one routed leg provided it
   const hasWayTypes = WAY_CATEGORIES.some(c => c !== 'unknown' && (wayTotals[c] ?? 0) > 0);
 
@@ -112,6 +115,7 @@ export function BottomPanel() {
           />
         </div>
       )}
+      {stages.length > 0 && <StagesPanel stages={stages} />}
       <ProfileChart coords={coords} dists={dists} pois={pois} selection={selection} onSelectionChange={setSelection} />
     </div>
   );

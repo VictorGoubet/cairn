@@ -134,6 +134,14 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - **Map controls carry `data-tip`**, a CSS-only tooltip on hover and keyboard focus: the native
   `title` waits a second and wears the operating system's looks. Behind `@media (hover: hover)`,
   so a finger never triggers a label it cannot dismiss.
+- **Stages** (`lib/stages.ts`): derived, never stored: a stage is what lies between two `camp`
+  points. GPX export writes one named `<trk>` per day. With a start date (`startDate`, in the
+  draft), each stage shows its Open-Meteo forecast (`lib/weather.ts`, 16-day horizon, no key).
+- **Offline** (`public/sw.js`): the install precaches the shell and its hashed assets; tiles and
+  open-data answers cache on use (capped FIFO). Cache matches use `ignoreVary`: cors answers
+  carry `Vary: Origin` and a crossorigin script's Origin header would never match the precache.
+  Registered in prod only.
+- **QR handoff** (`components/QrPanel.tsx`): the short share link as a code, plan big, scan, go.
 - **Share links** (`src/lib/share.ts`): payload `#r=1.<base64url(deflate-raw(JSON))>`.
   Routed legs travel as anchors only (recomputed on open); frozen legs travel as a polyline
   (Google algorithm, lat/lon at 1e-5, elevation at 0.1 m). `''` = manual leg still computing

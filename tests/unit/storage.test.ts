@@ -34,6 +34,7 @@ describe('draft round-trip', () => {
       legs: [leg()],
       offRoutePoints: [{ id: crypto.randomUUID(), lon: 6.4, lat: 44.5, kind: 'hut' as const, name: 'Cabane' }],
       currentRouteId: 'route-1',
+      startDate: null,
       currentRouteName: 'Tour du Mélezet',
     };
     expect(persistDraft(draft)).toBe(true);
@@ -63,6 +64,7 @@ describe('draft round-trip', () => {
       ],
       offRoutePoints: [],
       currentRouteId: null,
+      startDate: null,
       currentRouteName: '',
     });
     const raw = JSON.parse(localStorage.getItem(DRAFT_KEY) as string);
@@ -162,7 +164,8 @@ describe('quota handling', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new DOMException('quota exceeded', 'QuotaExceededError');
     });
-    expect(persistDraft({ anchors: [], legs: [], offRoutePoints: [], currentRouteId: null, currentRouteName: '' })).toBe(
+    expect(persistDraft({ anchors: [], legs: [], offRoutePoints: [], currentRouteId: null, startDate: null,
+      currentRouteName: '' })).toBe(
       false,
     );
     expect(persistRoutes([])).toBe(false);
