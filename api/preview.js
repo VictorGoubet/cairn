@@ -9,7 +9,7 @@ import { json, kvConfigured, readShare, validId } from './_kv.js';
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-export default async function handler(request) {
+export async function GET(request) {
   if (!kvConfigured()) return json({ error: 'no store configured' }, 503);
   const id = new URL(request.url).searchParams.get('id');
   if (!validId(id)) return json({ error: 'bad id' }, 400);

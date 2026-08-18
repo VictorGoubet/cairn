@@ -13,7 +13,7 @@ import { readShare, validId } from './_kv.js';
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-export default async function handler(request) {
+export async function GET(request) {
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
   const record = validId(id) ? await readShare(id) : null;
