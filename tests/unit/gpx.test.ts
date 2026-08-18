@@ -146,6 +146,16 @@ describe('parseGpx', () => {
     expect(parsed.waypoints.every(w => Number.isFinite(w.lon) && Number.isFinite(w.lat))).toBe(true);
   });
 
+  it('drops a corrupt point instead of poisoning the projections', () => {
+    const gpx = `<?xml version="1.0"?><gpx version="1.1"><trk><trkseg>
+      <trkpt lat="944.6" lon="6.5"/><trkpt lat="44.61" lon="700"/>
+      <trkpt lat="44.60" lon="6.50"/><trkpt lat="44.62" lon="6.50"/>
+    </trkseg></trk></gpx>`;
+    const parsed = parseGpx(gpx);
+    expect(parsed.tracks[0]).toHaveLength(2);
+    expect(parsed.tracks[0].every(([lon, lat]) => Math.abs(lon) <= 180 && Math.abs(lat) <= 90)).toBe(true);
+  });
+
   it('rejects a file that is not XML at all', () => {
     expect(() => parseGpx('not a gpx file')).toThrow();
   });

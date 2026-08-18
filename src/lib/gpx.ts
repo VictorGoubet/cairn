@@ -105,7 +105,7 @@ export function parseGpx(text: string): {
     for (const pt of [...container.querySelectorAll(selector)]) {
       const lat = attrNumber(pt, 'lat');
       const lon = attrNumber(pt, 'lon');
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      if (!onEarth(lon, lat)) continue;
       const raw = pt.querySelector('ele')?.textContent;
       const ele = raw === null || raw === undefined || raw.trim() === '' ? Number.NaN : Number(raw);
       if (Number.isFinite(ele)) hasElevation = true;
@@ -128,7 +128,7 @@ export function parseGpx(text: string): {
       name: w.querySelector('name')?.textContent ?? `Point ${i + 1}`,
       kind: waypointKind(w),
     }))
-    .filter(w => Number.isFinite(w.lon) && Number.isFinite(w.lat));
+    .filter(w => onEarth(w.lon, w.lat));
 
   if (tracks.length === 0 && waypoints.length === 0) throw new Error('GPX carries no geometry');
 
@@ -159,6 +159,11 @@ function nearestTrackPoint(coords: LonLatEle[], lon: number, lat: number): { ele
 }
 
 /** a missing or blank attribute is not a zero, which is what Number('') would give */
+/** a corrupt point (lat 944, lon 700) would poison every projection downstream */
+function onEarth(lon: number, lat: number): boolean {
+  return Number.isFinite(lon) && Number.isFinite(lat) && Math.abs(lon) <= 180 && Math.abs(lat) <= 90;
+}
+
 function attrNumber(el: Element, name: string): number {
   const raw = el.getAttribute(name);
   return raw === null || raw.trim() === '' ? Number.NaN : Number(raw);

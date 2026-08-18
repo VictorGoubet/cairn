@@ -64,7 +64,9 @@ function decimalParts(text: string): Part[] {
   const bySpace = text.split(/\s+/).filter(Boolean);
   // whitespace first: it survives "44,6318 6,7752", where the comma is a decimal separator
   const chunks = bySpace.length === 2 ? bySpace.map(c => c.replace(/,$/, '')) : text.split(',');
-  if (chunks.length !== 2) return [];
+  // a dangling separator leaves an empty chunk, and Number('') is 0: half a coordinate typed
+  // must parse as nothing, not as a point off the coast of Africa
+  if (chunks.length !== 2 || chunks.some(chunk => chunk.trim() === '')) return [];
   return chunks.map(chunk => ({ numbers: [Number(chunk.trim().replace(',', '.'))], hemisphere: '' }));
 }
 

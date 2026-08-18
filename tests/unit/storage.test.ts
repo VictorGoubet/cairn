@@ -176,3 +176,46 @@ describe('quota handling', () => {
     expect(loadRoutes()).toEqual([]);
   });
 });
+
+describe('hostile stored data', () => {
+  it('keeps the healthy saved routes when one entry is torn', () => {
+    localStorage.setItem(
+      ROUTES_KEY,
+      JSON.stringify([
+        'not a route',
+        null,
+        { id: 'ok', name: 'Bonne route', anchors: [{ id: 'a', lon: 6.5, lat: 44.6, kind: 'checkpoint', name: '' }], legs: [], offRoutePoints: [] },
+        { id: 'torn', name: 'Cassée', anchors: 'lol', legs: 42, offRoutePoints: null },
+      ]),
+    );
+    const routes = loadRoutes();
+    expect(routes.map(r => r.name)).toEqual(['Bonne route']);
+  });
+
+  it('rebuilds the legs as empty slots when they no longer line up with the anchors', () => {
+    localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({
+        anchors: [
+          { id: 'a', lon: 6.5, lat: 44.6, kind: 'checkpoint', name: '' },
+          { id: 'b', lon: 6.51, lat: 44.6, kind: 'checkpoint', name: '' },
+        ],
+        legs: [{ id: 'l', manual: false, leg: { distanceM: 'NaN' } }, null, 7],
+      }),
+    );
+    const draft = loadDraft();
+    expect(draft?.anchors).toHaveLength(2);
+    expect(draft?.legs).toHaveLength(1);
+    expect(draft?.legs[0].leg).toBeNull();
+  });
+
+  it('drops a point without real coordinates instead of crashing on it later', () => {
+    localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({ anchors: [{ id: 'x' }, { id: 'a', lon: 6.5, lat: 44.6 }], legs: [], offRoutePoints: [null] }),
+    );
+    const draft = loadDraft();
+    expect(draft?.anchors).toHaveLength(1);
+    expect(draft?.offRoutePoints).toEqual([]);
+  });
+});

@@ -58,3 +58,11 @@ describe('formatCoordinates', () => {
     expect(formatCoordinates([6.7752, 44.6318])).toBe('44.63180, 6.77520');
   });
 });
+
+describe('hostile fragments', () => {
+  it('rejects half a coordinate instead of inventing a zero for the missing part', () => {
+    expect(parseCoordinates('44.6, ')).toBeNull();
+    expect(parseCoordinates(', 6.77')).toBeNull();
+    expect(parseCoordinates('44.6,')).toBeNull();
+  });
+});

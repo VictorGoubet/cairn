@@ -863,6 +863,28 @@ body {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22);
 }
 
+/* a short viewport (landscape phone, small window): the column scrolls instead of running off
+   the screen, and a tall panel does the same */
+@media (max-height: 560px) {
+  .map-controls {
+    max-height: calc(100% - 160px);
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .map-controls::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mc-panel {
+    position: fixed;
+    top: 56px;
+    right: 54px;
+    max-height: calc(100dvh - 70px);
+    overflow-y: auto;
+  }
+}
+
 .mc-panel h2 {
   margin: 0 0 8px;
   font-size: 12px;

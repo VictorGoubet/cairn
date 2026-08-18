@@ -23,6 +23,9 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 
 ## Tests
 
+- `tests/e2e/console-clean.spec.ts`, `hostileStorage.spec.ts`, `viewports.spec.ts`: the safety
+  nets. A grand tour of every flow asserting zero console errors, boot on hand-edited or torn
+  localStorage, and layout on tiny/landscape/tablet screens with every control reachable.
 - `tests/unit/**/*.test.ts`: the pure modules, where regressions hurt most. Storage and share
   migrations are covered kind by kind, since a rename there silently breaks saved routes.
 - `tests/e2e/planner.spec.ts`: the critical paths (draw, insert on trace, undo/redo including the
@@ -163,7 +166,11 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   `all` belongs to `nb_points`, not `type_points`, which takes numeric type ids; passing a word
   there rejects the whole query, and the huts-and-water overlay came back empty in silence.
 - **localStorage**: draft + saved routes, versioned and migrated in `storage.ts`. Any schema
-  change needs a migration path there.
+  change needs a migration path there. Everything read back is structurally sanitized
+  (`sanitizeRouteShape`): points without real coordinates are dropped, legs that no longer line
+  up with the anchors are rebuilt as empty slots the router recomputes, a torn saved route is
+  skipped without touching the healthy ones. What localStorage holds may have been hand-edited
+  or half-written, and the one forbidden outcome is an app that no longer boots.
 
 ## Gotchas (learned the hard way)
 
