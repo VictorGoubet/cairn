@@ -23,6 +23,9 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 
 ## Tests
 
+- `tests/e2e/features.spec.ts`: one lean test per feature (route operations, exports, map
+  options, point editing, saved routes, hiker profile). Features that are not about the router
+  draw their route in manual mode, so brouter's load never flakes them.
 - `tests/e2e/console-clean.spec.ts`, `hostileStorage.spec.ts`, `viewports.spec.ts`: the safety
   nets. A grand tour of every flow asserting zero console errors, boot on hand-edited or torn
   localStorage, and layout on tiny/landscape/tablet screens with every control reachable.
@@ -161,6 +164,8 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - **Overlay data** (hidden trails, refuges.info): fetched per tile-grid cell (z11 Overpass,
   z9 refuges.info) with an LRU cache, refreshed on `moveend`, only while the overlay is on. A
   failing cell yields an empty list so the map survives, and warns so the failure is findable.
+  Below the overlay's zoom floor a `.zoom-hint` pill says "zoom in": switched on over a wide
+  view, an empty layer reads as broken rather than as "come closer".
 - **refuges.info answers 200 with a plain-text error** when a parameter is wrong (`Error : no
   valid type : all`), so `res.ok` proves nothing: the body is checked for `{` before parsing.
   `all` belongs to `nb_points`, not `type_points`, which takes numeric type ids; passing a word

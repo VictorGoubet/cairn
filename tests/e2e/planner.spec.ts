@@ -811,6 +811,26 @@ test.describe('refuges and water points', () => {
     expect(categories).toContain('hut');
     expect(categories).toContain('water');
   });
+
+  test('switched on over a wide view, the overlay says "zoom in" instead of nothing', async ({ page }) => {
+    await openPlanner(page);
+    await page.evaluate(() => {
+      (window as unknown as TestHandles).__map.jumpTo({ center: [2.5, 46.5], zoom: 6 });
+    });
+    await page.locator('[data-control="options"]').click();
+    await page
+      .locator('.option-row', { hasText: /Refuges & points d'eau|Huts & water points/ })
+      .locator('input[type="checkbox"]')
+      .check();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.zoom-hint')).toBeVisible();
+
+    // close enough: the hint steps aside for the real points
+    await page.evaluate(center => {
+      (window as unknown as TestHandles).__map.jumpTo({ center, zoom: 11 });
+    }, CEILLAC);
+    await expect(page.locator('.zoom-hint')).toBeHidden();
+  });
 });
 
 test.describe('deleting a leg', () => {

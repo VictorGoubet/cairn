@@ -24,7 +24,7 @@ import { FLYOVER_EXAGGERATION, type FlyoverPoi, startFlyover } from '../lib/flyo
 import { onFollowFix } from '../lib/follow';
 import { cumulativeDistancesM, haversineM, kmMarkerPoints, type LonLatEle, nearestIndex } from '../lib/geo';
 import { fetchHiddenTrails, HIDDEN_TRAILS_MIN_ZOOM } from '../lib/hiddenTrails';
-import { tNow } from '../lib/i18n';
+import { tNow, useT } from '../lib/i18n';
 import { bindLongPress, bindMiddleDragRotate, bindRotateCursor } from '../lib/mapGestures';
 import { setMapInstance } from '../lib/mapHandle';
 import { kindDef, type PointKind } from '../lib/points';
@@ -74,6 +74,8 @@ const FOLLOW_SOURCE = 'follow-position';
 const EMPTY_ROUTE: GeoJSON.GeoJSON = { type: 'FeatureCollection', features: [] };
 
 export function MapView() {
+  const t = useT();
+  const [zoomLevel, setZoomLevel] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const vectorLayersRef = useRef<{ id: string; type: string; isContour: boolean; visible: boolean }[]>([]);
@@ -394,6 +396,18 @@ export function MapView() {
     };
   }, [overlays.hidden, overlays.refuges, mapReady]);
 
+  // the zoom level drives the "come closer" hint of the on-the-fly overlays
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const onZoom = () => setZoomLevel(map.getZoom());
+    onZoom();
+    map.on('zoomend', onZoom);
+    return () => {
+      map.off('zoomend', onZoom);
+    };
+  }, [mapReady]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -665,7 +679,19 @@ export function MapView() {
     usePlanner.getState().setFlyTo(null);
   }, [flyTo, mapReady]);
 
-  return <div ref={containerRef} className="map" />;
+  // an overlay waiting for zoom must say so: switched on over a wide view it shows nothing,
+  // which reads as broken rather than as "come closer"
+  const overlayFloor = Math.min(
+    overlays.refuges ? REFUGES_MIN_ZOOM : Number.POSITIVE_INFINITY,
+    overlays.hidden ? HIDDEN_TRAILS_MIN_ZOOM : Number.POSITIVE_INFINITY,
+  );
+  const needsZoom = Number.isFinite(overlayFloor) && zoomLevel < overlayFloor;
+
+  return (
+    <div ref={containerRef} className="map">
+      {needsZoom && <span className="zoom-hint">{t('zoom_for_pois')}</span>}
+    </div>
+  );
 }
 
 // the wrapper is required: maplibre positions the marker via a transform on the root element,
