@@ -56,7 +56,8 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
         type="button"
         className="mc-btn"
         data-control="focus"
-        title={t('focus_route')}
+        aria-label={t('focus_route')}
+        data-tip={t('focus_route')}
         disabled={!hasRoute}
         onClick={() => usePlanner.getState().focusRoute()}
       >
@@ -76,7 +77,8 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
         type="button"
         className={flyover ? 'mc-btn active' : 'mc-btn'}
         data-control="flyover"
-        title={flyover ? (flyoverPaused ? t('flyover_resume') : t('flyover_pause')) : t('flyover')}
+        aria-label={flyover ? (flyoverPaused ? t('flyover_resume') : t('flyover_pause')) : t('flyover')}
+        data-tip={flyover ? (flyoverPaused ? t('flyover_resume') : t('flyover_pause')) : t('flyover')}
         disabled={!hasRoute}
         onClick={() => {
           if (flyover) return usePlanner.getState().setFlyoverPaused(!flyoverPaused);
@@ -100,7 +102,8 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
           type="button"
           className="mc-btn"
           data-control="flyover-stop"
-          title={t('flyover_stop')}
+          aria-label={t('flyover_stop')}
+          data-tip={t('flyover_stop')}
           onClick={() => usePlanner.getState().stopFlyover()}
         >
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -112,7 +115,8 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
         type="button"
         className={following ? 'mc-btn active' : 'mc-btn'}
         data-control="follow"
-        title={t('follow')}
+        aria-label={t('follow')}
+        data-tip={t('follow')}
         disabled={!hasRoute}
         onClick={() => usePlanner.getState().toggleFollow()}
       >
@@ -135,7 +139,8 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
         type="button"
         className={open === 'explore' ? 'mc-btn active' : 'mc-btn'}
         data-control="explore"
-        title={t('nearby_hikes')}
+        aria-label={t('nearby_hikes')}
+        data-tip={t('nearby_hikes')}
         onClick={() => togglePanel('explore')}
       >
         <svg
@@ -155,7 +160,8 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
         type="button"
         className={open === 'layers' ? 'mc-btn active' : 'mc-btn'}
         data-control="layers"
-        title={t('basemaps')}
+        aria-label={t('basemaps')}
+        data-tip={t('basemaps')}
         onClick={() => togglePanel('layers')}
       >
         <svg
@@ -174,7 +180,8 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
         type="button"
         className={open === 'options' ? 'mc-btn active' : 'mc-btn'}
         data-control="options"
-        title={t('display_options')}
+        aria-label={t('display_options')}
+        data-tip={t('display_options')}
         onClick={() => togglePanel('options')}
       >
         <svg

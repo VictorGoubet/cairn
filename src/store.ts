@@ -3,7 +3,9 @@ import { DEFAULT_BASE_LAYER } from './config/layers';
 import {
   computeLeg,
   computeRoute,
+  isTransient,
   type RouteLeg,
+  RoutingError,
   type RoutingPreset,
   setRoutingPreset as setBrouterPreset,
   splitRoute,
@@ -156,6 +158,7 @@ interface PlannerState {
   reverse: () => void;
   outAndBack: () => void;
   closeLoop: () => void;
+  openLoop: () => void;
   importRoute: (coords: LonLatEle[], waypoints: { lon: number; lat: number; name: string; kind: PointKind }[]) => void;
   applySharedRoute: (route: SharedRouteInput) => void;
   addOffRoutePoint: (p: LonLat) => void;
@@ -217,8 +220,11 @@ export const usePlanner = create<PlannerState>((set, get) => {
     inFlight.add(slot.id);
     const promise = slot.manual
       ? computeManualLeg(from, to)
-      : computeLeg(from, to).catch(() => {
-          set({ error: 'err_routing' });
+      : computeLeg(from, to).catch((err: unknown) => {
+          // the public router kills any computation past four seconds (a 400), so a long leg
+          // fails for a reason the hiker can act on: split it. Anything else is the network.
+          const busy = err instanceof RoutingError && isTransient(err.status);
+          set({ error: busy ? 'err_routing_long' : 'err_routing' });
           return computeManualLeg(from, to);
         });
     promise
@@ -658,6 +664,15 @@ export const usePlanner = create<PlannerState>((set, get) => {
       const slot = newSlot(manualMode);
       set(s => ({ anchors: [...s.anchors, newAnchor(lonLat(first))], legs: [...s.legs, slot] }));
       launchLeg(slot, lonLat(last), lonLat(first));
+    },
+
+    // undoing a loop: the closing leg goes, and with it the duplicate of the start that closed
+    // it. The real start and the previous finish both stay, which is the whole point
+    openLoop: () => {
+      const { anchors } = get();
+      if (!isClosedRoute(anchors)) return;
+      pushHistory();
+      set(s => ({ anchors: s.anchors.slice(0, -1), legs: s.legs.slice(0, -1), editing: null }));
     },
 
     importRoute: (coords, waypoints) => {

@@ -93,6 +93,21 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - **`routeStraightLegs` turns beelines into paths.** An imported leg keeps `manual: true`, so a
   sketch of points joined by straight lines can be handed to the router in one click; the button
   only shows while such a leg exists.
+- **The public router refuses long legs, and that is not the network.** brouter.de runs a
+  watchdog that kills any computation past four seconds and answers `400`
+  ("operation killed by thread-priority-watchdog"), which is what a leg spanning tens of
+  kilometres gets, and what a short one gets while the server is busy. `fetchOnce` therefore
+  retries a transient status (400, 429, 5xx) twice with a growing pause, and the store separates
+  the two outcomes: `err_routing_long` tells the hiker to add a point in between (actionable),
+  `err_routing` blames the connection. Errors clear themselves after five seconds; a click still
+  dismisses them early.
+- **The loop button undoes itself.** Once the route is closed, the same control offers to open it
+  again (`openLoop`), which drops the closing leg and the duplicate of the start that created it,
+  leaving the real start and finish alone. Removing a leg in the *middle* would split the route in
+  two, which the one-route model cannot hold, so it is not offered.
+- **Map controls carry `data-tip`**, a CSS-only tooltip on hover and keyboard focus: the native
+  `title` waits a second and wears the operating system's looks. Behind `@media (hover: hover)`,
+  so a finger never triggers a label it cannot dismiss.
 - **Share links** (`src/lib/share.ts`): payload `#r=1.<base64url(deflate-raw(JSON))>`.
   Routed legs travel as anchors only (recomputed on open); frozen legs travel as a polyline
   (Google algorithm, lat/lon at 1e-5, elevation at 0.1 m). `''` = manual leg still computing

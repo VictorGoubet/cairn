@@ -754,6 +754,7 @@ body {
 }
 
 .mc-btn {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -781,6 +782,73 @@ body {
   color: #fff;
   background: var(--accent);
   border-color: var(--accent);
+}
+
+/**
+ * Tooltips on the map controls.
+ *
+ * CSS only, on hover and on keyboard focus: the native `title` waits a second and wears the
+ * operating system's looks. Behind a hover query, so a finger never triggers a label it cannot
+ * dismiss.
+ */
+@media (hover: hover) {
+  .mc-btn[data-tip]::after,
+  .mc-btn[data-tip]::before {
+    position: absolute;
+    right: calc(100% + 9px);
+    top: 50%;
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      opacity 0.12s ease 0.15s,
+      transform 0.12s ease 0.15s;
+  }
+
+  .mc-btn[data-tip]::after {
+    content: attr(data-tip);
+    padding: 5px 9px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.35;
+    color: #fff;
+    white-space: nowrap;
+    background: #1f2328;
+    border-radius: 7px;
+    box-shadow: 0 2px 10px rgb(0 0 0 / 28%);
+    transform: translate(4px, -50%);
+  }
+
+  /* the little arrow, a rotated square tucked under the pill */
+  .mc-btn[data-tip]::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    right: calc(100% + 5px);
+    background: #1f2328;
+    transform: translate(4px, -50%) rotate(45deg);
+  }
+
+  .mc-btn[data-tip]:hover::after,
+  .mc-btn[data-tip]:hover::before,
+  .mc-btn[data-tip]:focus-visible::after,
+  .mc-btn[data-tip]:focus-visible::before {
+    opacity: 1;
+  }
+
+  .mc-btn[data-tip]:hover::after,
+  .mc-btn[data-tip]:focus-visible::after {
+    transform: translate(0, -50%);
+  }
+
+  .mc-btn[data-tip]:hover::before,
+  .mc-btn[data-tip]:focus-visible::before {
+    transform: translate(0, -50%) rotate(45deg);
+  }
+
+  /* a disabled control still explains what it would do, once a route exists */
+  .mc-btn[data-tip]:disabled {
+    pointer-events: auto;
+  }
 }
 
 .mc-panel {
@@ -1026,6 +1094,8 @@ body {
 
 .mc-subhead {
   margin: 14px 0 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
   font-size: 12px;
   color: var(--ink-2);
   text-transform: uppercase;

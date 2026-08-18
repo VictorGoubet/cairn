@@ -13,6 +13,9 @@ import { useT } from './lib/i18n';
 import { useIsMobile } from './lib/useMediaQuery';
 import { usePlanner } from './store';
 
+/** how long an error stays on screen */
+const TOAST_MS = 5000;
+
 export default function App() {
   const t = useT();
   const error = usePlanner(s => s.error);
@@ -83,6 +86,14 @@ export default function App() {
       window.removeEventListener('popstate', onPopState);
     };
   }, []);
+
+  // a routing hiccup is news for a few seconds, not a sticker: it clears itself, and a click
+  // still dismisses it early
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => usePlanner.getState().dismissError(), TOAST_MS);
+    return () => window.clearTimeout(timer);
+  }, [error]);
 
   const toast = error && (
     <button type="button" className="toast" onClick={() => usePlanner.getState().dismissError()}>

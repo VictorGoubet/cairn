@@ -6,6 +6,9 @@ import { parseWaySegments, type WaySegment } from './waytypes';
 
 const BROUTER_URL = 'https://brouter.de/brouter';
 const DEFAULT_PROFILE = 'hiking-mountain';
+/** extra attempts when the server refuses for a transient reason, see fetchOnce */
+const RETRIES = 2;
+const RETRY_PAUSE_MS = 700;
 
 /**
  * Variants of the bundled profile, each a documented switch of the template.
@@ -43,6 +46,17 @@ const PRESET_CANDIDATES: Record<RoutingPreset, Variant[]> = {
 };
 
 export type RoutingPreset = 'balanced' | 'shortest' | 'fastest' | 'avoid_roads' | 'easy_up';
+
+/** carries the status so the caller can tell a busy server from a leg nobody can walk */
+export class RoutingError extends Error {
+  status: number;
+
+  constructor(status: number) {
+    super(`brouter ${status}`);
+    this.name = 'RoutingError';
+    this.status = status;
+  }
+}
 
 export interface RouteLeg {
   coords: LonLatEle[];
@@ -91,13 +105,13 @@ function estimatedHours(leg: RouteLeg): number {
 async function requestRoute(points: LonLat[], variant: Variant): Promise<RouteLeg> {
   const lonlats = points.map(p => `${p[0]},${p[1]}`).join('|');
   const profile = await resolveProfile(variant);
-  let res = await fetchWithTimeout(routeUrl(lonlats, profile));
+  let res = await fetchOnce(routeUrl(lonlats, profile));
   // a custom profile expired server-side is re-uploaded once before giving up
   if (!res.ok && profile !== DEFAULT_PROFILE) {
     profileUploads.delete(variant);
-    res = await fetchWithTimeout(routeUrl(lonlats, await resolveProfile(variant)));
+    res = await fetchOnce(routeUrl(lonlats, await resolveProfile(variant)));
   }
-  if (!res.ok) throw new Error(`brouter ${res.status}`);
+  if (!res.ok) throw new RoutingError(res.status);
   const data = await res.json();
   const feature = data.features?.[0];
   if (!feature) throw new Error('brouter: empty response');
@@ -174,6 +188,28 @@ export function straightLeg(from: LonLat, to: LonLat): RouteLeg {
     ],
     distanceM: haversineM(from, to),
   };
+}
+
+/**
+ * One routing request, retried while the refusal looks transient.
+ *
+ * The public server runs a watchdog that kills any computation past four seconds and answers
+ * 400: a long leg, or a short one while the server is busy, fails for reasons that have nothing
+ * to do with the request being wrong. Retrying twice with a pause turns most of those into a
+ * route, which is why the straight-line fallback used to show up so often.
+ */
+async function fetchOnce(url: string): Promise<Response> {
+  let res = await fetchWithTimeout(url);
+  for (let attempt = 0; attempt < RETRIES && isTransient(res.status); attempt++) {
+    await new Promise(resolve => setTimeout(resolve, RETRY_PAUSE_MS * (attempt + 1)));
+    res = await fetchWithTimeout(url);
+  }
+  return res;
+}
+
+/** the watchdog kill (400) and any server-side hiccup are worth another try; a 404 is not */
+export function isTransient(status: number): boolean {
+  return status === 400 || status === 429 || status >= 500;
 }
 
 function routeUrl(lonlats: string, profile: string): string {

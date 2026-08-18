@@ -532,6 +532,56 @@ test.describe('importing gpx', () => {
   });
 });
 
+test.describe('when the router refuses', () => {
+  test('the leg is retried, the message is actionable and it clears itself', async ({ page }) => {
+    let attempts = 0;
+    // the public router kills any computation past four seconds with a 400, which is what a long
+    // leg gets. Forcing it here exercises the retry and the message it ends on.
+    await page.route('**/brouter?**', async route => {
+      attempts++;
+      await route.fulfill({ status: 400, body: 'operation killed by thread-priority-watchdog' });
+    });
+    await openPlanner(page);
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+
+    const toast = page.locator('.toast');
+    await expect(toast).toBeVisible();
+    await expect(toast).toContainText(/trop long|too long/);
+    // three tries before giving up, not one
+    expect(attempts).toBeGreaterThanOrEqual(3);
+    // the straight line is drawn anyway, so the route is still usable
+    await expect.poll(async () => (await planner(page).state()).legCoordCounts[0]).toBeGreaterThan(0);
+
+    // and the message goes away on its own, without a click
+    await expect(toast).toBeHidden({ timeout: 15_000 });
+  });
+});
+
+test.describe('closing and opening a loop', () => {
+  test('the loop button undoes itself, keeping the start and the finish', async ({ page }) => {
+    await openPlanner(page);
+    await clickAt(page, CEILLAC);
+    await clickAt(page, NEARBY);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 2);
+    const open = await planner(page).state();
+
+    await page.locator('[data-control="loop"]').click();
+    await waitForRouting(page, 3);
+    expect((await planner(page).state()).anchorCount).toBe(open.anchorCount + 1);
+
+    // the same button now offers to open it again: the closing leg goes, the points stay
+    await page.locator('[data-control="loop"]').click();
+    const reopened = await planner(page).state();
+    expect(reopened.anchorCount).toBe(open.anchorCount);
+    expect(reopened.legCoordCounts).toHaveLength(open.legCoordCounts.length);
+    // one undo brings the loop back, so nothing was lost
+    await planner(page).call('undo');
+    expect((await planner(page).state()).anchorCount).toBe(open.anchorCount + 1);
+  });
+});
+
 test.describe('hiker profile', () => {
   test('the pace changes every duration, and survives a reload', async ({ page }) => {
     await openPlanner(page);

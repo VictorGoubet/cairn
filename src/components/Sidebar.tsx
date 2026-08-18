@@ -113,9 +113,16 @@ export function Sidebar() {
               </button>
             </div>
             <div className="side-row">
-              <button type="button" disabled={!hasRoute || isLoop} onClick={() => usePlanner.getState().closeLoop()}>
-                <Icon name="closeLoop" />
-                {t('close_loop')}
+              {/* one button for the round trip: it closes the loop, then offers to open it again */}
+              <button
+                type="button"
+                data-control="loop"
+                disabled={!hasRoute}
+                title={isLoop ? t('open_loop_hint') : undefined}
+                onClick={() => (isLoop ? usePlanner.getState().openLoop() : usePlanner.getState().closeLoop())}
+              >
+                <Icon name={isLoop ? 'openLoop' : 'closeLoop'} />
+                {isLoop ? t('open_loop') : t('close_loop')}
               </button>
               <button type="button" className="danger-ghost" onClick={() => usePlanner.getState().clear()}>
                 <Icon name="clear" />
@@ -269,6 +276,7 @@ const ICON_PATHS = {
   reverse: ['M7 8h11l-3-3', 'M17 16H6l3 3'],
   outAndBack: ['M5 12h14', 'M9 8l-4 4 4 4', 'M15 8l4 4-4 4'],
   closeLoop: ['M12 5a7 7 0 1 1-6.9 8.2', 'M9 3l3 2-3 2'],
+  openLoop: ['M12 5a7 7 0 1 1-6.9 8.2', 'M9 3l3 2-3 2', 'M4 4l16 16'],
   clear: ['M5 7h14', 'M10 7V5h4v2', 'M7 7l1 12h8l1-12'],
   trails: ['M4 19c3.5 0 3-5 6.5-5S13 8 17 8h3', 'M17 5l3 3-3 3'],
 } as const;
