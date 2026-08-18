@@ -30,7 +30,11 @@ export async function fetchHiddenTrails(bounds: ViewBounds): Promise<GeoJSON.Fea
   if (cells.length === 0 || cells.length > MAX_CELLS_PER_VIEW) return [];
   const results = await Promise.all(
     cells.map(cell =>
-      cachedFetch(cellCache, `${cell.x}/${cell.y}`, CACHE_MAX_CELLS, () => queryOverpass(cell)).catch(() => []),
+      cachedFetch(cellCache, `${cell.x}/${cell.y}`, CACHE_MAX_CELLS, () => queryOverpass(cell)).catch(err => {
+        // an overlay must never break the map, but a systematic failure has to be findable
+        console.warn('overpass hidden trails', err);
+        return [];
+      }),
     ),
   );
   return results.flat();

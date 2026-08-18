@@ -156,7 +156,12 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   interpolation, LRU of 64 decoded tiles. No calls to the IGN altimetry API except for
   manual legs' profiles (`elevation.ts`).
 - **Overlay data** (hidden trails, refuges.info): fetched per tile-grid cell (z11 Overpass,
-  z9 refuges.info) with an LRU cache, refreshed on `moveend`, only while the overlay is on.
+  z9 refuges.info) with an LRU cache, refreshed on `moveend`, only while the overlay is on. A
+  failing cell yields an empty list so the map survives, and warns so the failure is findable.
+- **refuges.info answers 200 with a plain-text error** when a parameter is wrong (`Error : no
+  valid type : all`), so `res.ok` proves nothing: the body is checked for `{` before parsing.
+  `all` belongs to `nb_points`, not `type_points`, which takes numeric type ids; passing a word
+  there rejects the whole query, and the huts-and-water overlay came back empty in silence.
 - **localStorage**: draft + saved routes, versioned and migrated in `storage.ts`. Any schema
   change needs a migration path there.
 

@@ -30,6 +30,8 @@ export const REFUGE_CATEGORY_EMOJI: Record<RefugeCategory, string> = {
 };
 
 const API_URL = 'https://www.refuges.info/api/bbox';
+/** every type in the cell; `type_points` takes ids, and a bogus value makes the API answer text */
+const MAX_POINTS_PER_CELL = 500;
 const CELL_ZOOM = 9;
 const MAX_CELLS_PER_VIEW = 6;
 const CACHE_MAX_CELLS = 32;
@@ -59,7 +61,11 @@ export async function fetchRefugePoints(bounds: ViewBounds): Promise<GeoJSON.Fea
   if (cells.length === 0 || cells.length > MAX_CELLS_PER_VIEW) return [];
   const results = await Promise.all(
     cells.map(cell =>
-      cachedFetch(cellCache, `${cell.x}/${cell.y}`, CACHE_MAX_CELLS, () => queryCell(cell)).catch(() => []),
+      cachedFetch(cellCache, `${cell.x}/${cell.y}`, CACHE_MAX_CELLS, () => queryCell(cell)).catch(err => {
+        // an overlay must never break the map, but a systematic failure has to be findable
+        console.warn('refuges.info', err);
+        return [];
+      }),
     ),
   );
   return results.flat();
@@ -68,9 +74,13 @@ export async function fetchRefugePoints(bounds: ViewBounds): Promise<GeoJSON.Fea
 async function queryCell(cell: Cell): Promise<GeoJSON.Feature[]> {
   const b = cellBounds(cell, CELL_ZOOM);
   const bbox = `${b.west},${b.south},${b.east},${b.north}`;
-  const res = await fetchWithTimeout(`${API_URL}?bbox=${bbox}&format=geojson&type_points=all`);
+  const res = await fetchWithTimeout(`${API_URL}?bbox=${bbox}&format=geojson&nb_points=${MAX_POINTS_PER_CELL}`);
   if (!res.ok) throw new Error(`refuges.info ${res.status}`);
-  const data = await res.json();
+  // the API answers 200 with a plain-text message when a parameter is wrong, so an ok status
+  // proves nothing: without this check a rejected request reads as an empty area
+  const body = await res.text();
+  if (!body.startsWith('{')) throw new Error(`refuges.info refused the query: ${body.slice(0, 80)}`);
+  const data = JSON.parse(body);
   const features: GeoJSON.Feature[] = [];
   for (const f of data.features ?? []) {
     const props = f.properties ?? {};

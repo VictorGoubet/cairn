@@ -779,6 +779,40 @@ test.describe('sharing an image', () => {
   });
 });
 
+test.describe('refuges and water points', () => {
+  test('the overlay puts real refuges.info points on the map', async ({ page }) => {
+    await openPlanner(page);
+
+    await page.locator('[data-control="options"]').click();
+    await page
+      .locator('.option-row', { hasText: /Refuges & points d'eau|Huts & water points/ })
+      .locator('input[type="checkbox"]')
+      .check();
+    await expect.poll(async () => (await planner(page).state()).overlays.refuges).toBe(true);
+
+    // queryRenderedFeatures only sees the viewport, and the whole massif holds both kinds
+    await page.evaluate(center => {
+      (window as unknown as TestHandles).__map.jumpTo({ center, zoom: 11 });
+    }, CEILLAC);
+
+    // the Queyras has huts and springs, so an empty answer means the query was refused
+    const points = await page.waitForFunction(
+      () => {
+        const map = (window as unknown as TestHandles).__map;
+        const found = map.queryRenderedFeatures({ layers: ['overlay-refuges'] }) as {
+          properties?: { cat?: string };
+        }[];
+        return found.length > 0 ? found.map(f => f.properties?.cat) : false;
+      },
+      null,
+      { timeout: 30_000 },
+    );
+    const categories = (await points.jsonValue()) as string[];
+    expect(categories).toContain('hut');
+    expect(categories).toContain('water');
+  });
+});
+
 test.describe('deleting a leg', () => {
   // three cache coordinates with a jump in the middle, the shape a c:geo route arrives in
   const ROUTE_GPX = `<?xml version="1.0"?><gpx version="1.1" creator="c:geo">
