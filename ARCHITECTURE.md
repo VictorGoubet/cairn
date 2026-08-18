@@ -104,6 +104,14 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   beeline can be split too (it has no interior vertex to snap to). A projection within a metre of
   an existing vertex reuses it, and a click on a leg endpoint is declined rather than producing a
   zero-length half.
+- **Eraser mode repairs a broken GPX** (`deleteMode`, the eraser control on the map): while
+  armed, a tap removes what it lands on, a marker or a leg (`nearestOnTrace` with a 16 px
+  tolerance, not the line layer's exact hit test), and never adds anything. Deleting an edge leg
+  drops it outright; a middle leg opens `LegEditor` to pick the surviving half, because a hole
+  would leave two disjoint itineraries. The armed state is loud on purpose: red control, eraser
+  cursor, red outline on every marker, and a floating pill that names the mode and leaves it,
+  since a phone has no escape key. The sidebar also lists every leg between its points
+  (`leg-row`), so a 21 km accidental straight line is visible and deletable from the list too.
 - **`routeStraightLegs` turns beelines into paths.** An imported leg keeps `manual: true`, so a
   sketch of points joined by straight lines can be handed to the router in one click; the button
   only shows while such a leg exists.

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { CEILLAC, clickAt, openPlanner, planner, type TestHandles, waitForRouting } from './helpers';
+import { CEILLAC, clickAt, openPlanner, planner, type TestHandles, waitForCamera, waitForRouting } from './helpers';
 
 const NEARBY: [number, number] = [CEILLAC[0] + 0.008, CEILLAC[1] + 0.004];
 const FURTHER: [number, number] = [CEILLAC[0] + 0.016, CEILLAC[1] + 0.001];
@@ -777,6 +777,87 @@ test.describe('sharing an image', () => {
     await page.keyboard.press('Escape');
     await expect(page.locator('.share-panel')).toBeHidden();
   });
+});
+
+test.describe('deleting a leg', () => {
+  // three cache coordinates with a jump in the middle, the shape a c:geo route arrives in
+  const ROUTE_GPX = `<?xml version="1.0"?><gpx version="1.1" creator="c:geo">
+    <metadata><name>caches</name></metadata>
+    <rte>
+      <rtept lat="45.5429" lon="1.7932"/>
+      <rtept lat="45.5155" lon="1.7693"/>
+      <rtept lat="45.4265" lon="1.5671"/>
+      <rtept lat="45.4224" lon="1.5931"/>
+    </rte></gpx>`;
+
+  async function importRoute(page: import('@playwright/test').Page) {
+    await page.locator('.topbar input[type="file"]').setInputFiles({
+      name: 'caches.gpx',
+      mimeType: 'application/gpx+xml',
+      buffer: Buffer.from(ROUTE_GPX),
+    });
+    await page.waitForFunction(
+      () => (window as unknown as TestHandles).__planner.getState().anchors.length === 4,
+      null,
+      { timeout: 30_000 },
+    );
+  }
+
+  test('the eraser removes a tapped leg and a tapped point, then disarms', async ({ page }) => {
+    await openPlanner(page);
+    await importRoute(page);
+
+    // frame the route: a tap can only land on what the viewport shows
+    await page.locator('[data-control="focus"]').click();
+    await waitForCamera(page);
+
+    await page.locator('[data-control="delete-mode"]').click();
+    await expect(page.locator('[data-control="delete-pill"]')).toBeVisible();
+
+    // erase the long middle beeline: an edge would vanish outright, the middle asks which half
+    const middle = await page.evaluate(() => {
+      const coords = (window as unknown as TestHandles).__planner.getState().legs[1].leg?.coords ?? [];
+      const a = coords[0];
+      const b = coords[coords.length - 1];
+      return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] as [number, number];
+    });
+    await clickAt(page, middle);
+    await expect(page.locator('.point-editor')).toContainText(/Tronçon|Leg/);
+    await page.locator('[data-control="leg-keep-start"]').click();
+    await expect.poll(async () => (await planner(page).state()).anchorCount).toBe(2);
+
+    // still armed: a click on empty map adds nothing, a click on a marker removes it
+    await page.locator('[data-control="focus"]').click();
+    await waitForCamera(page);
+    await clickAt(page, [1.75, 45.53]);
+    expect((await planner(page).state()).anchorCount).toBe(2);
+    // the northern marker: the southern one sits behind the elevation panel at this framing
+    await page.locator('.maplibregl-marker .anchor-marker').first().click();
+    await expect.poll(async () => (await planner(page).state()).anchorCount).toBe(1);
+
+    await page.locator('[data-control="delete-pill"]').click();
+    await expect(page.locator('[data-control="delete-pill"]')).toBeHidden();
+  });
+
+  test('the point list exposes every leg, and one can be cut away', async ({ page }) => {
+    await openPlanner(page);
+    await importRoute(page);
+
+    // a beeline says so, which is what an imported straight line needed to admit
+    const rows = page.locator('[data-control="leg-row"]');
+    await expect(rows).toHaveCount(3);
+    await expect(rows.nth(1)).toContainText(/ligne droite|straight line/);
+
+    await rows.nth(1).click();
+    await expect(page.locator('.point-editor')).toBeVisible();
+    await page.locator('[data-control="leg-keep-start"]').click();
+
+    // the long jump and everything past it are gone, the start of the route stays walkable
+    const state = await planner(page).state();
+    expect(state.anchorCount).toBe(2);
+    expect(state.legCoordCounts).toHaveLength(1);
+  });
+
 });
 
 test.describe('sharing a link', () => {

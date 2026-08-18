@@ -1143,6 +1143,70 @@ body {
   color: var(--ink-2);
 }
 
+.editor-ends {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+/* the leg between two points of the list: slim and muted, the points stay the subject */
+.leg-row button {
+  width: 100%;
+  padding: 1px 6px 1px 30px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+.leg-row button::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-top: 1px dashed var(--accent-line);
+}
+
+.leg-row button:hover {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+/* eraser mode: the armed button turns red, and every map marker wears the same warning */
+.side-wide.delete-armed {
+  background: #e34948;
+  border-color: #e34948;
+  color: #fff;
+}
+
+/* eraser armed: red control and a floating pill that names the mode and leaves it */
+.mc-btn.active.danger {
+  background: #e34948;
+  border-color: #e34948;
+}
+
+.delete-pill {
+  position: absolute;
+  top: 0;
+  right: 46px;
+  white-space: nowrap;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 18px;
+  background: #e34948;
+  color: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 25%);
+}
+
 /* --- follow mode --- */
 
 .follow-bar {
@@ -1727,6 +1791,12 @@ body {
   transition: transform 0.1s ease;
 }
 
+.delete-mode .anchor-marker,
+.delete-mode .poi-icon {
+  outline: 2px solid rgba(227, 73, 72, 0.9);
+  outline-offset: 1px;
+}
+
 .wp-label {
   padding: 1px 6px;
   font-size: 11px;
@@ -2158,7 +2228,8 @@ body {
 
   .kind-option,
   .side-row button,
-  .segmented button {
+  .segmented button,
+  .leg-row button {
     min-height: 38px;
   }
 }

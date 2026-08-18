@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import type { RoutingPreset } from '../lib/brouter';
+import { formatDistance } from '../lib/geo';
 import { type MsgKey, useT } from '../lib/i18n';
 import { kindDef, kindLabelKey } from '../lib/points';
 import { type Anchor, isClosedRoute, usePlanner } from '../store';
@@ -28,6 +29,15 @@ export function Sidebar() {
   const isLoop = isClosedRoute(anchors);
   // a leg stays manual when it was imported as a beeline or drawn in manual mode
   const hasStraightLegs = legs.some(l => l.manual);
+
+  function legLabel(index: number): string {
+    const slot = legs[index];
+    if (!slot?.leg) return t('computing');
+    const straight = slot.manual && slot.leg.coords.length === 2;
+    return straight
+      ? `${formatDistance(slot.leg.distanceM)} · ${t('leg_straight')}`
+      : formatDistance(slot.leg.distanceM);
+  }
 
   function anchorLabel(anchor: Anchor, index: number): string {
     if (anchor.name) return anchor.name;
@@ -150,57 +160,72 @@ export function Sidebar() {
           <h2>{t('route_points')}</h2>
           <ul className="poi-list anchor-list">
             {anchors.map((anchor, index) => (
-              <li
-                key={anchor.id}
-                className={dragIndex === index ? 'dragging' : dropIndex === index ? 'drop-target' : undefined}
-                draggable
-                onDragStart={() => setDragIndex(index)}
-                onDragEnd={endDrag}
-                onDragOver={e => {
-                  e.preventDefault();
-                  setDropIndex(index);
-                }}
-                onDrop={e => {
-                  e.preventDefault();
-                  if (dragIndex !== null) usePlanner.getState().reorderAnchor(dragIndex, index);
-                  endDrag();
-                }}
-              >
-                <span className="drag-handle" title={t('reorder_hint')} aria-hidden="true">
-                  ⠿
-                </span>
-                <button
-                  type="button"
-                  className="wp-name"
-                  title={t('center_edit')}
-                  onClick={() => {
-                    usePlanner.getState().setFlyTo({ center: [anchor.lon, anchor.lat], zoom: 14 });
-                    usePlanner.getState().setEditing(anchor.id);
+              <Fragment key={anchor.id}>
+                <li
+                  className={dragIndex === index ? 'dragging' : dropIndex === index ? 'drop-target' : undefined}
+                  draggable
+                  onDragStart={() => setDragIndex(index)}
+                  onDragEnd={endDrag}
+                  onDragOver={e => {
+                    e.preventDefault();
+                    setDropIndex(index);
+                  }}
+                  onDrop={e => {
+                    e.preventDefault();
+                    if (dragIndex !== null) usePlanner.getState().reorderAnchor(dragIndex, index);
+                    endDrag();
                   }}
                 >
-                  <span
-                    className={
-                      index === 0
-                        ? 'anchor-num start'
-                        : index === anchors.length - 1 && anchors.length > 1
-                          ? 'anchor-num end'
-                          : 'anchor-num'
-                    }
-                  >
-                    {index + 1}
+                  <span className="drag-handle" title={t('reorder_hint')} aria-hidden="true">
+                    ⠿
                   </span>
-                  {anchor.kind !== 'checkpoint' && `${kindDef(anchor.kind).emoji} `}
-                  {anchorLabel(anchor, index)}
-                </button>
-                <button
-                  type="button"
-                  className="wp-remove"
-                  title={t('delete_point')}
-                  onClick={() => usePlanner.getState().removeAnchor(anchor.id)}
-                >
-                  ×
-                </button>
-              </li>
+                  <button
+                    type="button"
+                    className="wp-name"
+                    title={t('center_edit')}
+                    onClick={() => {
+                      usePlanner.getState().setFlyTo({ center: [anchor.lon, anchor.lat], zoom: 14 });
+                      usePlanner.getState().setEditing(anchor.id);
+                    }}
+                  >
+                    <span
+                      className={
+                        index === 0
+                          ? 'anchor-num start'
+                          : index === anchors.length - 1 && anchors.length > 1
+                            ? 'anchor-num end'
+                            : 'anchor-num'
+                      }
+                    >
+                      {index + 1}
+                    </span>
+                    {anchor.kind !== 'checkpoint' && `${kindDef(anchor.kind).emoji} `}
+                    {anchorLabel(anchor, index)}
+                  </button>
+                  <button
+                    type="button"
+                    className="wp-remove"
+                    title={t('delete_point')}
+                    onClick={() => usePlanner.getState().removeAnchor(anchor.id)}
+                  >
+                    ×
+                  </button>
+                </li>
+                {/* the leg between two points, so its length and a way to delete it are visible
+                  without knowing that the trace answers a long press */}
+                {index < anchors.length - 1 && (
+                  <li className="leg-row">
+                    <button
+                      type="button"
+                      data-control="leg-row"
+                      title={t('leg_open')}
+                      onClick={() => usePlanner.getState().setEditingLeg(index)}
+                    >
+                      {legLabel(index)}
+                    </button>
+                  </li>
+                )}
+              </Fragment>
             ))}
           </ul>
         </section>

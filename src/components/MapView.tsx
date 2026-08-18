@@ -20,9 +20,17 @@ import {
   SLOPES_TILES,
   TERRARIUM_TILES,
 } from '../config/layers';
+import { DELETE_CURSOR } from '../lib/cursors';
 import { FLYOVER_EXAGGERATION, type FlyoverPoi, startFlyover } from '../lib/flyover';
 import { onFollowFix } from '../lib/follow';
-import { cumulativeDistancesM, haversineM, kmMarkerPoints, type LonLatEle, nearestIndex } from '../lib/geo';
+import {
+  cumulativeDistancesM,
+  haversineM,
+  kmMarkerPoints,
+  type LonLat,
+  type LonLatEle,
+  nearestIndex,
+} from '../lib/geo';
 import { fetchHiddenTrails, HIDDEN_TRAILS_MIN_ZOOM } from '../lib/hiddenTrails';
 import { tNow } from '../lib/i18n';
 import { bindLongPress, bindMiddleDragRotate, bindRotateCursor } from '../lib/mapGestures';
@@ -36,6 +44,7 @@ import {
   REFUGES_MIN_ZOOM,
   type RefugeCategory,
 } from '../lib/refugesInfo';
+import { nearestOnTrace } from '../lib/routeSplice';
 import { registerSlopeProtocol } from '../lib/slopeTiles';
 import { SURFACE_COLORS, type SurfaceCategory, WAY_COLORS, type WayCategory } from '../lib/waytypes';
 import { routeCoords, usePlanner } from '../store';
@@ -72,6 +81,8 @@ const HIDDEN_TRAILS_SOURCE = 'hidden-trails';
 const REFUGES_SOURCE = 'refuge-points';
 const FOLLOW_SOURCE = 'follow-position';
 const EMPTY_ROUTE: GeoJSON.GeoJSON = { type: 'FeatureCollection', features: [] };
+/** how close to the trace a press must land to mean "this leg" rather than "here on the map" */
+const TRACE_HIT_PX = 16;
 
 export function MapView() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -94,6 +105,7 @@ export function MapView() {
   const hoverPoint = usePlanner(s => s.hoverPoint);
   const searchPin = usePlanner(s => s.searchPin);
   const following = usePlanner(s => s.following);
+  const deleteMode = usePlanner(s => s.deleteMode);
   const flyTo = usePlanner(s => s.flyTo);
   const dragging = usePlanner(s => s.dragging);
   const wayTypeHighlight = usePlanner(s => s.wayTypeHighlight);
@@ -247,23 +259,34 @@ export function MapView() {
         // clicking the track inserts a point into the right leg instead of appending one at the end
         // a leg too short to split cannot take an insertion: let the click append a point instead
         map.on('click', 'route-line', e => {
+          // the eraser is handled by the generic click below, with a finger-sized tolerance
+          // rather than this layer's exact hit test
+          if (usePlanner.getState().deleteMode) return;
           // always consumed: a click on the trace means "insert here", and if the splice declines
           // the honest outcome is nothing, not a point appended to the far end of the route
           e.preventDefault();
           usePlanner.getState().insertAnchor([e.lngLat.lng, e.lngLat.lat]);
         });
         map.on('mouseenter', 'route-line', () => {
-          if (map) map.getCanvas().style.cursor = 'copy';
+          if (map && !usePlanner.getState().deleteMode) map.getCanvas().style.cursor = 'copy';
         });
         map.on('mouseleave', 'route-line', () => {
-          if (map) map.getCanvas().style.cursor = 'crosshair';
+          if (map && !usePlanner.getState().deleteMode) map.getCanvas().style.cursor = 'crosshair';
         });
         map.on('click', e => {
           if (suppressNextTap) {
             suppressNextTap = false;
             return;
           }
-          if (!e.defaultPrevented) usePlanner.getState().addAnchor([e.lngLat.lng, e.lngLat.lat]);
+          const { deleteMode, addAnchor, deleteLeg } = usePlanner.getState();
+          // the eraser removes, it never draws: a click near the trace erases that leg, an
+          // empty click means the finger missed
+          if (deleteMode) {
+            const legIndex = legUnderPointer(e.target, [e.lngLat.lng, e.lngLat.lat]);
+            if (legIndex !== null) deleteLeg(legIndex);
+            return;
+          }
+          if (!e.defaultPrevented) addAnchor([e.lngLat.lng, e.lngLat.lat]);
         });
         map.on('contextmenu', e => {
           usePlanner.getState().addOffRoutePoint([e.lngLat.lng, e.lngLat.lat]);
@@ -583,6 +606,14 @@ export function MapView() {
     return off;
   }, [following, mapReady]);
 
+  // the eraser announces itself: cursor over the whole map, red halo on every marker
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    map.getCanvas().style.cursor = deleteMode ? DELETE_CURSOR : 'crosshair';
+    map.getContainer().classList.toggle('delete-mode', deleteMode);
+  }, [deleteMode, mapReady]);
+
   // the searched spot, as a pin that adds itself to the route when tapped
   useEffect(() => {
     const map = mapRef.current;
@@ -772,6 +803,16 @@ async function refreshPoiOverlays(map: MapLibreMap, hidden: boolean, refuges: bo
   }
 }
 
+/** the leg under the pointer, or null when the trace is further away than a fingertip */
+function legUnderPointer(map: MapLibreMap, p: LonLat): number | null {
+  const hit = nearestOnTrace(usePlanner.getState().legs, p);
+  if (!hit) return null;
+  const requested = map.project(p);
+  const onTrace = map.project([hit.point[0], hit.point[1]]);
+  const pixels = Math.hypot(requested.x - onTrace.x, requested.y - onTrace.y);
+  return pixels <= TRACE_HIT_PX ? hit.legIndex : null;
+}
+
 // badge drawn at 2x (pixelRatio 2): white disc, category-colored ring, pictogram
 function refugeBadgeImage(cat: RefugeCategory): ImageData {
   const size = 44;
@@ -848,7 +889,9 @@ function pointElement(kind: PointKind, name: string): HTMLDivElement {
 function attachEditOnClick(el: HTMLElement, anchorId: string) {
   el.addEventListener('click', e => {
     e.stopPropagation();
-    usePlanner.getState().setEditing(anchorId);
+    const { deleteMode, removePoint, setEditing } = usePlanner.getState();
+    if (deleteMode) removePoint(anchorId);
+    else setEditing(anchorId);
   });
 }
 

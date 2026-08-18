@@ -9,6 +9,38 @@ export interface SplicedRoute {
   legs: LegSlot[];
 }
 
+export interface TraceHit {
+  legIndex: number;
+  /** index of the segment end vertex inside that leg */
+  segment: number;
+  /** the point of the trace closest to the request, elevation interpolated */
+  point: LonLatEle;
+  distanceM: number;
+}
+
+/**
+ * Finds the point of the route closest to `p`.
+ *
+ * Args:
+ *   legs: current legs; a leg with no geometry yet is skipped.
+ *   p: requested position, anywhere on the map.
+ *
+ * Returns:
+ *   The closest point with the leg and segment it belongs to, or null when nothing is drawn.
+ */
+export function nearestOnTrace(legs: LegSlot[], p: LonLat): TraceHit | null {
+  let hit: TraceHit | null = null;
+  legs.forEach((slot, legIndex) => {
+    const coords = slot.leg?.coords ?? [];
+    for (let i = 1; i < coords.length; i++) {
+      const point = projectOnSegment(p, coords[i - 1], coords[i]);
+      const distanceM = haversineM([point[0], point[1]], p);
+      if (!hit || distanceM < hit.distanceM) hit = { legIndex, segment: i, point, distanceM };
+    }
+  });
+  return hit;
+}
+
 /**
  * Inserts `anchor` into the track at the vertex closest to `p`.
  *
@@ -25,30 +57,16 @@ export function spliceIntoTrace(anchors: Anchor[], legs: LegSlot[], p: LonLat, a
   // the cut lands on the nearest *segment*, not on the nearest vertex. Snapping to a vertex
   // failed outright on a two-point leg (a beeline had no interior vertex to cut at) and, on a
   // sparse trace, dropped the point hundreds of metres from where it was clicked.
-  let bestLeg = -1;
-  let bestSegment = -1;
-  let bestPoint: LonLatEle | null = null;
-  let bestDist = Number.POSITIVE_INFINITY;
-  legs.forEach((slot, legIndex) => {
-    const coords = slot.leg?.coords ?? [];
-    for (let i = 1; i < coords.length; i++) {
-      const projected = projectOnSegment(p, coords[i - 1], coords[i]);
-      const d = haversineM([projected[0], projected[1]], p);
-      if (d < bestDist) {
-        bestDist = d;
-        bestLeg = legIndex;
-        bestSegment = i;
-        bestPoint = projected;
-      }
-    }
-  });
-  const leg = legs[bestLeg]?.leg;
-  if (!leg || !bestPoint) return null;
+  const hit = nearestOnTrace(legs, p);
+  const leg = hit ? legs[hit.legIndex].leg : null;
+  if (!hit || !leg) return null;
+  const bestLeg = hit.legIndex;
+  const bestSegment = hit.segment;
 
   // reuse an existing vertex when the projection falls on one, so the geometry gains no
   // duplicate point
   const coords = leg.coords;
-  const snapped: LonLatEle = bestPoint;
+  const snapped = hit.point;
   const onPrevious = haversineM([coords[bestSegment - 1][0], coords[bestSegment - 1][1]], [snapped[0], snapped[1]]) < 1;
   const onNext = haversineM([coords[bestSegment][0], coords[bestSegment][1]], [snapped[0], snapped[1]]) < 1;
   const beforeCoords = onPrevious
