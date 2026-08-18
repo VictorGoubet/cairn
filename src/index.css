@@ -13,6 +13,7 @@
   --start: #008300;
   --wp: #eda100;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  accent-color: var(--accent);
 }
 
 * {
@@ -560,7 +561,8 @@ body {
   z-index: 5;
   display: flex;
   flex-direction: column;
-  height: 200px;
+  /* grows with the stages block, the chart keeps its floor below */
+  max-height: 46vh;
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -701,7 +703,8 @@ body {
 .chart-area {
   position: relative;
   flex: 1;
-  min-height: 0;
+  /* below this the elevation ticks collide into each other */
+  min-height: 96px;
   overflow: hidden;
 }
 
@@ -1239,7 +1242,7 @@ body {
 /* --- multi-day stages --- */
 
 .stages {
-  padding: 4px 0 2px;
+  padding: 4px 16px 2px;
   border-top: 1px solid var(--border);
 }
 
@@ -2185,7 +2188,7 @@ body {
 /* the sheet hosts them, so they drop their floating chrome */
 .sheet-body .bottom-panel {
   position: static;
-  height: 190px;
+  max-height: none;
   border: none;
   border-radius: 0;
   box-shadow: none;
@@ -2234,6 +2237,7 @@ body {
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
+  --menu-row: 42px;
   position: absolute;
   top: calc(100% + 6px);
   right: 8px;
@@ -2244,6 +2248,21 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.22);
+}
+
+/* every row of the menu shares one width and one height, the language picker included */
+.topbar-sheet.open > button,
+.topbar-sheet.open > .menu-wrap,
+.topbar-sheet.open > .routes-wrap,
+.topbar-sheet.open .menu-wrap > button,
+.topbar-sheet.open .routes-wrap > button {
+  width: 100%;
+  min-height: var(--menu-row);
+}
+
+.topbar-sheet.open .segmented button {
+  padding: 8px 12px;
+  font-size: 13px;
 }
 
 @media (max-width: 760px) {

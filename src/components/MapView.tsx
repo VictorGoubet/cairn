@@ -119,7 +119,9 @@ export function MapView() {
         maxZoom: 19,
       });
       if (import.meta.env.DEV) (window as unknown as { __map: MapLibreMap }).__map = map;
-      map.addControl(new NavigationControl({ visualizePitch: true }));
+      // a phone zooms by pinching: the buttons only steal room from geolocate and the controls
+      const compact = window.matchMedia('(max-width: 760px)').matches;
+      map.addControl(new NavigationControl({ visualizePitch: true, showZoom: !compact }));
       map.addControl(new GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }));
       map.addControl(new ScaleControl());
       map.on('load', () => {
