@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { validId } from '../../api/_kv.js';
+import { readShare, validId } from '../../api/_kv.js';
 import { sharePage } from '../../api/s.js';
 
 /** the very page vercel serves, so the test breaks if its head stops matching the injection */
@@ -45,6 +45,13 @@ describe('sharePage', () => {
 
   it('sends a visitor home rather than nowhere when the link has no usable id', () => {
     expect(sharePage(null, '../secret', TITLE, DESCRIPTION, IMAGE)).toContain('content="0;url=/"');
+  });
+});
+
+describe('readShare', () => {
+  it('answers nothing rather than throwing when no store is configured', async () => {
+    // the share page reads a record before it can dress itself, and it still has a page to serve
+    await expect(readShare('abc1234567')).resolves.toBeNull();
   });
 });
 

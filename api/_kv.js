@@ -33,8 +33,12 @@ export function kvConfigured() {
  * @returns {Promise<ShareRecord | null>} the record, or null when it never existed or expired.
  */
 export async function readShare(id) {
-  const res = await fetch(`${endpoint()}/get/${key(id)}`, { headers: { Authorization: `Bearer ${token()}` } });
-  if (!res.ok) return null;
+  // the share page reads records to dress itself and must still render without a store
+  if (!kvConfigured()) return null;
+  const res = await fetch(`${endpoint()}/get/${key(id)}`, {
+    headers: { Authorization: `Bearer ${token()}` },
+  }).catch(() => null);
+  if (!res?.ok) return null;
   const { result } = await res.json();
   if (!result) return null;
   try {
