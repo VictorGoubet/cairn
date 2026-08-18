@@ -81,3 +81,6 @@ function tags(title, description, image) {
 function esc(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+// preview crawlers probe with HEAD before downloading; a 405 there kills the whole card
+export const HEAD = GET;

@@ -51,3 +51,6 @@ export async function POST(request) {
   });
   return id ? json({ id }) : json({ error: 'store unavailable' }, 502);
 }
+
+// preview crawlers probe with HEAD before downloading; a 405 there kills the whole card
+export const HEAD = GET;

@@ -33,13 +33,11 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
   const flyover = usePlanner(s => s.flyover);
   const flyoverPaused = usePlanner(s => s.flyoverPaused);
   const following = usePlanner(s => s.following);
-  const deleteMode = usePlanner(s => s.deleteMode);
   const profile = usePlanner(s => s.profile);
   const legs = usePlanner(s => s.legs);
   useClickOutside(rootRef, () => setOpen(null), open !== null);
   useEscapeKey(() => setOpen(null), open !== null);
   useEscapeKey(() => usePlanner.getState().stopFlyover(), flyover);
-  useEscapeKey(() => usePlanner.getState().toggleDeleteMode(), deleteMode);
   const hasRoute = legs.some(l => (l.leg?.coords.length ?? 0) > 0);
 
   function togglePanel(panel: Exclude<Panel, null>) {
@@ -54,18 +52,6 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
 
   return (
     <div className="map-controls" ref={rootRef}>
-      {/* while the eraser is armed, the way out floats over the map: on a phone there is no
-          escape key and no tooltip to explain what the red cursor means */}
-      {deleteMode && (
-        <button
-          type="button"
-          className="delete-pill"
-          data-control="delete-pill"
-          onClick={() => usePlanner.getState().toggleDeleteMode()}
-        >
-          {t('delete_mode_on')}
-        </button>
-      )}
       <button
         type="button"
         className="mc-btn"
@@ -147,29 +133,6 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
         >
           <path d="M3 20c3.5 0 3-6 7-6s3.5-8 8-8" strokeDasharray="3 3" />
           <circle cx="10" cy="14" r="3.4" fill="currentColor" stroke="none" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        className={deleteMode ? 'mc-btn active danger' : 'mc-btn'}
-        data-control="delete-mode"
-        aria-label={t('delete_mode')}
-        data-tip={t('delete_mode_hint')}
-        aria-pressed={deleteMode}
-        disabled={!hasRoute && !deleteMode}
-        onClick={() => usePlanner.getState().toggleDeleteMode()}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M7 20h13" />
-          <path d="M6 15.5 13.5 8a2 2 0 0 1 2.8 0l2.7 2.7a2 2 0 0 1 0 2.8L13 19.5H9z" />
         </svg>
       </button>
       <button

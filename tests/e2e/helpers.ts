@@ -93,11 +93,6 @@ export async function waitForRouting(page: Page, expectedLegs: number): Promise<
   );
 }
 
-/** waits until the camera stops: clicking during an animation lands on yesterday's pixels */
-export async function waitForCamera(page: Page): Promise<void> {
-  await page.waitForFunction(() => !(window as unknown as { __map: { isMoving(): boolean } }).__map.isMoving());
-}
-
 /** clicks the map at a geographic position, letting maplibre do the projection */
 export async function clickAt(page: Page, lngLat: [number, number], button: 'left' | 'right' = 'left'): Promise<void> {
   const point = await page.evaluate(ll => (window as unknown as TestHandles).__map.project(ll), lngLat);

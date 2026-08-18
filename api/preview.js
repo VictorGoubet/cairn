@@ -25,3 +25,6 @@ export async function GET(request) {
     },
   });
 }
+
+// preview crawlers probe with HEAD before downloading; a 405 there kills the whole card
+export const HEAD = GET;

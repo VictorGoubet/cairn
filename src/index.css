@@ -1177,36 +1177,6 @@ body {
   color: var(--ink);
 }
 
-/* eraser mode: the armed button turns red, and every map marker wears the same warning */
-.side-wide.delete-armed {
-  background: #e34948;
-  border-color: #e34948;
-  color: #fff;
-}
-
-/* eraser armed: red control and a floating pill that names the mode and leaves it */
-.mc-btn.active.danger {
-  background: #e34948;
-  border-color: #e34948;
-}
-
-.delete-pill {
-  position: absolute;
-  top: 0;
-  right: 46px;
-  white-space: nowrap;
-  padding: 8px 14px;
-  border: 0;
-  border-radius: 18px;
-  background: #e34948;
-  color: #fff;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 2px 10px rgb(0 0 0 / 25%);
-}
-
 /* --- follow mode --- */
 
 .follow-bar {
@@ -1789,12 +1759,6 @@ body {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
   cursor: pointer;
   transition: transform 0.1s ease;
-}
-
-.delete-mode .anchor-marker,
-.delete-mode .poi-icon {
-  outline: 2px solid rgba(227, 73, 72, 0.9);
-  outline-offset: 1px;
 }
 
 .wp-label {

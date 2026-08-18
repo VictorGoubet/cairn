@@ -11,11 +11,3 @@ const ROTATE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="2
 
 /** css cursor value, hotspot centered, with a native fallback if the data URI is refused */
 export const ROTATE_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent(ROTATE_SVG)}") 13 13, grabbing`;
-
-// Eraser mode: a red disc with a white cross, so hovering the map says "this click removes".
-const DELETE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24">
-<circle cx="12" cy="12" r="9.5" fill="#e34948" stroke="#fff" stroke-width="2"/>
-<path d="M8.5 8.5l7 7M15.5 8.5l-7 7" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>`;
-
-/** css cursor value, hotspot centered, with a native fallback if the data URI is refused */
-export const DELETE_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent(DELETE_SVG)}") 11 11, not-allowed`;

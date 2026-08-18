@@ -137,8 +137,6 @@ interface PlannerState {
   editing: string | null;
   /** index of the leg whose editor is open, chosen from the map or from the sidebar list */
   editingLeg: number | null;
-  /** eraser mode: a click on the map removes what it lands on instead of adding anything */
-  deleteMode: boolean;
   /** true while an anchor is being dragged: heavy map work waits for the drop */
   dragging: boolean;
   hoverPoint: LonLat | null;
@@ -171,11 +169,8 @@ interface PlannerState {
   removeOffRoutePoint: (id: string) => void;
   setEditing: (id: string | null) => void;
   setEditingLeg: (index: number | null) => void;
-  toggleDeleteMode: () => void;
-  deleteLeg: (index: number) => void;
   updateEditingPoint: (kind: PointKind, name: string) => void;
   removeEditingPoint: () => void;
-  removePoint: (id: string) => void;
   saveCurrentRoute: (name: string) => void;
   loadRoute: (id: string) => void;
   deleteRoute: (id: string) => void;
@@ -410,7 +405,6 @@ export const usePlanner = create<PlannerState>((set, get) => {
     dragging: false,
     editing: null,
     editingLeg: null,
-    deleteMode: false,
     hoverPoint: null,
     searchPin: null,
     flyTo: null,
@@ -789,27 +783,6 @@ export const usePlanner = create<PlannerState>((set, get) => {
       set({ editingLeg: index, editing: null });
     },
 
-    toggleDeleteMode: () => {
-      set(s => ({ deleteMode: !s.deleteMode, editing: null, editingLeg: null }));
-    },
-
-    // repairing an imported track means removing what does not belong: a point, or a whole leg
-    deleteLeg: index => {
-      const { anchors, legs } = get();
-      if (index < 0 || index >= legs.length) return;
-      if (anchors.length <= 2) {
-        pushHistory();
-        set({ anchors: [], legs: [], editing: null, editingLeg: null, profileSelection: null });
-      } else if (index === 0) {
-        get().removeAnchor(anchors[0].id);
-      } else if (index === legs.length - 1) {
-        get().removeAnchor(anchors[anchors.length - 1].id);
-      } else {
-        // a leg out of the middle would leave two disjoint itineraries: ask which half survives
-        set({ editingLeg: index, editing: null });
-      }
-    },
-
     // a single undo step per editing session, not one per keystroke
     updateEditingPoint: (kind, name) => {
       const { editing } = get();
@@ -825,13 +798,10 @@ export const usePlanner = create<PlannerState>((set, get) => {
     },
 
     removeEditingPoint: () => {
-      const { editing } = get();
-      if (editing) get().removePoint(editing);
-    },
-
-    removePoint: id => {
-      if (get().anchors.some(a => a.id === id)) get().removeAnchor(id);
-      else get().removeOffRoutePoint(id);
+      const { editing, anchors } = get();
+      if (!editing) return;
+      if (anchors.some(a => a.id === editing)) get().removeAnchor(editing);
+      else get().removeOffRoutePoint(editing);
     },
 
     saveCurrentRoute: name => {
