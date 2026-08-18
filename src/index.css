@@ -1232,10 +1232,6 @@ body {
   box-shadow: 0 10px 40px rgb(0 0 0 / 30%);
 }
 
-.qr-panel .point-editor-head {
-  width: 100%;
-}
-
 .qr-canvas {
   border-radius: 8px;
 }
@@ -1717,6 +1713,7 @@ body {
 
 .point-editor-head {
   display: flex;
+  width: 100%;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
