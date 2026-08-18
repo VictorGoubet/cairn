@@ -42,6 +42,8 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   encoding), `gpx` + `exportFormats` (GPX/KML/TCX), `routeSplice` (insert point in trace),
   `demElevation` (client-side DEM reads), `storage` (localStorage + migrations),
   `hiddenTrails` / `refugesInfo` (on-the-fly overlays), `tileGrid` (per-cell caching).
+- `api/`: the only server-side code, three vercel functions serving share links (`share`
+  records, `preview` image, `s` the previewable page) over one key-value store (`_kv`).
 
 ### Core model
 
@@ -90,6 +92,16 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   reversing a file exported backwards) and every waypoint follows. A file with waypoints and no
   track (what geocaching.com exports for a set of caches) drops its markers on the map and
   leaves the current itinerary alone.
+- **Every GPX flavour, not only ours** (`parseGpx`): each `<trkseg>` and each `<rte>` comes back
+  as its own track, so a recorded walk with a pause and a planned route in the same file both
+  survive; the file's name is adopted; `hasElevation` reports a file with no `<ele>` anywhere (a
+  c:geo route of cache coordinates), and the importer samples the DEM rather than let a profile
+  flat at sea level poison the climb, the duration and the energy.
+- **A point clicked on the trace lands where it was clicked** (`spliceIntoTrace`): the click is
+  projected onto the nearest *segment*, not snapped to the nearest stored vertex, so a two-point
+  beeline can be split too (it has no interior vertex to snap to). A projection within a metre of
+  an existing vertex reuses it, and a click on a leg endpoint is declined rather than producing a
+  zero-length half.
 - **`routeStraightLegs` turns beelines into paths.** An imported leg keeps `manual: true`, so a
   sketch of points joined by straight lines can be handed to the router in one click; the button
   only shows while such a leg exists.
@@ -112,6 +124,15 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   Routed legs travel as anchors only (recomputed on open); frozen legs travel as a polyline
   (Google algorithm, lat/lon at 1e-5, elevation at 0.1 m). `''` = manual leg still computing
   at share time. Opening a link pushes the current draft to history (one undo away).
+- **Short links and link previews** (`api/`): a chat app never sees the `#` part of a URL, so a
+  fragment link previews as nothing and reads as a wall of characters. Sharing therefore posts
+  the same payload, a stats line and a rendered 1200x630 jpeg to `/api/share`, and copies
+  `/s/<id>` instead. `/s/<id>` is rewritten to `api/s.ts`, which serves the app's own
+  `index.html` with that route's Open Graph tags injected (`sharePage`), and `api/preview.ts`
+  serves the stored tile. The tile (`renderLinkPreview` in `lib/shareImage.ts`) is its own wide
+  composition, not the studio tile shrunk, and draws no map tile so link creation is instant.
+  Every step degrades: no key-value store configured, no network, no canvas, and the copied link
+  is the self-contained long one.
 - **Adaptive 3D exaggeration** (`MapView.tsx`): classic cartography rule (Imhof), flat
   terrain needs 2-3x, alpine reads at ~1x. On map idle, sample a viewport grid via
   `queryTerrainElevation` (zero network) and target relief ≈ 5% of viewport width,
@@ -375,7 +396,9 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   literal keys of French APIs (refuges.info types, IGN categories).
 - UI is bilingual: every user-facing string goes through `src/lib/i18n.ts` (fr + en keys).
 - Point kinds are stored in saved routes and share links: renaming one means teaching
-  `parseKind` (`src/lib/points.ts`) the old spelling, never dropping it.
+  `parseKind` (`src/lib/points.ts`) the old spelling, never dropping it. `geocache` also answers
+  to the labels c:geo and GSAK write (`Geocache|Traditional Cache`, sym `Geocache Found`), so
+  imported caches keep their identity.
 - Comments and docs describe the present, not the journey; keep them one line when possible.
 - Writing style: no em dashes anywhere (code, docs, UI copy), and no emojis in docs or UI
   text; the only emoji lives in the brand header (⛰️ cairn).
@@ -388,6 +411,10 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 
 - Auto-deployed to Vercel (project `victorgoubet1s-projects/cairn`) on every push to `main`;
   production alias: https://cairn-swart-gamma.vercel.app
-- Pure static output: no env vars, no rewrites (share links live in the URL fragment).
+- Static output plus three tiny functions under `api/` (share records, preview image, share page)
+  and one rewrite, `/s/:id` (`vercel.json`).
+- Short links need a Redis-compatible HTTP store: set `KV_REST_API_URL` and `KV_REST_API_TOKEN`
+  (or the `UPSTASH_REDIS_REST_*` pair). Without them the endpoints answer 503 and sharing falls
+  back to the long fragment link, which is why no deployment is ever blocked on them.
 - Vercel Hobby limits: 100 GB/month bandwidth, non-commercial only. Migration candidate if
   traffic grows or monetization appears: Cloudflare Pages (unlimited bandwidth, commercial OK).

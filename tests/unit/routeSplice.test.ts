@@ -14,7 +14,7 @@ function leg(manual = false): LegSlot {
 }
 
 describe('spliceIntoTrace', () => {
-  it('splits the leg in two and snaps the new anchor onto the track', () => {
+  it('splits the leg in two and puts the new anchor on the track, where it was clicked', () => {
     const anchors = [anchor(6.5, 44.6), anchor(6.51, 44.6)];
     const legs = [leg()];
     const result = spliceIntoTrace(anchors, legs, [6.5052, 44.6009], anchor(6.5052, 44.6009));
@@ -23,9 +23,9 @@ describe('spliceIntoTrace', () => {
     const spliced = result as NonNullable<typeof result>;
     expect(spliced.anchors).toHaveLength(3);
     expect(spliced.legs).toHaveLength(2);
-    // snapped on an existing vertex, so exactly on the track
-    expect(spliced.anchors[1].lat).toBe(44.6);
-    expect(spliced.anchors[1].lon).toBeCloseTo(6.505, 6);
+    // projected onto the trace: on the line in latitude, at the clicked longitude
+    expect(spliced.anchors[1].lat).toBeCloseTo(44.6, 6);
+    expect(spliced.anchors[1].lon).toBeCloseTo(6.5052, 6);
   });
 
   it('preserves the geometry: the two halves share the split vertex and keep the total length', () => {
@@ -73,15 +73,60 @@ describe('spliceIntoTrace', () => {
     expect(spliceIntoTrace([], [], [6.505, 44.6], anchor(6.505, 44.6))).toBeNull();
   });
 
-  it('never produces an empty half, even when clicking on a leg endpoint', () => {
+  it('declines a click on a leg endpoint rather than making an empty half', () => {
+    // there is already an anchor there: inserting a second one on the same spot would create a
+    // zero-length leg, and doing nothing is what the click deserves
     for (const target of [
       [6.5, 44.6],
       [6.51, 44.6],
     ] as [number, number][]) {
-      const result = spliceIntoTrace([anchor(6.5, 44.6), anchor(6.51, 44.6)], [leg()], target, anchor(target[0], target[1]));
-      const spliced = result as NonNullable<typeof result>;
-      expect((spliced.legs[0].leg?.coords.length as number) >= 2).toBe(true);
-      expect((spliced.legs[1].leg?.coords.length as number) >= 2).toBe(true);
+      expect(spliceIntoTrace([anchor(6.5, 44.6), anchor(6.51, 44.6)], [leg()], target, anchor(target[0], target[1]))).toBeNull();
     }
+  });
+
+  it('splits a beeline leg, where there is no interior vertex to snap to', () => {
+    // an imported route between two cache coordinates: two points, one straight leg. This used
+    // to decline, and the click ended up appending a point at the far end of the route instead.
+    const anchors = [anchor(6.5, 44.6), anchor(6.6, 44.66)];
+    const straight: LegSlot = {
+      id: 'straight',
+      manual: true,
+      leg: {
+        coords: [
+          [6.5, 44.6, 1000],
+          [6.6, 44.66, 1200],
+        ],
+        distanceM: 11_000,
+      },
+    };
+    const result = spliceIntoTrace(anchors, [straight], [6.55, 44.63], anchor(6.55, 44.63));
+
+    expect(result).not.toBeNull();
+    const spliced = result as NonNullable<typeof result>;
+    expect(spliced.anchors).toHaveLength(3);
+    expect(spliced.legs).toHaveLength(2);
+    // the new anchor sits on the line, halfway, with an interpolated elevation
+    expect(spliced.anchors[1].lon).toBeCloseTo(6.55, 3);
+    expect(spliced.legs[0].leg?.coords.at(-1)?.[2]).toBeCloseTo(1100, 0);
+  });
+
+  it('cuts where the click projects, not at the nearest far vertex', () => {
+    const anchors = [anchor(6.5, 44.6), anchor(6.6, 44.6)];
+    const sparse: LegSlot = {
+      id: 'sparse',
+      manual: false,
+      leg: {
+        coords: [
+          [6.5, 44.6, 1000],
+          [6.6, 44.6, 1000],
+        ],
+        distanceM: 7900,
+      },
+    };
+    // clicked just north of the line, a fifth of the way along
+    const result = spliceIntoTrace(anchors, [sparse], [6.52, 44.6005], anchor(6.52, 44.6005));
+    const spliced = result as NonNullable<typeof result>;
+    expect(spliced.anchors[1].lon).toBeCloseTo(6.52, 3);
+    expect(spliced.anchors[1].lat).toBeCloseTo(44.6, 3);
   });
 });

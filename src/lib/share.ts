@@ -1,18 +1,29 @@
 /**
- * Serverless route sharing over the URL: the route is serialized, compressed (native browser
- * deflate) and base64url-encoded into the #r= fragment.
+ * Route sharing over the URL: the route is serialized, compressed (native browser deflate) and
+ * base64url-encoded into the #r= fragment.
  *
  * Routed legs only carry their anchors and metadata, and are recomputed on open; frozen
  * geometries (GPX import, manual drawing, out and back) travel as a compressed polyline so
  * they arrive identical.
+ *
+ * That link works with no server at all, but it is long and it previews as nothing: a chat app
+ * only ever sees the part before the `#`. So when the deployment has a key-value store, sharing
+ * first tries a short link: the route and a rendered thumbnail are stored server-side under a
+ * ten-character id, and `/s/<id>` serves the app with that route's Open Graph tags. Without the
+ * store, or offline, the long link is still what gets copied.
  */
 
-import { type Anchor, type LegSlot, type OffRoutePoint, usePlanner } from '../store';
+import { type Anchor, type LegSlot, type OffRoutePoint, routeCoords, usePlanner } from '../store';
 import type { RoutingPreset } from './brouter';
-import { type LonLatEle, pathDistanceM } from './geo';
+import { elevationStats, formatDistance, formatDuration, type LonLatEle, pathDistanceM } from './geo';
+import { durationH } from './hikingTime';
 import { parseKind } from './points';
+import { renderLinkPreview } from './shareImage';
 
 const SHARE_PREFIX = '#r=1.';
+const SHORT_PREFIX = '/s/';
+/** the fragment the fallback preview page redirects to */
+const SHORT_HASH = '#s=';
 const PRECISION_DEG = 1e5;
 const PRECISION_ELE = 10;
 const PRESETS: readonly RoutingPreset[] = ['balanced', 'avoid_roads', 'easy_up', 'shortest', 'fastest'];
@@ -36,6 +47,76 @@ interface SharePayload {
  *   Full URL with the route encoded in the fragment.
  */
 export async function buildShareUrl(): Promise<string> {
+  const data = await encodeRoute();
+  return `${location.origin}${location.pathname}${SHARE_PREFIX}${data}`;
+}
+
+/**
+ * Share URL for the current route, short and previewable when the deployment can store it.
+ *
+ * Returns:
+ *   A `/s/<id>` URL, or the self-contained long URL when there is no store to talk to.
+ */
+export async function buildPreviewableShareUrl(): Promise<string> {
+  const data = await encodeRoute();
+  const long = `${location.origin}${location.pathname}${SHARE_PREFIX}${data}`;
+  const { currentRouteName, legs } = usePlanner.getState();
+  const coords = routeCoords(legs);
+  if (coords.length < 2) return long;
+  try {
+    const res = await fetch('/api/share', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        payload: data,
+        name: currentRouteName,
+        description: statsLine(coords),
+        image: await renderLinkPreview(coords, currentRouteName),
+      }),
+    });
+    if (!res.ok) return long;
+    const { id } = (await res.json()) as { id?: string };
+    return id ? `${location.origin}${SHORT_PREFIX}${id}` : long;
+  } catch {
+    // no store, no network, nothing rendered: the long link says the same thing
+    return long;
+  }
+}
+
+/** Applies the route the URL points at, encoded in its fragment or stored behind a short link. */
+export async function loadSharedRouteFromUrl(): Promise<void> {
+  const shortId = location.pathname.startsWith(SHORT_PREFIX)
+    ? location.pathname.slice(SHORT_PREFIX.length)
+    : location.hash.startsWith(SHORT_HASH)
+      ? location.hash.slice(SHORT_HASH.length)
+      : null;
+  const inline = location.hash.startsWith(SHARE_PREFIX) ? location.hash.slice(SHARE_PREFIX.length) : null;
+  if (!shortId && !inline) return;
+
+  history.replaceState(null, '', shortId ? '/' : location.pathname + location.search);
+  try {
+    const data = inline ?? (await fetchSharedPayload(shortId as string));
+    applyPayload(JSON.parse(await inflateBase64Url(data)) as SharePayload);
+  } catch {
+    usePlanner.setState({ error: 'err_share' });
+  }
+}
+
+function applyPayload(payload: SharePayload): void {
+  usePlanner.getState().applySharedRoute({
+    name: payload.n ?? '',
+    preset: PRESETS.includes(payload.p) ? payload.p : undefined,
+    anchors: (payload.a ?? []).map(unpackPoint),
+    legs: (payload.l ?? []).map(line => ({
+      id: crypto.randomUUID(),
+      manual: line !== null,
+      leg: line ? makeLeg(decodeValidTrack(line)) : null,
+    })),
+    offRoutePoints: (payload.o ?? []).map(unpackPoint),
+  });
+}
+
+async function encodeRoute(): Promise<string> {
   const { anchors, legs, offRoutePoints, currentRouteName, routingPreset } = usePlanner.getState();
   const payload: SharePayload = {
     n: currentRouteName,
@@ -44,31 +125,22 @@ export async function buildShareUrl(): Promise<string> {
     l: legs.map(slot => (slot.manual ? (slot.leg ? encodeTrack(slot.leg.coords) : '') : null)),
     o: offRoutePoints.map(packPoint),
   };
-  const data = await deflateBase64Url(JSON.stringify(payload));
-  return `${location.origin}${location.pathname}${SHARE_PREFIX}${data}`;
+  return deflateBase64Url(JSON.stringify(payload));
 }
 
-/** Applies the route encoded in the URL fragment, if there is one. */
-export async function loadSharedRouteFromUrl(): Promise<void> {
-  if (!location.hash.startsWith(SHARE_PREFIX)) return;
-  const raw = location.hash.slice(SHARE_PREFIX.length);
-  history.replaceState(null, '', location.pathname + location.search);
-  try {
-    const payload = JSON.parse(await inflateBase64Url(raw)) as SharePayload;
-    usePlanner.getState().applySharedRoute({
-      name: payload.n ?? '',
-      preset: PRESETS.includes(payload.p) ? payload.p : undefined,
-      anchors: (payload.a ?? []).map(unpackPoint),
-      legs: (payload.l ?? []).map(line => ({
-        id: crypto.randomUUID(),
-        manual: line !== null,
-        leg: line ? makeLeg(decodeValidTrack(line)) : null,
-      })),
-      offRoutePoints: (payload.o ?? []).map(unpackPoint),
-    });
-  } catch {
-    usePlanner.setState({ error: 'err_share' });
-  }
+async function fetchSharedPayload(id: string): Promise<string> {
+  const res = await fetch(`/api/share?id=${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error(`share ${res.status}`);
+  const { payload } = (await res.json()) as { payload?: string };
+  if (!payload) throw new Error('empty share');
+  return payload;
+}
+
+/** the one line a chat app shows under the link title */
+function statsLine(coords: LonLatEle[]): string {
+  const { gainM } = elevationStats(coords);
+  const hours = durationH(coords, usePlanner.getState().profile);
+  return `${formatDistance(pathDistanceM(coords))} · +${Math.round(gainM)} m · ${formatDuration(hours)}`;
 }
 
 function packPoint(point: Anchor | OffRoutePoint): SharedPoint {

@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react';
 import { track } from '../lib/analytics';
+import { sampleElevations } from '../lib/demElevation';
 import { buildKml, buildTcx, downloadTextFile, type ExportPoint } from '../lib/exportFormats';
+import type { LonLat } from '../lib/geo';
 import { downloadGpx, type GpxWaypoint, mergeTracks, parseGpx } from '../lib/gpx';
 import { type MsgKey, tNow, useT } from '../lib/i18n';
 import type { Lang } from '../lib/lang';
 import { kindDef, kindLabelKey } from '../lib/points';
-import { buildShareUrl } from '../lib/share';
+import { buildPreviewableShareUrl } from '../lib/share';
 import { useClickOutside } from '../lib/useClickOutside';
 import { useEscapeKey } from '../lib/useEscapeKey';
 import { useIsMobile } from '../lib/useMediaQuery';
@@ -51,11 +53,14 @@ export function TopBar() {
   const coords = routeCoords(legs);
   const hasRoute = coords.length >= 2;
   const [copied, setCopied] = useState(false);
+  const [linking, setLinking] = useState(false);
 
   async function shareRoute() {
     setShowShareMenu(false);
     track('share-link');
-    await navigator.clipboard.writeText(await buildShareUrl());
+    setLinking(true);
+    const url = await buildPreviewableShareUrl().finally(() => setLinking(false));
+    await navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -92,13 +97,23 @@ export function TopBar() {
       usePlanner.setState({ error: 'err_gpx' });
       return;
     }
-    // several files become one itinerary: their tracks are chained and every waypoint follows,
-    // which is also how a waypoints-only export (geocaches) lands as markers to route by
+    // several files, and several tracks inside a file, become one itinerary: everything is
+    // chained and every waypoint follows, which is also how a waypoints-only export
+    // (a list of geocaches) lands as markers to route by
     track('import-gpx', { files: usable.length });
+    let coords = mergeTracks(usable.flatMap(p => p.tracks));
+    // a planned route (c:geo hands out a <rte> of cache coordinates) carries no elevation, and a
+    // profile flat at sea level would poison the climb, the duration and the energy
+    if (coords.length >= 2 && !usable.some(p => p.hasElevation)) {
+      const elevations = await sampleElevations(coords.map(([lon, lat]) => [lon, lat] as LonLat));
+      coords = coords.map(([lon, lat], i) => [lon, lat, elevations[i] ?? 0]);
+    }
     usePlanner.getState().importRoute(
-      mergeTracks(usable.map(p => p.coords)),
+      coords,
       usable.flatMap(p => p.waypoints),
     );
+    const name = usable.find(p => p.name)?.name;
+    if (name) usePlanner.setState({ currentRouteName: name });
   }
 
   return (
@@ -172,8 +187,8 @@ export function TopBar() {
           {t('import')}
         </button>
         <div className="menu-wrap" ref={shareWrapRef}>
-          <button type="button" disabled={!hasRoute} onClick={() => setShowShareMenu(v => !v)}>
-            {copied ? t('copied') : t('share')}
+          <button type="button" disabled={!hasRoute || linking} onClick={() => setShowShareMenu(v => !v)}>
+            {copied ? t('copied') : linking ? t('sharing') : t('share')}
           </button>
           {showShareMenu && (
             <div className="export-menu share-menu">

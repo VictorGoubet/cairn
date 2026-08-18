@@ -30,7 +30,8 @@
 Draw a hiking route that follows real trails, over official IGN maps. Elevation profile, typed
 waypoints, marked routes around you, 3D flyover, follow mode on the trail, GPX/KML/TCX export,
 share by link or as a social image. Built entirely on open data (IGN Géoplateforme, OpenStreetMap, refuges.info)
-and queried straight from your browser: no backend, no account, no personal tracking.
+and queried straight from your browser: no account, no personal tracking, and everything but the
+short share link works with no backend at all.
 
 ## Quick start
 
@@ -83,7 +84,13 @@ make build
 
 Static output in `dist/`, deployable anywhere.
 
-Currently auto-deployed to [Vercel](https://cairn-swart-gamma.vercel.app) on every push to `main`.
+Currently auto-deployed to [Vercel](https://cairn-swart-gamma.vercel.app) on every push to `main`,
+where the three functions in `api/` also serve short share links.
+
+Those links are the one optional extra: point `KV_REST_API_URL` and `KV_REST_API_TOKEN` at any
+Redis-compatible HTTP store (Upstash has a free tier) and a shared route becomes
+`/s/<id>`, previewing in chats with its own map tile and stats. Without them, sharing copies the
+long link that carries the whole route in its fragment, and nothing else changes.
 
 ## License
 

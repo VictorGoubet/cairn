@@ -159,6 +159,7 @@ interface PlannerState {
   outAndBack: () => void;
   closeLoop: () => void;
   openLoop: () => void;
+  trimRoute: (anchorId: string, keep: 'before' | 'after') => void;
   importRoute: (coords: LonLatEle[], waypoints: { lon: number; lat: number; name: string; kind: PointKind }[]) => void;
   applySharedRoute: (route: SharedRouteInput) => void;
   addOffRoutePoint: (p: LonLat) => void;
@@ -673,6 +674,22 @@ export const usePlanner = create<PlannerState>((set, get) => {
       if (!isClosedRoute(anchors)) return;
       pushHistory();
       set(s => ({ anchors: s.anchors.slice(0, -1), legs: s.legs.slice(0, -1), editing: null }));
+    },
+
+    // cutting at a point rather than punching a hole: a leg removed from the middle would leave
+    // two disjoint itineraries, which a single-route model cannot hold. Trimming one side keeps
+    // a walkable line, and undo brings the rest back.
+    trimRoute: (anchorId, keep) => {
+      const { anchors } = get();
+      const index = anchors.findIndex(a => a.id === anchorId);
+      if (index <= 0 || index >= anchors.length - 1) return;
+      pushHistory();
+      set(s => ({
+        anchors: keep === 'before' ? s.anchors.slice(0, index + 1) : s.anchors.slice(index),
+        legs: keep === 'before' ? s.legs.slice(0, index) : s.legs.slice(index),
+        editing: null,
+        profileSelection: null,
+      }));
     },
 
     importRoute: (coords, waypoints) => {

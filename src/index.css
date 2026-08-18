@@ -1126,6 +1126,23 @@ body {
   border-radius: 7px;
 }
 
+.editor-trim {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.editor-trim-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
 /* --- follow mode --- */
 
 .follow-bar {

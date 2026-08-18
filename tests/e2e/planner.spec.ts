@@ -39,8 +39,11 @@ test.describe('drawing a route', () => {
 
     const after = await planner(page).state();
     expect(after.anchorCount).toBe(3);
-    // the split shares its vertex, so the two halves total one vertex more than the original
-    expect(after.legCoordCounts[0] + after.legCoordCounts[1]).toBe(before.legCoordCounts[0] + 1);
+    // the halves share their junction, so together they hold the original vertices plus that
+    // junction: one more when the click reused a vertex, two when it projected between two
+    const halves = after.legCoordCounts[0] + after.legCoordCounts[1];
+    expect(halves).toBeGreaterThanOrEqual(before.legCoordCounts[0] + 1);
+    expect(halves).toBeLessThanOrEqual(before.legCoordCounts[0] + 2);
     // the halves are measured from the geometry while BRouter reported the original length,
     // so a fraction of a percent of difference is expected
     expect(after.totalDistanceM / before.totalDistanceM).toBeCloseTo(1, 2);
@@ -773,6 +776,54 @@ test.describe('sharing an image', () => {
 
     await page.keyboard.press('Escape');
     await expect(page.locator('.share-panel')).toBeHidden();
+  });
+});
+
+test.describe('sharing a link', () => {
+  test('stores the route behind a short link, with the tile chat apps preview', async ({ page }) => {
+    const posted: { payload?: string; image?: string; description?: string }[] = [];
+    await page.route('**/api/share', async route => {
+      posted.push(JSON.parse(route.request().postData() ?? '{}'));
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ id: 'abc1234567' }) });
+    });
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await openPlanner(page);
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 1);
+
+    await page.locator('.topbar .menu-wrap button', { hasText: /Partager|Share/ }).click();
+    await page.locator('.share-menu button').first().click();
+    await expect(page.locator('.topbar .menu-wrap button').first()).toContainText(/copié|copied/i);
+
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/s\/abc1234567$/);
+    // the record carries what the preview needs: the route, a rendered jpeg and one line of stats
+    expect(posted[0]?.payload?.length).toBeGreaterThan(10);
+    expect(posted[0]?.image?.length).toBeGreaterThan(5000);
+    expect(posted[0]?.description).toMatch(/km/);
+  });
+
+  test('falls back to the self-contained link when no store answers', async ({ page }) => {
+    await page.route('**/api/share', route => route.fulfill({ status: 503, body: '{}' }));
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await openPlanner(page);
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 1);
+
+    await page.locator('.topbar .menu-wrap button', { hasText: /Partager|Share/ }).click();
+    await page.locator('.share-menu button').first().click();
+    await expect(page.locator('.topbar .menu-wrap button').first()).toContainText(/copié|copied/i);
+    const url = await page.evaluate(() => navigator.clipboard.readText());
+    expect(url).toContain('#r=1.');
+
+    // and that link still reopens the route, on a fresh document: changing only the fragment of
+    // the page already open is a same-document navigation, which the app reads as a back gesture
+    await page.goto('about:blank');
+    await page.goto(url);
+    await page.waitForFunction(
+      () => '__planner' in window && (window as unknown as TestHandles).__planner.getState().anchors.length >= 2,
+    );
   });
 });
 

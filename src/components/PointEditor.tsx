@@ -86,6 +86,32 @@ export function PointEditor() {
         />
       )}
 
+      {/* a middle point can cut the route: removing a leg outright would leave two disjoint
+          itineraries, keeping one side leaves something walkable (and undo brings the rest back) */}
+      {!isOffRoute && !isStart && !isEnd && (
+        <div className="editor-trim">
+          <span className="editor-trim-label">{t('trim_here')}</span>
+          <div className="side-row">
+            <button
+              type="button"
+              data-control="trim-before"
+              title={t('trim_before_hint')}
+              onClick={() => usePlanner.getState().trimRoute(point.id, 'before')}
+            >
+              {t('trim_before')}
+            </button>
+            <button
+              type="button"
+              data-control="trim-after"
+              title={t('trim_after_hint')}
+              onClick={() => usePlanner.getState().trimRoute(point.id, 'after')}
+            >
+              {t('trim_after')}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="point-editor-actions">
         <button type="button" className="danger" onClick={() => usePlanner.getState().removeEditingPoint()}>
           {t('delete_point')}

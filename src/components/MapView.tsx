@@ -247,7 +247,10 @@ export function MapView() {
         // clicking the track inserts a point into the right leg instead of appending one at the end
         // a leg too short to split cannot take an insertion: let the click append a point instead
         map.on('click', 'route-line', e => {
-          if (usePlanner.getState().insertAnchor([e.lngLat.lng, e.lngLat.lat])) e.preventDefault();
+          // always consumed: a click on the trace means "insert here", and if the splice declines
+          // the honest outcome is nothing, not a point appended to the far end of the route
+          e.preventDefault();
+          usePlanner.getState().insertAnchor([e.lngLat.lng, e.lngLat.lat]);
         });
         map.on('mouseenter', 'route-line', () => {
           if (map) map.getCanvas().style.cursor = 'copy';

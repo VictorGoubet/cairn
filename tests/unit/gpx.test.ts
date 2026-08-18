@@ -65,9 +65,10 @@ describe('buildGpx', () => {
 describe('parseGpx', () => {
   it('round-trips what we export', () => {
     const parsed = parseGpx(buildGpx('Tour', COORDS, WAYPOINTS));
-    expect(parsed.coords).toHaveLength(COORDS.length);
-    expect(parsed.coords[0][0]).toBeCloseTo(6.5, 6);
-    expect(parsed.coords[1][2]).toBe(1100);
+    const coords = parsed.tracks[0];
+    expect(coords).toHaveLength(COORDS.length);
+    expect(coords[0][0]).toBeCloseTo(6.5, 6);
+    expect(coords[1][2]).toBe(1100);
     expect(parsed.waypoints.map(w => w.kind)).toEqual(['water', 'summit']);
     expect(parsed.waypoints[0].name).toBe('Source');
   });
@@ -85,7 +86,7 @@ describe('parseGpx', () => {
       <rtept lat="44.6" lon="6.5"><ele>1000</ele></rtept>
       <rtept lat="44.61" lon="6.51"><ele>1050</ele></rtept>
     </rte></gpx>`;
-    expect(parseGpx(rte).coords).toHaveLength(2);
+    expect(parseGpx(rte).tracks[0]).toHaveLength(2);
   });
 
   it('defaults missing elevation to zero and names unnamed waypoints', () => {
@@ -94,17 +95,42 @@ describe('parseGpx', () => {
       <trk><trkseg><trkpt lat="44.6" lon="6.5"></trkpt><trkpt lat="44.61" lon="6.51"></trkpt></trkseg></trk>
     </gpx>`;
     const parsed = parseGpx(gpx);
-    expect(parsed.coords[0][2]).toBe(0);
+    expect(parsed.tracks[0][0][2]).toBe(0);
     expect(parsed.waypoints[0].name).toBe('Point 1');
     expect(parsed.waypoints[0].kind).toBe('other');
   });
 
-  it('skips points without usable coordinates', () => {
+  it('rejects a file whose only track has a single usable point', () => {
     const gpx = `<?xml version="1.0"?><gpx version="1.1"><trk><trkseg>
       <trkpt lat="44.6" lon="6.5"><ele>1000</ele></trkpt>
       <trkpt lat="oops" lon="6.51"><ele>1010</ele></trkpt>
     </trkseg></trk></gpx>`;
-    expect(parseGpx(gpx).coords).toHaveLength(1);
+    // one point is a place, not an itinerary, and saying so beats importing nothing in silence
+    expect(() => parseGpx(gpx)).toThrow();
+  });
+
+  it('keeps every segment and every route of a file apart', () => {
+    // a recorded walk with a pause in it, plus a planned route in the same file
+    const gpx = `<?xml version="1.0"?><gpx version="1.1"><trk><name>Jour 1</name>
+      <trkseg><trkpt lat="44.60" lon="6.50"/><trkpt lat="44.61" lon="6.50"/></trkseg>
+      <trkseg><trkpt lat="44.62" lon="6.50"/><trkpt lat="44.63" lon="6.50"/></trkseg>
+      </trk><rte><rtept lat="44.70" lon="6.50"/><rtept lat="44.71" lon="6.50"/></rte></gpx>`;
+    const parsed = parseGpx(gpx);
+    expect(parsed.tracks).toHaveLength(3);
+    expect(parsed.tracks.map(t => t.length)).toEqual([2, 2, 2]);
+    expect(parsed.name).toBe('Jour 1');
+  });
+
+  it('reports missing elevations instead of pretending they are sea level', () => {
+    // what c:geo exports for a list of caches: a route, no elevation anywhere
+    const route = `<?xml version="1.0"?><gpx version="1.1"><metadata><name>c:geo individual route</name></metadata>
+      <wpt lat="45.54" lon="1.79"><name>GC16FZT</name></wpt>
+      <rte><rtept lat="45.54" lon="1.79"/><rtept lat="45.52" lon="1.75"/></rte></gpx>`;
+    const parsed = parseGpx(route);
+    expect(parsed.hasElevation).toBe(false);
+    expect(parsed.name).toBe('c:geo individual route');
+    expect(parsed.waypoints[0].name).toBe('GC16FZT');
+    expect(parseGpx(buildGpx('Tour', COORDS, WAYPOINTS)).hasElevation).toBe(true);
   });
 
   it('drops waypoints whose coordinates are unusable', () => {

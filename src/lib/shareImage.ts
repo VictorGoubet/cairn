@@ -31,6 +31,12 @@ const SHARE_SIZES: Record<ShareFormat, { w: number; h: number }> = {
   story: { w: 1080, h: 1920 },
 };
 
+/** 1.91:1, the ratio every link preview crops to */
+const LINK_PREVIEW_SIZE = { w: 1200, h: 630 };
+/** the text column of the link preview, right of the trace */
+const LINK_COLUMN_X = 660;
+const LINK_COLUMN_W = 500;
+
 /** widest zoom the WMTS layers serve everywhere, and a hard cap on fetched tiles */
 const MAX_TILE_ZOOM = 16;
 const MAX_TILES = 80;
@@ -99,6 +105,43 @@ export async function renderShareImage(
   if (options.showProfile) drawProfile(ctx, coords, w, h, options, lightInk);
   if (options.showStats) drawStats(ctx, coords, w, h, options, lightInk);
   await drawBrand(ctx, w, lightInk);
+}
+
+/**
+ * Renders the thumbnail chat apps and social networks show for a share link.
+ *
+ * A link preview is displayed small, so this is its own composition rather than the studio tile
+ * shrunk: a wide card, a big trace, a name and three numbers. It draws no map tile, which keeps
+ * link creation instant and immune to a slow or refusing tile server.
+ *
+ * Args:
+ *   coords: route geometry with elevations, at least two points.
+ *   title: route name, may be empty.
+ *
+ * Returns:
+ *   The card as base64 jpeg, without the data URL prefix.
+ */
+export async function renderLinkPreview(coords: LonLatEle[], title: string): Promise<string> {
+  const { w, h } = LINK_PREVIEW_SIZE;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  drawBackground(ctx, w, h);
+  const glow = ctx.createRadialGradient(w, 0, 0, w, 0, w * 0.8);
+  glow.addColorStop(0, 'rgba(232, 89, 12, 0.18)');
+  glow.addColorStop(1, 'rgba(232, 89, 12, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, w, h);
+
+  const traceBox = { x: 40, y: 50, w: 560, h: 530 };
+  drawTrace(ctx, coords, fitView(coords, traceBox.w, traceBox.h), traceBox, false);
+  await drawLinkBrand(ctx);
+  drawLinkText(ctx, coords, title);
+  drawLinkSparkline(ctx, coords);
+  return canvas.toDataURL('image/jpeg', 0.86).split(',')[1] ?? '';
 }
 
 /** Web Mercator projection into the world square [0, 1). */
@@ -486,6 +529,97 @@ async function drawBrand(ctx: CanvasRenderingContext2D, w: number, lightInk: boo
   ctx.font = `800 ${Math.round(w * 0.075)}px -apple-system, 'Segoe UI', Roboto, sans-serif`;
   ctx.fillText('cairn', textX, y + size * 0.76);
   ctx.restore();
+}
+
+async function drawLinkBrand(ctx: CanvasRenderingContext2D): Promise<void> {
+  ctx.save();
+  let textX = LINK_COLUMN_X;
+  await loadImage(`${import.meta.env.BASE_URL}logo.png`).then(
+    logo => {
+      ctx.drawImage(logo, LINK_COLUMN_X, 46, 66, 66);
+      textX = LINK_COLUMN_X + 78;
+    },
+    () => undefined,
+  );
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#212529';
+  ctx.font = "800 46px -apple-system, 'Segoe UI', Roboto, sans-serif";
+  ctx.fillText('cairn', textX, 98);
+  ctx.restore();
+}
+
+function drawLinkText(ctx: CanvasRenderingContext2D, coords: LonLatEle[], title: string): void {
+  const { gainM } = elevationStats(coords);
+  const entries: [string, string][] = [
+    [tNow('distance'), formatDistance(pathDistanceM(coords))],
+    [tNow('dplus'), `${Math.round(gainM)} m`],
+    [tNow('duration_est'), formatDuration(durationH(coords, usePlanner.getState().profile))],
+  ];
+  ctx.save();
+  ctx.textAlign = 'left';
+  if (title) {
+    ctx.font = "700 44px -apple-system, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillStyle = '#212529';
+    // a route name is a sentence more often than a word: two lines, then an ellipsis
+    wrapLines(ctx, title, LINK_COLUMN_W, 2).forEach((line, i) => {
+      ctx.fillText(line, LINK_COLUMN_X, 176 + i * 52);
+    });
+  }
+  const step = LINK_COLUMN_W / entries.length;
+  entries.forEach(([label, value], i) => {
+    const x = LINK_COLUMN_X + i * step;
+    ctx.fillStyle = 'rgba(33, 37, 41, 0.6)';
+    ctx.font = "600 20px -apple-system, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillText(label.toUpperCase(), x, 296);
+    ctx.fillStyle = '#e8590c';
+    ctx.font = "700 38px -apple-system, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillText(value, x, 344);
+  });
+  ctx.restore();
+}
+
+/** the elevation profile as a sparkline, enough to tell a flat loop from a mountain day */
+function drawLinkSparkline(ctx: CanvasRenderingContext2D, coords: LonLatEle[]): void {
+  const box = { x: LINK_COLUMN_X, y: 420, w: LINK_COLUMN_W, h: 120 };
+  const elevations = coords.map(c => c[2]);
+  const min = Math.min(...elevations);
+  const span = Math.max(Math.max(...elevations) - min, 30);
+  ctx.save();
+  ctx.beginPath();
+  coords.forEach((c, i) => {
+    const x = box.x + (i / (coords.length - 1)) * box.w;
+    const y = box.y + box.h - ((c[2] - min) / span) * box.h;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#2b2e34';
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  ctx.lineTo(box.x + box.w, box.y + box.h);
+  ctx.lineTo(box.x, box.y + box.h);
+  ctx.closePath();
+  ctx.globalAlpha = 0.16;
+  ctx.fillStyle = '#2b2e34';
+  ctx.fill();
+  ctx.restore();
+}
+
+/** greedy word wrap, the last line truncated so the text never runs past `maxLines` */
+function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number, maxLines: number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/)) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && ctx.measureText(candidate).width > maxW) {
+      if (lines.length + 1 === maxLines) return [...lines, truncate(ctx, candidate, maxW)];
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  return line ? [...lines, truncate(ctx, line, maxW)] : lines;
 }
 
 function truncate(ctx: CanvasRenderingContext2D, text: string, maxW: number): string {

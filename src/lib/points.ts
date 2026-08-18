@@ -1,6 +1,15 @@
 import type { MsgKey } from './i18n';
 
-export type PointKind = 'checkpoint' | 'water' | 'viewpoint' | 'break' | 'camp' | 'hut' | 'summit' | 'other';
+export type PointKind =
+  | 'checkpoint'
+  | 'water'
+  | 'viewpoint'
+  | 'break'
+  | 'camp'
+  | 'hut'
+  | 'summit'
+  | 'geocache'
+  | 'other';
 
 export interface PointKindDef {
   id: PointKind;
@@ -18,6 +27,8 @@ export const POINT_KINDS: PointKindDef[] = [
   { id: 'camp', emoji: '⛺', color: '#008300', garminSym: 'Campground' },
   { id: 'hut', emoji: '🛖', color: '#8a5a2b', garminSym: 'Lodging' },
   { id: 'summit', emoji: '⛰️', color: '#52514e', garminSym: 'Summit' },
+  // geocaching green, and the sym Garmin devices use for a cache
+  { id: 'geocache', emoji: '📦', color: '#02874d', garminSym: 'Geocache' },
   { id: 'other', emoji: '📍', color: '#e87ba4', garminSym: 'Flag, Blue' },
 ];
 
@@ -42,6 +53,7 @@ export function kindDef(kind: PointKind): PointKindDef {
 }
 
 export function kindFromGarminSym(sym: string | undefined): PointKind {
+  if (isGeocacheLabel(sym)) return 'geocache';
   return POINT_KINDS.find(k => k.garminSym === sym)?.id ?? 'other';
 }
 
@@ -49,5 +61,11 @@ export function kindFromGarminSym(sym: string | undefined): PointKind {
 export function parseKind(kind: string | undefined): PointKind {
   if (!kind) return 'other';
   if (POINT_KINDS.some(k => k.id === kind)) return kind as PointKind;
+  if (isGeocacheLabel(kind)) return 'geocache';
   return LEGACY_KINDS[kind] ?? 'other';
+}
+
+/** c:geo and GSAK write the cache type as `Geocache|Traditional Cache`, or `Geocache Found` as sym */
+function isGeocacheLabel(value: string | undefined): boolean {
+  return value?.toLowerCase().startsWith('geocache') ?? false;
 }
