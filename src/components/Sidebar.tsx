@@ -1,6 +1,6 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import type { RoutingPreset } from '../lib/brouter';
-import { formatDistance } from '../lib/geo';
+import { elevationStats, formatDistance } from '../lib/geo';
 import { type MsgKey, useT } from '../lib/i18n';
 import { kindDef, kindLabelKey } from '../lib/points';
 import { type Anchor, isClosedRoute, usePlanner } from '../store';
@@ -29,6 +29,26 @@ export function Sidebar() {
   const isLoop = isClosedRoute(anchors);
   // a leg stays manual when it was imported as a beeline or drawn in manual mode
   const hasStraightLegs = legs.some(l => l.manual);
+
+  // what is still ahead from each point: suffix sums over the legs, refreshed with them
+  const remaining = useMemo(() => {
+    const out: ({ distanceM: number; gainM: number; lossM: number } | null)[] = Array(legs.length + 1).fill(null);
+    let acc: { distanceM: number; gainM: number; lossM: number } | null = { distanceM: 0, gainM: 0, lossM: 0 };
+    for (let i = legs.length - 1; i >= 0; i--) {
+      const leg = legs[i].leg;
+      // a leg still computing poisons every suffix behind it: show nothing rather than a lie
+      acc =
+        leg && acc
+          ? {
+              distanceM: acc.distanceM + leg.distanceM,
+              gainM: acc.gainM + elevationStats(leg.coords).gainM,
+              lossM: acc.lossM + elevationStats(leg.coords).lossM,
+            }
+          : null;
+      out[i] = acc;
+    }
+    return out;
+  }, [legs]);
 
   function legLabel(index: number): string {
     const slot = legs[index];
@@ -201,6 +221,12 @@ export function Sidebar() {
                     </span>
                     {anchor.kind !== 'checkpoint' && `${kindDef(anchor.kind).emoji} `}
                     {anchorLabel(anchor, index)}
+                    {remaining[index] && (
+                      <span className="wp-remaining">
+                        {t('remaining_short')} {formatDistance(remaining[index].distanceM)} · +
+                        {Math.round(remaining[index].gainM)} m · -{Math.round(remaining[index].lossM)} m
+                      </span>
+                    )}
                   </button>
                   <button
                     type="button"

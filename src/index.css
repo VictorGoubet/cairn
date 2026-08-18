@@ -731,6 +731,13 @@ body {
   align-items: center;
 }
 
+.wp-remaining {
+  display: block;
+  margin: 1px 0 0 23px;
+  font-size: 10.5px;
+  color: var(--ink-2);
+}
+
 .wp-name:hover {
   background: #eef3fa;
 }
@@ -1039,33 +1046,39 @@ body {
   color: var(--ink-2);
 }
 
-.route-offline {
+/* the reason to open this gallery on the trail: big, branded, impossible to miss */
+.share-panel .route-offline {
   position: absolute;
-  top: 12px;
-  right: 48px;
-  width: 30px;
-  height: 30px;
+  top: 10px;
+  right: 52px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--ink-2);
-  font-size: 10px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
+  transition: transform 0.1s ease;
 }
 
-.route-offline svg {
-  width: 16px;
-  height: 16px;
+.share-panel .route-offline:hover {
+  transform: scale(1.1);
 }
 
-.route-offline.saved {
-  color: var(--start);
-  border-color: var(--start);
+.share-panel .route-offline svg {
+  width: 22px;
+  height: 22px;
+}
+
+.share-panel .route-offline.saved {
+  background: var(--start);
 }
 
 .route-remove {

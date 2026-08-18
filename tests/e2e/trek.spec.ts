@@ -34,6 +34,11 @@ test.describe('multi-day stages', () => {
     await page.locator('.stages-toggle').click();
     await expect(rows).toHaveCount(2);
 
+    // every point of the list says what is still ahead of it
+    const remainingTexts = await page.locator('.wp-remaining').allTextContents();
+    expect(remainingTexts.length).toBeGreaterThanOrEqual(2);
+    expect(remainingTexts[0]).toMatch(/\+\d+ m · -\d+ m/);
+
     // removing the camp merges the days back
     await page.locator('.wp-marker .poi-icon').first().click();
     await page.locator('.point-editor button', { hasText: /Supprimer|Delete/ }).click();
