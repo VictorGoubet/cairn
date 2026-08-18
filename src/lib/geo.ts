@@ -40,11 +40,6 @@ export function formatDistance(meters: number): string {
   return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
 }
 
-// SuisseMobile-style scale: 4.2 km/h on the flat, 400 m/h uphill, 800 m/h downhill
-export function hikingDurationH(distanceM: number, gainM: number, lossM: number): number {
-  return distanceM / 4200 + gainM / 400 + lossM / 800;
-}
-
 export function formatDuration(hours: number): string {
   const totalMinutes = Math.round(hours * 60);
   const h = Math.floor(totalMinutes / 60);

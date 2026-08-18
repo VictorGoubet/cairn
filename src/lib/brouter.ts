@@ -1,5 +1,6 @@
 import profileTemplate from '../config/hiking-mountain.brf?raw';
-import { cumulativeDistancesM, elevationStats, haversineM, hikingDurationH, type LonLat, type LonLatEle } from './geo';
+import { cumulativeDistancesM, haversineM, type LonLat, type LonLatEle } from './geo';
+import { durationH } from './hikingTime';
 import { fetchWithTimeout } from './http';
 import { parseWaySegments, type WaySegment } from './waytypes';
 
@@ -81,9 +82,10 @@ export async function computeRoute(points: LonLat[]): Promise<RouteLeg> {
   return legs.reduce((best, leg) => (estimatedHours(leg) < estimatedHours(best) ? leg : best));
 }
 
+// the default profile on purpose: which of two candidate lines is quicker must not depend on
+// who is looking at it
 function estimatedHours(leg: RouteLeg): number {
-  const { gainM, lossM } = elevationStats(leg.coords);
-  return hikingDurationH(leg.distanceM, gainM, lossM);
+  return durationH(leg.coords);
 }
 
 async function requestRoute(points: LonLat[], variant: Variant): Promise<RouteLeg> {

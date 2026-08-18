@@ -7,7 +7,8 @@
  * no voice: the trace is the plan, this only says where you are on it.
  */
 
-import { cumulativeDistancesM, elevationStats, haversineM, hikingDurationH, type LonLat, type LonLatEle } from './geo';
+import { cumulativeDistancesM, elevationStats, haversineM, type LonLat, type LonLatEle } from './geo';
+import { durationH, type HikerProfile } from './hikingTime';
 import { emitProgress } from './routeProgress';
 
 /** past this distance from the trace, "you are on the route" would be a lie */
@@ -71,6 +72,7 @@ export function onFollowFix(listener: (fix: FollowFix) => void): () => void {
 export function startFollow(
   coords: LonLatEle[],
   pois: FollowPoi[],
+  profile: HikerProfile,
   onFix: (fix: FollowFix) => void,
   onError: () => void,
 ): FollowHandle {
@@ -84,7 +86,7 @@ export function startFollow(
   const watch = navigator.geolocation.watchPosition(
     position => {
       const here: LonLat = [position.coords.longitude, position.coords.latitude];
-      const fix = locate(coords, dists, ahead, here, position.coords.accuracy ?? 0);
+      const fix = locate(coords, dists, ahead, here, position.coords.accuracy ?? 0, profile);
       emitProgress(fix.travelledM);
       window.dispatchEvent(new CustomEvent<FollowFix>(FIX_EVENT, { detail: fix }));
       onFix(fix);
@@ -107,6 +109,7 @@ export function startFollow(
  *   pois: annotated points sorted by distance along the route.
  *   here: current position.
  *   accuracyM: radius the browser reports.
+ *   profile: the hiker, for the remaining time.
  */
 export function locate(
   coords: LonLatEle[],
@@ -114,6 +117,7 @@ export function locate(
   pois: FollowPoi[],
   here: LonLat,
   accuracyM: number,
+  profile?: HikerProfile,
 ): FollowFix {
   let index = 0;
   let offRouteM = Number.POSITIVE_INFINITY;
@@ -126,7 +130,8 @@ export function locate(
   });
   const totalM = dists[dists.length - 1];
   const travelledM = dists[index];
-  const { gainM, lossM } = elevationStats(coords.slice(index));
+  const rest = coords.slice(index);
+  const { gainM } = elevationStats(rest);
   const next = pois.find(p => p.distM > travelledM + 5) ?? null;
   return {
     position: here,
@@ -135,7 +140,7 @@ export function locate(
     travelledM,
     remainingM: totalM - travelledM,
     remainingGainM: gainM,
-    remainingHours: hikingDurationH(totalM - travelledM, gainM, lossM),
+    remainingHours: durationH(rest, profile),
     next: next
       ? {
           name: next.name,

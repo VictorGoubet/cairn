@@ -1,12 +1,6 @@
 import { type ReactNode, useEffect, useMemo } from 'react';
-import {
-  cumulativeDistancesM,
-  elevationStats,
-  formatDistance,
-  formatDuration,
-  hikingDurationH,
-  nearestIndex,
-} from '../lib/geo';
+import { cumulativeDistancesM, elevationStats, formatDistance, formatDuration, nearestIndex } from '../lib/geo';
+import { durationH, energyKcal } from '../lib/hikingTime';
 import { type MsgKey, useT } from '../lib/i18n';
 import { aggregateBy, SURFACE_CATEGORIES, SURFACE_COLORS, sacStats, WAY_CATEGORIES, WAY_COLORS } from '../lib/waytypes';
 import { routeCoords, routeDistanceM, usePlanner, type WayHighlight } from '../store';
@@ -17,6 +11,7 @@ export function BottomPanel() {
   const legs = usePlanner(s => s.legs);
   const anchors = usePlanner(s => s.anchors);
   const selection = usePlanner(s => s.profileSelection);
+  const profile = usePlanner(s => s.profile);
   const setSelection = usePlanner(s => s.setProfileSelection);
   const coords = useMemo(() => routeCoords(legs), [legs]);
   const dists = useMemo(() => cumulativeDistancesM(coords), [coords]);
@@ -63,7 +58,8 @@ export function BottomPanel() {
     [t('dminus'), `${Math.round(lossM)} m`],
     [t('alt_min'), `${Math.round(Math.min(...elevations))} m`],
     [t('alt_max'), `${Math.round(Math.max(...elevations))} m`],
-    [t('duration_est'), formatDuration(hikingDurationH(distanceM, gainM, lossM))],
+    [t('duration_est'), formatDuration(durationH(statsCoords, profile))],
+    [t('energy_est'), `${Math.round(energyKcal(statsCoords, profile))} kcal`],
   ];
 
   return (

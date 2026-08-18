@@ -532,6 +532,30 @@ test.describe('importing gpx', () => {
   });
 });
 
+test.describe('hiker profile', () => {
+  test('the pace changes every duration, and survives a reload', async ({ page }) => {
+    await openPlanner(page);
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 1);
+
+    const duration = () => page.locator('.bottom-panel .stat', { hasText: /Est. time|Durée/ }).innerText();
+    const steady = await duration();
+    await expect(page.locator('.bottom-panel .stat', { hasText: /Energy|Énergie/ })).toContainText('kcal');
+
+    await page.locator('[data-control="options"]').click();
+    await page.locator('.mc-panel .segmented button', { hasText: /Athletic|Athlétique/ }).click();
+    // an athlete walks the same line quicker: the estimate has to move
+    await expect.poll(duration).not.toBe(steady);
+    const athletic = await duration();
+
+    await page.reload();
+    await page.waitForFunction(() => '__planner' in window);
+    await page.waitForFunction(() => (window as unknown as TestHandles).__planner.getState().anchors.length === 2);
+    await expect.poll(duration).toBe(athletic);
+  });
+});
+
 test.describe('follow mode', () => {
   test('the bar tracks the position along the route and warns when off it', async ({ page, context }) => {
     await context.grantPermissions(['geolocation']);

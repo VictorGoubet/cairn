@@ -20,11 +20,12 @@ import {
   pointToPathDistanceM,
   simplifyIndices,
 } from './lib/geo';
+import { DEFAULT_PROFILE, type HikerProfile } from './lib/hikingTime';
 import type { MsgKey } from './lib/i18n';
 import { detectLang, type Lang, persistLang } from './lib/lang';
 import type { PointKind } from './lib/points';
 import { spliceIntoTrace } from './lib/routeSplice';
-import { loadDraft, loadRoutes, persistDraft, persistRoutes } from './lib/storage';
+import { loadDraft, loadProfile, loadRoutes, persistDraft, persistProfile, persistRoutes } from './lib/storage';
 
 const HISTORY_LIMIT = 50;
 const MAX_IMPORT_ANCHORS = 40;
@@ -119,6 +120,8 @@ interface PlannerState {
   flyoverPaused: boolean;
   /** true while the map tracks the device position along the route, see lib/follow */
   following: boolean;
+  /** pace and load, which drive every duration and calorie the app shows */
+  profile: HikerProfile;
   anchors: Anchor[];
   legs: LegSlot[];
   offRoutePoints: OffRoutePoint[];
@@ -176,6 +179,7 @@ interface PlannerState {
   setFlyoverPaused: (paused: boolean) => void;
   toggleFollow: () => void;
   stopFollow: () => void;
+  setProfile: (profile: HikerProfile) => void;
   setBaseLayerId: (id: string) => void;
   toggleOverlay: (name: keyof Overlays) => void;
   setOverlay: (name: keyof Overlays, value: boolean) => void;
@@ -378,6 +382,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
     flyover: false,
     flyoverPaused: false,
     following: false,
+    profile: loadProfile() ?? DEFAULT_PROFILE,
     anchors: draft?.anchors ?? [],
     legs: draft?.legs ?? [],
     offRoutePoints: draft?.offRoutePoints ?? [],
@@ -851,6 +856,11 @@ export const usePlanner = create<PlannerState>((set, get) => {
     stopFlyover: () => set({ flyover: false, flyoverPaused: false }),
     toggleFollow: () => set(s => ({ following: !s.following && routeCoords(s.legs).length >= 2, flyover: false })),
     stopFollow: () => set({ following: false }),
+
+    setProfile: profile => {
+      persistProfile(profile);
+      set({ profile });
+    },
     setFlyoverPaused: flyoverPaused => set({ flyoverPaused }),
 
     setBaseLayerId: baseLayerId => set({ baseLayerId }),

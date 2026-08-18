@@ -5,7 +5,6 @@ import {
   formatDistance,
   formatDuration,
   haversineM,
-  hikingDurationH,
   kmMarkerPoints,
   type LonLatEle,
   nearestIndex,
@@ -74,18 +73,6 @@ describe('formatting', () => {
   it('renders durations without a leading zero hour', () => {
     expect(formatDuration(0.5)).toBe('30 min');
     expect(formatDuration(2.51)).toBe('2 h 31');
-  });
-});
-
-describe('hikingDurationH', () => {
-  it('follows the reference pace: 4.2 km/h flat, 400 m/h up, 800 m/h down', () => {
-    expect(hikingDurationH(4200, 0, 0)).toBeCloseTo(1, 6);
-    expect(hikingDurationH(0, 400, 0)).toBeCloseTo(1, 6);
-    expect(hikingDurationH(0, 0, 800)).toBeCloseTo(1, 6);
-  });
-
-  it('grows with distance and elevation', () => {
-    expect(hikingDurationH(10_000, 500, 500)).toBeGreaterThan(hikingDurationH(10_000, 100, 100));
   });
 });
 

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { BASE_LAYER_OPTIONS, layerThumbUrl } from '../config/layers';
 import { track } from '../lib/analytics';
+import type { HikerPace } from '../lib/hikingTime';
 import { type MsgKey, useT } from '../lib/i18n';
 import { SLOPE_LEGEND } from '../lib/slopeTiles';
 import { useClickOutside } from '../lib/useClickOutside';
@@ -9,6 +10,8 @@ import { type Overlays, usePlanner } from '../store';
 import { NearbyHikes } from './NearbyHikes';
 
 type Panel = 'explore' | 'layers' | 'options' | null;
+
+const PACES: HikerPace[] = ['strolling', 'steady', 'sporty', 'athletic'];
 
 const OPTION_ROWS: { key: keyof Overlays; labelKey: MsgKey }[] = [
   { key: 'km', labelKey: 'opt_km' },
@@ -30,6 +33,7 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
   const flyover = usePlanner(s => s.flyover);
   const flyoverPaused = usePlanner(s => s.flyoverPaused);
   const following = usePlanner(s => s.following);
+  const profile = usePlanner(s => s.profile);
   const legs = usePlanner(s => s.legs);
   useClickOutside(rootRef, () => setOpen(null), open !== null);
   useEscapeKey(() => setOpen(null), open !== null);
@@ -112,6 +116,8 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
         disabled={!hasRoute}
         onClick={() => usePlanner.getState().toggleFollow()}
       >
+        {/* a position *on a path*: the crosshair of the geolocate control above answers "where
+            am I", this one answers "where am I along this route" */}
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -121,9 +127,8 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
           strokeLinejoin="round"
           aria-hidden="true"
         >
-          <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none" />
-          <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-          <circle cx="12" cy="12" r="8" />
+          <path d="M3 20c3.5 0 3-6 7-6s3.5-8 8-8" strokeDasharray="3 3" />
+          <circle cx="10" cy="14" r="3.4" fill="currentColor" stroke="none" />
         </svg>
       </button>
       <button
@@ -226,6 +231,42 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
             </label>
           ))}
           {(overlays.hidden || overlays.refuges) && <p className="mc-hint">{t('opt_poi_hint')}</p>}
+          <h2 className="mc-subhead">{t('hiker_profile')}</h2>
+          <div className="segmented wrap">
+            {PACES.map(pace => (
+              <button
+                key={pace}
+                type="button"
+                className={profile.pace === pace ? 'on' : ''}
+                onClick={() => usePlanner.getState().setProfile({ ...profile, pace })}
+              >
+                {t(`pace_${pace}` as MsgKey)}
+              </button>
+            ))}
+          </div>
+          <div className="profile-fields">
+            <label>
+              {t('profile_weight')}
+              <input
+                type="number"
+                min={30}
+                max={200}
+                value={profile.weightKg}
+                onChange={e => usePlanner.getState().setProfile({ ...profile, weightKg: Number(e.target.value) })}
+              />
+            </label>
+            <label>
+              {t('profile_pack')}
+              <input
+                type="number"
+                min={0}
+                max={60}
+                value={profile.packKg}
+                onChange={e => usePlanner.getState().setProfile({ ...profile, packKg: Number(e.target.value) })}
+              />
+            </label>
+          </div>
+          <p className="mc-hint">{t('profile_hint')}</p>
           {overlays.slopes && (
             <div className="slope-legend">
               {SLOPE_LEGEND.map((c, i) => (

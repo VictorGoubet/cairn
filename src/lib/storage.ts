@@ -1,8 +1,12 @@
 import type { Anchor, LegSlot, OffRoutePoint, SavedRoute } from '../store';
+import { DEFAULT_PROFILE, type HikerPace, type HikerProfile } from './hikingTime';
 import { parseKind } from './points';
+
+const PACES: HikerPace[] = ['strolling', 'steady', 'sporty', 'athletic'];
 
 const ROUTES_KEY = 'cairn.routes.v1';
 const DRAFT_KEY = 'cairn.draft.v1';
+const PROFILE_KEY = 'cairn.profile.v1';
 
 export interface Draft {
   anchors: Anchor[];
@@ -32,6 +36,27 @@ export function persistRoutes(routes: SavedRoute[]): boolean {
     ROUTES_KEY,
     routes.map(r => ({ ...r, legs: compactLegs(r.legs) })),
   );
+}
+
+export function loadProfile(): HikerProfile | null {
+  const stored = readJson<Partial<HikerProfile>>(PROFILE_KEY);
+  if (!stored) return null;
+  // a hand-edited or stale entry must not poison the estimates
+  const pace = PACES.includes(stored.pace as HikerPace) ? (stored.pace as HikerPace) : DEFAULT_PROFILE.pace;
+  return {
+    pace,
+    weightKg: clamp(stored.weightKg, 30, 200, DEFAULT_PROFILE.weightKg),
+    packKg: clamp(stored.packKg, 0, 60, DEFAULT_PROFILE.packKg),
+  };
+}
+
+export function persistProfile(profile: HikerProfile): boolean {
+  return writeJson(PROFILE_KEY, profile);
+}
+
+function clamp(value: number | undefined, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(Math.max(value, min), max);
 }
 
 export function loadDraft(): Draft | null {

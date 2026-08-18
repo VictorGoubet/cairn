@@ -8,7 +8,9 @@
 
 import { LngLatBounds, Map as MapLibreMap } from 'maplibre-gl';
 import { ORTHO_RASTER_TILES, PLAN_IGN_RASTER_TILES, TERRARIUM_TILES } from '../config/layers';
-import { elevationStats, formatDistance, formatDuration, hikingDurationH, type LonLatEle, pathDistanceM } from './geo';
+import { usePlanner } from '../store';
+import { elevationStats, formatDistance, formatDuration, type LonLatEle, pathDistanceM } from './geo';
+import { durationH } from './hikingTime';
 import { tNow } from './i18n';
 
 export type ShareFormat = 'square' | 'story';
@@ -439,7 +441,7 @@ function drawStats(
     [tNow('distance'), formatDistance(distanceM)],
     [tNow('dplus'), `${Math.round(gainM)} m`],
     [tNow('dminus'), `${Math.round(lossM)} m`],
-    [tNow('duration_est'), formatDuration(hikingDurationH(distanceM, gainM, lossM))],
+    [tNow('duration_est'), formatDuration(durationH(coords, usePlanner.getState().profile))],
   ];
   const ink = lightInk ? '#ffffff' : '#212529';
   const sub = lightInk ? 'rgba(255,255,255,0.8)' : 'rgba(33,37,41,0.65)';

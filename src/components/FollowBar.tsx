@@ -43,7 +43,8 @@ export function FollowBar() {
     const handle = startFollow(
       coords,
       pois,
-      next => {
+      usePlanner.getState().profile,
+      (next: FollowFix) => {
         setFix(next);
         // a hiccup in the signal must not condemn the display: a fresh fix clears the error
         setDenied(false);

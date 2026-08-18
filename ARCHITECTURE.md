@@ -272,6 +272,24 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
     to 45 km around the map center, and the DEM fills in the elevations OSM does not carry.
   - opening the panel switches the marked-trail tiles on, so a name in the list has a visual
     counterpart on the map.
+- **Durations come from a slope model, not a linear rule** (`lib/hikingTime.ts`). The linear
+  family (Naismith 1892, Swiss Alpine Club, DIN 33466) adds a fixed penalty per metre climbed and
+  is blind to steepness: 500 m of descent costs the same on a gentle track and in a scree
+  couloir, and Langmuir had to patch Naismith by hand to express that a gentle descent is
+  *faster* than the flat. Tobler's hiking function (1993) is used instead, segment by segment on
+  the geometry the router returns, so the model gets that effect for free.
+  - the calibration point is the default profile **pack included**, since the SAC scale describes
+    a hiker carrying a day pack: `steady` + 8 kg lands the flat at 4.2 km/h, then climbs a 20%
+    slope at 418 m/h (SAC: 400) and descends it at 593 m/h (DIN: 500, SAC: 800). Tests pin those
+    reference numbers, because a silent drift there would move every duration in the app.
+  - **the hiker profile** (`profile` in the store, persisted like the routes) is pace plus body
+    and pack mass. Pace is what the literature ties to hiking speed; the pack also slows, at the
+    load-carriage rule of thumb of ~1% per 1% of body mass. Sex, age and height are deliberately
+    absent: no established effect on hiking pace, and a field that changes no number is a lie.
+  - **energy** is where body mass genuinely belongs: Pandolf et al. (1977) with Santee's descent
+    correction, so a downhill costs less than the flat instead of going negative.
+  - the `fastest` preset compares candidates with the **default** profile: which of two lines is
+    quicker must not depend on who is looking at the map.
 - **Follow mode** (`lib/follow.ts` behind the target control, bar in `components/FollowBar.tsx`)
   answers the three questions of a walk in progress: am I on the trail, what is next, how much
   is left. Deliberately not navigation: no rerouting, no instructions, no voice.
