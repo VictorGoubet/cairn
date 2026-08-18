@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BottomPanel } from './components/BottomPanel';
 import { BottomSheet, type SheetStop } from './components/BottomSheet';
+import { FollowBar } from './components/FollowBar';
 import { MapControls } from './components/MapControls';
 import { MapView } from './components/MapView';
 import { PointEditor } from './components/PointEditor';
@@ -98,6 +99,7 @@ export default function App() {
           <MapView />
           <MapControls onPanelOpen={() => setSheetStop('peek')} />
           <PointEditor />
+          <FollowBar />
           {toast}
         </div>
         <BottomSheet stop={sheetStop} onStopChange={setSheetStop} header={<RouteStats />}>
@@ -126,6 +128,7 @@ export default function App() {
           <MapControls />
           <StatsCard />
           <PointEditor />
+          <FollowBar />
           <BottomPanel />
           {toast}
         </div>

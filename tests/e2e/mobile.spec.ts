@@ -172,3 +172,57 @@ test.describe('touch gestures', () => {
     await expect(page.locator('.point-editor')).toBeVisible();
   });
 });
+
+test.describe('phone features', () => {
+  /** builds a two-point route through the store: a tap needs the map, this needs the route */
+  async function routeOnPhone(page: Parameters<typeof openPlanner>[0]): Promise<void> {
+    await openPlanner(page);
+    await page.evaluate(pts => {
+      const state = (window as unknown as TestHandles).__planner.getState() as unknown as {
+        addAnchor(p: [number, number]): void;
+      };
+      for (const p of pts) state.addAnchor(p);
+    }, [CEILLAC, NEARBY]);
+    await waitForRouting(page, 1);
+  }
+
+  test('follow mode fits the screen above the sheet and stops from its own button', async ({ page, context }) => {
+    await context.grantPermissions(['geolocation']);
+    await routeOnPhone(page);
+    const onTrace = await page.evaluate(() => {
+      const coords = (window as unknown as TestHandles).__planner.getState().legs[0].leg?.coords ?? [];
+      const mid = coords[Math.floor(coords.length / 2)];
+      return { longitude: mid[0], latitude: mid[1] };
+    });
+    await context.setGeolocation(onTrace);
+
+    await page.locator('[data-control="follow"]').click();
+    const bar = page.locator('[data-control="follow-bar"]');
+    await expect(bar).toBeVisible();
+    await expect(bar).toContainText(/Prochain point|Next point/);
+
+    const box = await bar.boundingBox();
+    const viewport = page.viewportSize();
+    if (!box || !viewport) throw new Error('no geometry');
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    // clear of the sheet peek, so the two never overlap
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height - 80);
+
+    await bar.locator('.follow-stop').click();
+    await expect(bar).toBeHidden();
+  });
+
+  test('the share studio opens from the actions menu and escape closes it', async ({ page }) => {
+    await routeOnPhone(page);
+    await page.locator('.menu-toggle').click();
+    await page.locator('.topbar .menu-wrap button', { hasText: /Partager|Share/ }).click();
+    await page.locator('[data-control="share-image"]').click();
+    await expect(page.locator('.share-panel')).toBeVisible();
+
+    // two stacked widgets: the menu and the studio. Escape used to close only the menu, because
+    // that re-render resubscribed the studio's listener mid-dispatch
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.share-panel')).toBeHidden();
+  });
+});

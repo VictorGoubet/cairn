@@ -1,25 +1,44 @@
 import profileTemplate from '../config/hiking-mountain.brf?raw';
-import { cumulativeDistancesM, haversineM, type LonLat, type LonLatEle } from './geo';
+import { cumulativeDistancesM, elevationStats, haversineM, hikingDurationH, type LonLat, type LonLatEle } from './geo';
 import { fetchWithTimeout } from './http';
 import { parseWaySegments, type WaySegment } from './waytypes';
 
 const BROUTER_URL = 'https://brouter.de/brouter';
 const DEFAULT_PROFILE = 'hiking-mountain';
 
-/** presets: documented switches of the hiking-mountain template */
-const PRESET_PATCHES: Record<RoutingPreset, [RegExp, string][]> = {
+/**
+ * Variants of the bundled profile, each a documented switch of the template.
+ *
+ * A preset can race several of them: "fastest" is the honest example, since no single set of
+ * BRouter cost weights minimizes the duration this app displays (its elevation costs are
+ * filtered and buffered, ours is a raw SuisseMobile sum). Racing distance-first against
+ * climb-averse and keeping the quicker answer is coherent by construction.
+ */
+const VARIANT_PATCHES: Record<Variant, [RegExp, string][]> = {
   balanced: [],
   avoid_roads: [[/^assign {3}path_preference {10}0\.0/m, 'assign   path_preference          20.0']],
   easy_up: [[/^assign {3}consider_elevation {5}= false/m, 'assign   consider_elevation     = true']],
   // the template's own switch: every walkable way costs its length, roads included; foot
   // access keeps its veto, so a motorway stays at 100000 whatever the distance saved
   shortest: [[/^assign {3}shortest_way {13}0/m, 'assign   shortest_way             1']],
-  // walking time rather than distance: climbing costs (Naismith's rule lives in the profile's
-  // uphill/downhill costs), and no detour is worth taking to stay on a waymarked route
-  fastest: [
+  // climb-averse at the rates of our own clock: 4.2 km/h flat, 400 m/h up, 800 m/h down, so a
+  // metre of ascent is worth ~10 m of flat and a metre of descent ~5
+  climb_averse: [
     [/^assign {3}consider_elevation {5}= false/m, 'assign   consider_elevation     = true'],
+    [/^assign {3}uphillcostvalue {6}7/m, 'assign   uphillcostvalue      10'],
+    [/^assign {3}downhillcostvalue {4}7/m, 'assign   downhillcostvalue    5'],
     [/^assign {3}hiking_routes_preference 0\.20/m, 'assign   hiking_routes_preference 0.00'],
   ],
+};
+
+type Variant = 'balanced' | 'avoid_roads' | 'easy_up' | 'shortest' | 'climb_averse';
+
+const PRESET_CANDIDATES: Record<RoutingPreset, Variant[]> = {
+  balanced: ['balanced'],
+  shortest: ['shortest'],
+  fastest: ['shortest', 'climb_averse'],
+  avoid_roads: ['avoid_roads'],
+  easy_up: ['easy_up'],
 };
 
 export type RoutingPreset = 'balanced' | 'shortest' | 'fastest' | 'avoid_roads' | 'easy_up';
@@ -32,9 +51,9 @@ export interface RouteLeg {
 }
 
 let activePreset: RoutingPreset = 'balanced';
-// id of the custom profile uploaded to brouter.de; invalidated when the server expires it
-let customProfileId: string | null = null;
-let customProfileUpload: Promise<string> | null = null;
+// ids of the custom profiles uploaded to brouter.de, one per variant; an entry is dropped when
+// the server expires it, and the upload is shared so a burst of legs uploads once
+const profileUploads = new Map<Variant, Promise<string>>();
 
 /**
  * Changes the preset used by the next routing calls.
@@ -43,10 +62,7 @@ let customProfileUpload: Promise<string> | null = null;
  *   preset: balanced (standard profile), avoid roads, or limit elevation gain.
  */
 export function setRoutingPreset(preset: RoutingPreset): void {
-  if (preset === activePreset) return;
   activePreset = preset;
-  customProfileId = null;
-  customProfileUpload = null;
 }
 
 /**
@@ -56,14 +72,28 @@ export function setRoutingPreset(preset: RoutingPreset): void {
  *   points: at least two points; the intermediate ones are via points snapped to the network.
  */
 export async function computeRoute(points: LonLat[]): Promise<RouteLeg> {
+  const candidates = PRESET_CANDIDATES[activePreset];
+  const answers = await Promise.allSettled(candidates.map(variant => requestRoute(points, variant)));
+  const legs = answers.filter(a => a.status === 'fulfilled').map(a => a.value);
+  if (legs.length === 0) throw (answers[0] as PromiseRejectedResult).reason;
+  // one candidate: nothing to choose. Several: the one our own clock calls quicker, which is
+  // the promise the "fastest" label makes to the hiker
+  return legs.reduce((best, leg) => (estimatedHours(leg) < estimatedHours(best) ? leg : best));
+}
+
+function estimatedHours(leg: RouteLeg): number {
+  const { gainM, lossM } = elevationStats(leg.coords);
+  return hikingDurationH(leg.distanceM, gainM, lossM);
+}
+
+async function requestRoute(points: LonLat[], variant: Variant): Promise<RouteLeg> {
   const lonlats = points.map(p => `${p[0]},${p[1]}`).join('|');
-  const profile = await resolveProfile();
+  const profile = await resolveProfile(variant);
   let res = await fetchWithTimeout(routeUrl(lonlats, profile));
   // a custom profile expired server-side is re-uploaded once before giving up
   if (!res.ok && profile !== DEFAULT_PROFILE) {
-    customProfileId = null;
-    customProfileUpload = null;
-    res = await fetchWithTimeout(routeUrl(lonlats, await resolveProfile()));
+    profileUploads.delete(variant);
+    res = await fetchWithTimeout(routeUrl(lonlats, await resolveProfile(variant)));
   }
   if (!res.ok) throw new Error(`brouter ${res.status}`);
   const data = await res.json();
@@ -148,24 +178,23 @@ function routeUrl(lonlats: string, profile: string): string {
   return `${BROUTER_URL}?lonlats=${lonlats}&profile=${profile}&alternativeidx=0&format=geojson`;
 }
 
-async function resolveProfile(): Promise<string> {
-  if (activePreset === 'balanced') return DEFAULT_PROFILE;
-  if (customProfileId) return customProfileId;
-  customProfileUpload ??= uploadPresetProfile(activePreset);
+async function resolveProfile(variant: Variant): Promise<string> {
+  if (variant === 'balanced') return DEFAULT_PROFILE;
+  const pending = profileUploads.get(variant) ?? uploadVariantProfile(variant);
+  profileUploads.set(variant, pending);
   try {
-    customProfileId = await customProfileUpload;
-    return customProfileId;
+    return await pending;
   } catch {
     // upload failed: route anyway, with the standard profile
-    customProfileUpload = null;
+    profileUploads.delete(variant);
     return DEFAULT_PROFILE;
   }
 }
 
-async function uploadPresetProfile(preset: RoutingPreset): Promise<string> {
+async function uploadVariantProfile(variant: Variant): Promise<string> {
   let body = profileTemplate;
-  for (const [pattern, replacement] of PRESET_PATCHES[preset]) {
-    if (!pattern.test(body)) throw new Error(`brouter profile: ${preset} patch no longer matches the template`);
+  for (const [pattern, replacement] of VARIANT_PATCHES[variant]) {
+    if (!pattern.test(body)) throw new Error(`brouter profile: ${variant} patch no longer matches the template`);
     body = body.replace(pattern, replacement);
   }
   const res = await fetchWithTimeout(`${BROUTER_URL}/profile`, { method: 'POST', body });

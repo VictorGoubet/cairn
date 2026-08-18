@@ -82,37 +82,43 @@ export function Sidebar() {
           <p className="side-help">{t('start_help')}</p>
         ) : (
           <div className="side-actions">
-            <div className="side-row">
+            <div className="side-row icons">
               <button
                 type="button"
                 title={t('undo')}
+                aria-label={t('undo')}
                 disabled={history.length === 0}
                 onClick={() => usePlanner.getState().undo()}
               >
-                ↶
+                <Icon name="undo" />
               </button>
               <button
                 type="button"
                 title={t('redo')}
+                aria-label={t('redo')}
                 disabled={future.length === 0}
                 onClick={() => usePlanner.getState().redo()}
               >
-                ↷
+                <Icon name="redo" />
               </button>
             </div>
             <div className="side-row">
               <button type="button" disabled={!hasRoute} onClick={() => usePlanner.getState().reverse()}>
+                <Icon name="reverse" />
                 {t('reverse')}
               </button>
               <button type="button" disabled={!hasRoute || isLoop} onClick={() => usePlanner.getState().outAndBack()}>
+                <Icon name="outAndBack" />
                 {t('out_and_back')}
               </button>
             </div>
             <div className="side-row">
               <button type="button" disabled={!hasRoute || isLoop} onClick={() => usePlanner.getState().closeLoop()}>
+                <Icon name="closeLoop" />
                 {t('close_loop')}
               </button>
-              <button type="button" onClick={() => usePlanner.getState().clear()}>
+              <button type="button" className="danger-ghost" onClick={() => usePlanner.getState().clear()}>
+                <Icon name="clear" />
                 {t('clear_route')}
               </button>
             </div>
@@ -124,6 +130,7 @@ export function Sidebar() {
                 title={t('route_straight_hint')}
                 onClick={() => usePlanner.getState().routeStraightLegs()}
               >
+                <Icon name="trails" />
                 {t('route_straight')}
               </button>
             )}
@@ -230,3 +237,38 @@ export function Sidebar() {
     </aside>
   );
 }
+
+/**
+ * The little 24x24 stroke icons of the route actions.
+ *
+ * Inline rather than a sprite: there are six of them, they inherit the button's color, and a
+ * dependency for six paths would cost more than it saves.
+ */
+function Icon({ name }: { name: keyof typeof ICON_PATHS }) {
+  return (
+    <svg
+      className="btn-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {ICON_PATHS[name].map(d => (
+        <path key={d} d={d} />
+      ))}
+    </svg>
+  );
+}
+
+const ICON_PATHS = {
+  undo: ['M4 10h9a5 5 0 1 1 0 10H8', 'M8 6 4 10l4 4'],
+  redo: ['M20 10h-9a5 5 0 1 0 0 10h5', 'M16 6l4 4-4 4'],
+  reverse: ['M7 8h11l-3-3', 'M17 16H6l3 3'],
+  outAndBack: ['M5 12h14', 'M9 8l-4 4 4 4', 'M15 8l4 4-4 4'],
+  closeLoop: ['M12 5a7 7 0 1 1-6.9 8.2', 'M9 3l3 2-3 2'],
+  clear: ['M5 7h14', 'M10 7V5h4v2', 'M7 7l1 12h8l1-12'],
+  trails: ['M4 19c3.5 0 3-5 6.5-5S13 8 17 8h3', 'M17 5l3 3-3 3'],
+} as const;

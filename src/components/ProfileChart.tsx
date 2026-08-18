@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { onFlyoverProgress, scrubFlyover } from '../lib/flyover';
 import { type LonLatEle, nearestIndex } from '../lib/geo';
 import { tNow } from '../lib/i18n';
 import { kindDef, kindLabelKey, type PointKind } from '../lib/points';
+import { onProgress, requestScrub } from '../lib/routeProgress';
 import { slopeColorForDeg } from '../lib/slopeTiles';
 import { usePlanner } from '../store';
 
@@ -158,7 +158,7 @@ export function ProfileChart({
     const { x: sx, y: sy } = makeScales(size.w, size.h, viewFromM, viewToM, eleMin, eleMax);
     let prevM: number | null = null;
     marker.style.display = 'none';
-    const off = onFlyoverProgress(distM => {
+    const off = onProgress((distM: number) => {
       const index = nearestIndex(dists, distM);
       marker.setAttribute('transform', `translate(${sx(dists[index])},${sy(coords[index][2])})`);
       marker.style.display = '';
@@ -271,7 +271,7 @@ export function ProfileChart({
       // touching the profile takes over playback: the play view switches to manual
       usePlanner.getState().setFlyoverPaused(true);
       scrubbingRef.current = true;
-      scrubFlyover(eventDistM(e));
+      requestScrub(eventDistM(e));
       return;
     }
     dragFromMRef.current = eventDistM(e);
@@ -281,7 +281,7 @@ export function ProfileChart({
   function onPointerMove(e: React.PointerEvent<SVGRectElement>) {
     const distM = eventDistM(e);
     if (flyover) {
-      if (scrubbingRef.current) scrubFlyover(distM);
+      if (scrubbingRef.current) requestScrub(distM);
       return;
     }
     const index = nearestIndex(dists, distM);

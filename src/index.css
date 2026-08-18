@@ -3,9 +3,12 @@
   --ink: #0b0b0b;
   --ink-2: #52514e;
   --border: #e2e1dd;
-  --topbar: #22303f;
-  --topbar-ink: #e8ecf1;
-  --accent: #2a78d6;
+  /* brand: the amber-to-coral of the cairn logo. `accent` is the one that carries white text,
+     dark enough to pass AA at small sizes; `amber` and `soft` are for fills and tints */
+  --accent: #e8590c;
+  --amber: #f0a010;
+  --accent-soft: #fff4e6;
+  --accent-line: #f7c08a;
   --route: #e34948;
   --start: #008300;
   --wp: #eda100;
@@ -14,6 +17,23 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* readable by a screen reader, absent from the layout */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* inline icons inherit the button's color, so hover states need no svg selector */
+.btn-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
 }
 
 html,
@@ -76,19 +96,10 @@ body {
 
 .segmented {
   display: flex;
-  background: #ecebe7;
-  border-radius: 9px;
-  padding: 3px;
-}
-
-/* five routing presets do not fit on one line of a 264px sidebar */
-.segmented.wrap {
-  flex-wrap: wrap;
   gap: 2px;
-}
-
-.segmented.wrap button {
-  flex: 1 0 45%;
+  background: #f2efea;
+  border-radius: 10px;
+  padding: 3px;
 }
 
 .segmented button {
@@ -102,11 +113,21 @@ body {
   cursor: pointer;
 }
 
+/* five routing presets do not fit on one line of a 264px sidebar */
+.segmented.wrap {
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.segmented.wrap button {
+  flex: 1 0 45%;
+}
+
 .segmented button.on {
-  color: var(--ink);
-  background: #fff;
+  color: #fff;
+  background: var(--accent);
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 2px rgb(232 89 12 / 35%);
 }
 
 .side-hint {
@@ -121,8 +142,8 @@ body {
   padding: 10px;
   font-size: 12.5px;
   line-height: 1.45;
-  color: #1d4e89;
-  background: #eaf2fc;
+  color: #8a4508;
+  background: var(--accent-soft);
   border-radius: 8px;
 }
 
@@ -149,8 +170,28 @@ body {
   cursor: pointer;
 }
 
+/* icon + label, so a narrow sidebar reads at a glance instead of wrapping words */
+.side-row button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
 .side-row button:hover:not(:disabled) {
-  background: #eef3fa;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
+.side-row.icons button {
+  padding: 6px 0;
+}
+
+.side-row button.danger-ghost:hover:not(:disabled) {
+  color: #c0392b;
+  background: #fff0ee;
+  border-color: #f3b7ae;
 }
 
 .side-row button:disabled {
@@ -169,8 +210,17 @@ body {
   cursor: pointer;
 }
 
+.side-wide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--accent);
+}
+
 .side-wide:hover {
-  background: #eef3fa;
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
 }
 
 .poi-list {
@@ -357,7 +407,8 @@ body {
 }
 
 .topbar button:hover:not(:disabled) {
-  background: #eef3fa;
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
 }
 
 .topbar button:disabled {
@@ -373,7 +424,7 @@ body {
 }
 
 .topbar button.primary:hover:not(:disabled) {
-  background: #3987e5;
+  background: #f2700f;
 }
 
 .save-wrap {
@@ -472,7 +523,7 @@ body {
 }
 
 .search-results button:hover {
-  background: #eef3fa;
+  background: var(--accent-soft);
 }
 
 /* the row centers the map, the plus appends the place to the itinerary */
@@ -728,8 +779,8 @@ body {
 
 .mc-btn.active {
   color: #fff;
-  background: var(--topbar);
-  border-color: var(--topbar);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .mc-panel {
@@ -879,7 +930,7 @@ body {
 }
 
 .route-load:hover {
-  background: #eef3fa;
+  background: var(--accent-soft);
 }
 
 .route-name {
@@ -973,6 +1024,131 @@ body {
   color: var(--ink-2);
 }
 
+/* --- follow mode --- */
+
+.follow-bar {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 62px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 20%);
+}
+
+.follow-bar.off-route {
+  border-color: #f3b7ae;
+  background: #fff6f4;
+}
+
+.follow-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.follow-next {
+  flex: 1;
+}
+
+.follow-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.follow-value {
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.follow-message {
+  flex: 1;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.follow-warn {
+  padding: 3px 9px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #fff;
+  background: #c0392b;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.follow-stop {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* the github link, a quiet icon next to the wordmark */
+.repo-link {
+  display: flex;
+  align-items: center;
+  color: var(--ink-2);
+}
+
+.repo-link:hover {
+  color: var(--ink);
+}
+
+.repo-link svg {
+  width: 19px;
+  height: 19px;
+}
+
+/* the spot a search landed on: a pin that appends itself to the route when clicked */
+.search-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  background: var(--accent);
+  border: 2px solid #fff;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg) translateY(-4px);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
+  cursor: pointer;
+  animation: pin-drop 0.35s ease-out;
+}
+
+.search-pin span {
+  transform: rotate(45deg);
+}
+
+@keyframes pin-drop {
+  from {
+    opacity: 0;
+    transform: rotate(-45deg) translateY(-18px);
+  }
+}
+
 /* --- nearby hikes --- */
 
 .nearby {
@@ -1023,7 +1199,7 @@ body {
 }
 
 .nearby-list button:hover:not(:disabled) {
-  background: #eef3fa;
+  background: var(--accent-soft);
 }
 
 .nearby-list button:disabled {
@@ -1493,8 +1669,8 @@ body {
   font-size: 11.5px;
   font-weight: 600;
   color: var(--accent);
-  background: #eaf2fc;
-  border: 1px solid #bcd4f0;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
   border-radius: 999px;
   cursor: pointer;
   white-space: nowrap;
@@ -1569,8 +1745,8 @@ body {
   font-size: 11px;
   font-weight: 600;
   color: var(--accent);
-  background: #eaf2fc;
-  border: 1px solid #bcd4f0;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
   border-radius: 999px;
   cursor: pointer;
 }
@@ -1743,8 +1919,8 @@ body {
 
 .menu-toggle.on {
   color: #fff;
-  background: var(--topbar);
-  border-color: var(--topbar);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .topbar-sheet {
@@ -1769,6 +1945,24 @@ body {
 }
 
 @media (max-width: 760px) {
+  /* above the sheet's peek, and stacked: two lines read better than four columns at 360px */
+  .follow-bar {
+    left: 8px;
+    right: 8px;
+    /* clear of the sheet's 88px peek (PEEK_PX in BottomSheet) */
+    bottom: 96px;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+
+  .follow-next {
+    flex: 1 0 100%;
+  }
+
+  .follow-stop {
+    margin-left: auto;
+  }
+
   .topbar {
     position: relative;
     flex-wrap: nowrap;

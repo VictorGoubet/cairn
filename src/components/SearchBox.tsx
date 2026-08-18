@@ -49,6 +49,9 @@ export function SearchBox() {
 
   function select(result: GeocodeResult) {
     skipSearchRef.current = true;
+    // the pin answers "where is it, and where do I click to use it": centering alone left the
+    // spot invisible in the middle of a map
+    usePlanner.getState().setSearchPin([result.lon, result.lat]);
     usePlanner.getState().setFlyTo({ center: [result.lon, result.lat], zoom: 13 });
     setQuery(result.name);
     setResults([]);
@@ -57,6 +60,7 @@ export function SearchBox() {
 
   /** the search doubles as a route builder: hop from place to place, or from cache to cache */
   function append(result: GeocodeResult) {
+    usePlanner.getState().setSearchPin(null);
     usePlanner.getState().addAnchor([result.lon, result.lat]);
     usePlanner.getState().setFlyTo({ center: [result.lon, result.lat], zoom: 14 });
     setQuery('');

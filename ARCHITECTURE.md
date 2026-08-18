@@ -72,14 +72,20 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   `import-gpx`, `save-route`.
 - **Routing presets** patch the bundled BRouter profile by regex (`lib/brouter.ts`), and the
   patches are pinned by tests because a silent no-match would route with the standard profile
-  while the UI claims a preset is on. `shortest` and `fastest` both flip switches the template
-  already ships: distance-only costing, and elevation-aware costing with no bonus for staying on
-  a waymarked route. Neither touches `accesspenalty`, so a motorway stays forbidden whatever it
-  would save.
+  while the UI claims a preset is on. None of them touches `accesspenalty`, so a motorway stays
+  forbidden whatever it would save.
+  - **`fastest` races two variants** and keeps whichever the app's own clock calls quicker. No
+    single set of BRouter weights minimizes the duration we display: its elevation costs are
+    filtered and buffered, ours is a raw SuisseMobile sum. Tuning the weights to ~10 per metre
+    of ascent and ~5 per metre of descent got close but still lost to `shortest` by half an hour
+    on a 48 km leg (measured), so the honest answer is to compute both and compare. It costs a
+    second request per leg, for that preset only.
 - **The search box is also a route builder.** Coordinates typed by hand are answered locally
   (`lib/coordinates.ts`: decimal, degrees + decimal minutes as geocaching publishes them, and
   DMS), and every result carries a plus that appends it to the itinerary. That is how a list of
   geocaches becomes a route: paste each coordinate, press plus, the legs route themselves.
+  Selecting a result also drops a pin on the map, clickable to append: centering alone left the
+  spot invisible in the middle of a map, with nothing to aim at.
 - **Importing accepts several GPX files at once**: their tracks are chained (`mergeTracks`,
   reversing a file exported backwards) and every waypoint follows. A file with waypoints and no
   track (what geocaching.com exports for a set of caches) drops its markers on the map and
@@ -266,6 +272,19 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
     to 45 km around the map center, and the DEM fills in the elevations OSM does not carry.
   - opening the panel switches the marked-trail tiles on, so a name in the list has a visual
     counterpart on the map.
+- **Follow mode** (`lib/follow.ts` behind the target control, bar in `components/FollowBar.tsx`)
+  answers the three questions of a walk in progress: am I on the trail, what is next, how much
+  is left. Deliberately not navigation: no rerouting, no instructions, no voice.
+  - the bar owns the `watchPosition` and the fixes travel as window events
+    (`onFollowFix`, plus the shared `routeProgress` channel so the elevation profile shows the
+    dot). A position arrives every second, and the draft writer subscribes to every store write.
+  - "off route" waits until the gap exceeds 60 m **plus the accuracy the browser reports**: a
+    phone in a valley is routinely tens of metres off, and a warning that cries wolf is noise.
+  - a transient geolocation error keeps the last fix on screen; the message only replaces it
+    when there is nothing to show.
+  - following and the flyover are exclusive: both drive the camera.
+- **`lib/routeProgress.ts` is the shared "where along the route" channel**, published by the
+  flyover (a virtual position) and by follow mode (a real fix), consumed by the profile chart.
 - **`lib/mapHandle.ts` publishes the one map instance.** Panels outside `MapView` need to read
   the viewport; mirroring it into the store would wake the draft writer on every pan.
 - "My routes" opens as a modal gallery: one card per saved route, its thumbnail drawn by the
@@ -294,6 +313,11 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
     what Safari requires to keep the write inside the user gesture;
   - `navigator.share` with files is the road to Instagram and WhatsApp on a phone; where
     unsupported it falls back to the clipboard.
+
+- **Two hooks keep their callback in a ref** (`useEscapeKey`, `useClickOutside`). With the
+  callback in the dependency array, a widget closing re-rendered the widget behind it, whose
+  effect unsubscribed and resubscribed while the event was still being dispatched: Escape closed
+  the mobile actions menu and never reached the share studio underneath.
 
 ## Known trade-offs
 

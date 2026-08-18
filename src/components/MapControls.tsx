@@ -29,6 +29,7 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
   const overlays = usePlanner(s => s.overlays);
   const flyover = usePlanner(s => s.flyover);
   const flyoverPaused = usePlanner(s => s.flyoverPaused);
+  const following = usePlanner(s => s.following);
   const legs = usePlanner(s => s.legs);
   useClickOutside(rootRef, () => setOpen(null), open !== null);
   useEscapeKey(() => setOpen(null), open !== null);
@@ -103,6 +104,28 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
           </svg>
         </button>
       )}
+      <button
+        type="button"
+        className={following ? 'mc-btn active' : 'mc-btn'}
+        data-control="follow"
+        title={t('follow')}
+        disabled={!hasRoute}
+        onClick={() => usePlanner.getState().toggleFollow()}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none" />
+          <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+          <circle cx="12" cy="12" r="8" />
+        </svg>
+      </button>
       <button
         type="button"
         className={open === 'explore' ? 'mc-btn active' : 'mc-btn'}

@@ -35,6 +35,7 @@
 
 import { type GeoJSONSource, LngLat, type Map as MapLibreMap } from 'maplibre-gl';
 import { cumulativeDistancesM, type LonLatEle, nearestIndex } from './geo';
+import { emitProgress, onScrub } from './routeProgress';
 
 /** short routes still get a full flight: below this duration the speed scales down */
 const FLIGHT_SECONDS = 10;
@@ -99,9 +100,6 @@ const DOT_SOURCE = 'flyover-dot';
 const PULSE_SOURCE = 'flyover-pulse';
 const DOT_LAYERS = ['flyover-pulse-ring', 'flyover-dot-glow', 'flyover-dot-core'] as const;
 
-const PROGRESS_EVENT = 'cairn:flyover-progress';
-const SCRUB_EVENT = 'cairn:flyover-scrub';
-
 export interface FlyoverPoi {
   lon: number;
   lat: number;
@@ -114,26 +112,6 @@ export interface FlyoverHandle {
   stop(): void;
   /** true freezes the dot (manual mode); false resumes the flight from where it stands */
   setPaused(paused: boolean): void;
-}
-
-/**
- * Subscribes to the dot's position while a flight is running.
- *
- * Args:
- *   listener: receives the dot's distance along the route, once per rendered frame.
- *
- * Returns:
- *   An unsubscribe function.
- */
-export function onFlyoverProgress(listener: (distM: number) => void): () => void {
-  const handler = (e: Event) => listener((e as CustomEvent<number>).detail);
-  window.addEventListener(PROGRESS_EVENT, handler);
-  return () => window.removeEventListener(PROGRESS_EVENT, handler);
-}
-
-/** Moves the running flight's dot to a position on the route; pausing is the caller's call. */
-export function scrubFlyover(distM: number): void {
-  window.dispatchEvent(new CustomEvent<number>(SCRUB_EVENT, { detail: distM }));
 }
 
 interface Path {
@@ -237,7 +215,7 @@ export function startFlyover(
       map.jumpTo(options);
       (map.getSource(DOT_SOURCE) as GeoJSONSource).setData(dotFeature(dot));
       renderedDist = dotDist;
-      window.dispatchEvent(new CustomEvent<number>(PROGRESS_EVENT, { detail: dotDist }));
+      emitProgress(dotDist);
     }
     if (hadPulses || pulses.length > 0) {
       // the labels are DOM, so they follow the camera by reprojection on every frame
@@ -281,11 +259,10 @@ export function startFlyover(
 
   // manual mode moves at the pointer's own speed: a click teleports, a drag follows the hand.
   // Tiles may flash white on a long jump, which beats waiting for a chaperoned glide.
-  const onScrub = (e: Event) => {
-    progress = Math.min(Math.max((e as CustomEvent<number>).detail, MIN_SEPARATION_M), totalM);
+  const offScrub = onScrub(distM => {
+    progress = Math.min(Math.max(distM, MIN_SEPARATION_M), totalM);
     velocity = 0;
-  };
-  window.addEventListener(SCRUB_EVENT, onScrub);
+  });
 
   function takeOff() {
     if (done || lastNow) return;
@@ -298,7 +275,7 @@ export function startFlyover(
     done = true;
     cancelAnimationFrame(frame);
     window.clearTimeout(takeOffFallback);
-    window.removeEventListener(SCRUB_EVENT, onScrub);
+    offScrub();
     map.off('idle', takeOff);
     map.setMaxPitch(previousMaxPitch);
     for (const p of pulses) p.label.remove();

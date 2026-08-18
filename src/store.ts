@@ -117,6 +117,8 @@ interface PlannerState {
   flyover: boolean;
   /** inside the play view: false = the camera flies, true = manual, the dot follows the profile */
   flyoverPaused: boolean;
+  /** true while the map tracks the device position along the route, see lib/follow */
+  following: boolean;
   anchors: Anchor[];
   legs: LegSlot[];
   offRoutePoints: OffRoutePoint[];
@@ -131,6 +133,8 @@ interface PlannerState {
   /** true while an anchor is being dragged: heavy map work waits for the drop */
   dragging: boolean;
   hoverPoint: LonLat | null;
+  /** where the last search landed, shown as a pin until it is used or dismissed */
+  searchPin: LonLat | null;
   flyTo: FlyTo | null;
   error: MsgKey | null;
   setLang: (lang: Lang) => void;
@@ -170,10 +174,13 @@ interface PlannerState {
   toggleFlyover: () => void;
   stopFlyover: () => void;
   setFlyoverPaused: (paused: boolean) => void;
+  toggleFollow: () => void;
+  stopFollow: () => void;
   setBaseLayerId: (id: string) => void;
   toggleOverlay: (name: keyof Overlays) => void;
   setOverlay: (name: keyof Overlays, value: boolean) => void;
   setHoverPoint: (p: LonLat | null) => void;
+  setSearchPin: (p: LonLat | null) => void;
   setFlyTo: (target: FlyTo | null) => void;
   dismissError: () => void;
 }
@@ -370,6 +377,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
     profileSelection: null,
     flyover: false,
     flyoverPaused: false,
+    following: false,
     anchors: draft?.anchors ?? [],
     legs: draft?.legs ?? [],
     offRoutePoints: draft?.offRoutePoints ?? [],
@@ -382,6 +390,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
     dragging: false,
     editing: null,
     hoverPoint: null,
+    searchPin: null,
     flyTo: null,
     error: null,
 
@@ -836,8 +845,12 @@ export const usePlanner = create<PlannerState>((set, get) => {
 
     setWayTypeHighlight: wayTypeHighlight => set({ wayTypeHighlight }),
     setProfileSelection: profileSelection => set({ profileSelection }),
-    toggleFlyover: () => set(s => ({ flyover: !s.flyover && routeCoords(s.legs).length >= 2, flyoverPaused: false })),
+    // the two playbacks both drive the camera: opening one closes the other
+    toggleFlyover: () =>
+      set(s => ({ flyover: !s.flyover && routeCoords(s.legs).length >= 2, flyoverPaused: false, following: false })),
     stopFlyover: () => set({ flyover: false, flyoverPaused: false }),
+    toggleFollow: () => set(s => ({ following: !s.following && routeCoords(s.legs).length >= 2, flyover: false })),
+    stopFollow: () => set({ following: false }),
     setFlyoverPaused: flyoverPaused => set({ flyoverPaused }),
 
     setBaseLayerId: baseLayerId => set({ baseLayerId }),
@@ -851,6 +864,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
         return { overlays };
       }),
     setHoverPoint: hoverPoint => set({ hoverPoint }),
+    setSearchPin: searchPin => set({ searchPin }),
     setFlyTo: flyTo => set({ flyTo }),
     dismissError: () => set({ error: null }),
   };

@@ -21,6 +21,7 @@ import {
   TERRARIUM_TILES,
 } from '../config/layers';
 import { FLYOVER_EXAGGERATION, type FlyoverPoi, startFlyover } from '../lib/flyover';
+import { onFollowFix } from '../lib/follow';
 import { cumulativeDistancesM, haversineM, kmMarkerPoints, type LonLatEle, nearestIndex } from '../lib/geo';
 import { fetchHiddenTrails, HIDDEN_TRAILS_MIN_ZOOM } from '../lib/hiddenTrails';
 import { tNow } from '../lib/i18n';
@@ -69,6 +70,7 @@ const HIGHLIGHT_SOURCE = 'waytype-highlight';
 const SELECTION_SOURCE = 'profile-selection';
 const HIDDEN_TRAILS_SOURCE = 'hidden-trails';
 const REFUGES_SOURCE = 'refuge-points';
+const FOLLOW_SOURCE = 'follow-position';
 const EMPTY_ROUTE: GeoJSON.GeoJSON = { type: 'FeatureCollection', features: [] };
 
 export function MapView() {
@@ -79,6 +81,7 @@ export function MapView() {
   const offRouteMarkersRef = useRef<Marker[]>([]);
   const kmMarkersRef = useRef<Marker[]>([]);
   const hoverMarkerRef = useRef<Marker | null>(null);
+  const searchPinRef = useRef<Marker | null>(null);
   const terrainExagRef = useRef(TERRAIN_EXAGGERATION_MIN);
   const [mapReady, setMapReady] = useState(false);
 
@@ -89,6 +92,8 @@ export function MapView() {
   const legs = usePlanner(s => s.legs);
   const offRoutePoints = usePlanner(s => s.offRoutePoints);
   const hoverPoint = usePlanner(s => s.hoverPoint);
+  const searchPin = usePlanner(s => s.searchPin);
+  const following = usePlanner(s => s.following);
   const flyTo = usePlanner(s => s.flyTo);
   const dragging = usePlanner(s => s.dragging);
   const wayTypeHighlight = usePlanner(s => s.wayTypeHighlight);
@@ -139,6 +144,43 @@ export function MapView() {
           source: HIGHLIGHT_SOURCE,
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: { 'line-color': '#2f9e44', 'line-width': 7, 'line-opacity': 0.95 },
+        });
+        // live position while following: a halo for the accuracy, a dot for the fix
+        map.addSource(FOLLOW_SOURCE, { type: 'geojson', data: EMPTY_ROUTE });
+        map.addLayer({
+          id: 'follow-accuracy',
+          type: 'circle',
+          source: FOLLOW_SOURCE,
+          layout: { visibility: 'none' },
+          paint: {
+            'circle-color': '#2a78d6',
+            'circle-opacity': 0.15,
+            'circle-stroke-color': '#2a78d6',
+            'circle-stroke-opacity': 0.4,
+            'circle-stroke-width': 1,
+            // the reported accuracy, in metres, drawn to scale
+            'circle-radius': [
+              'interpolate',
+              ['exponential', 2],
+              ['zoom'],
+              10,
+              ['/', ['get', 'accuracy'], 100],
+              20,
+              ['/', ['get', 'accuracy'], 0.1],
+            ],
+          },
+        });
+        map.addLayer({
+          id: 'follow-dot',
+          type: 'circle',
+          source: FOLLOW_SOURCE,
+          layout: { visibility: 'none' },
+          paint: {
+            'circle-radius': 7,
+            'circle-color': '#2a78d6',
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-width': 3,
+          },
         });
         // the stretch selected on the elevation profile, drawn over the route
         map.addSource(SELECTION_SOURCE, { type: 'geojson', data: EMPTY_ROUTE });
@@ -516,6 +558,57 @@ export function MapView() {
     if (hoverPoint) hoverMarkerRef.current.setLngLat(hoverPoint).addTo(map);
     else hoverMarkerRef.current.remove();
   }, [hoverPoint]);
+
+  // the live fix, mirrored on the map from the same channel the bar listens to
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    for (const layer of ['follow-accuracy', 'follow-dot']) {
+      map.setLayoutProperty(layer, 'visibility', following ? 'visible' : 'none');
+    }
+    if (!following) {
+      (map.getSource(FOLLOW_SOURCE) as GeoJSONSource | undefined)?.setData(EMPTY_ROUTE);
+      return;
+    }
+    const off = onFollowFix(fix => {
+      (map.getSource(FOLLOW_SOURCE) as GeoJSONSource | undefined)?.setData({
+        type: 'Feature',
+        properties: { accuracy: Math.max(fix.accuracyM, 5) },
+        geometry: { type: 'Point', coordinates: fix.position },
+      });
+    });
+    return off;
+  }, [following, mapReady]);
+
+  // the searched spot, as a pin that adds itself to the route when tapped
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !searchPin) {
+      searchPinRef.current?.remove();
+      searchPinRef.current = null;
+      return;
+    }
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'search-pin';
+    el.title = tNow('add_to_route');
+    el.setAttribute('aria-label', tNow('add_to_route'));
+    // the glyph is counter-rotated inside the teardrop: a tilted plus reads as a cross, which
+    // would promise the opposite of what the button does
+    const glyph = document.createElement('span');
+    glyph.textContent = '+';
+    el.appendChild(glyph);
+    el.addEventListener('click', () => {
+      usePlanner.getState().addAnchor(searchPin);
+      usePlanner.getState().setSearchPin(null);
+    });
+    searchPinRef.current?.remove();
+    searchPinRef.current = new Marker({ element: el, anchor: 'bottom' }).setLngLat(searchPin).addTo(map);
+    return () => {
+      searchPinRef.current?.remove();
+      searchPinRef.current = null;
+    };
+  }, [searchPin]);
 
   // mapReady matters: a shared link sets flyTo before the style finishes loading, and the
   // request would otherwise be dropped for good

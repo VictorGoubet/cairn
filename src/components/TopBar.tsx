@@ -107,6 +107,19 @@ export function TopBar() {
         <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="brand-logo" />
         <span className="brand-name">cairn</span>
       </a>
+      <a
+        className="repo-link"
+        href="https://github.com/VictorGoubet/cairn"
+        target="_blank"
+        rel="noreferrer"
+        title={t('source_code')}
+        aria-label={t('source_code')}
+      >
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 0a8 8 0 0 0-2.5 15.6c.4.1.5-.2.5-.4v-1.4c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5 0-.5 0-.5.8.1 1.2.8 1.2.8.7 1.2 1.9.9 2.4.7.1-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.2 0-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.5 7.5 0 0 1 4 0c1.5-1 2.2-.8 2.2-.8.5 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.2 0 3.1-1.9 3.8-3.7 4 .3.3.6.8.6 1.6v2.4c0 .2.1.5.6.4A8 8 0 0 0 8 0z" />
+        </svg>
+        <span className="visually-hidden">{t('source_code')}</span>
+      </a>
       <SearchBox />
 
       {isMobile && (

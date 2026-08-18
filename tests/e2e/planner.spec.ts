@@ -532,6 +532,52 @@ test.describe('importing gpx', () => {
   });
 });
 
+test.describe('follow mode', () => {
+  test('the bar tracks the position along the route and warns when off it', async ({ page, context }) => {
+    await context.grantPermissions(['geolocation']);
+    await openPlanner(page);
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 1);
+    // a point on the trace, and one clearly beside it, both read from the routed geometry
+    const { onTrace, aside } = await page.evaluate(() => {
+      const coords = (window as unknown as TestHandles).__planner.getState().legs[0].leg?.coords ?? [];
+      const mid = coords[Math.floor(coords.length / 2)];
+      return { onTrace: { longitude: mid[0], latitude: mid[1] }, aside: { longitude: mid[0], latitude: mid[1] + 0.005 } };
+    });
+
+    await context.setGeolocation(onTrace);
+    await page.locator('[data-control="follow"]').click();
+    const bar = page.locator('[data-control="follow-bar"]');
+    await expect(bar).toBeVisible();
+    // a real reading, not the "permission denied" message (whose text also contains an "m")
+    await expect(bar).toContainText(/Prochain point|Next point/);
+    await expect(bar).toContainText(/\d[\d.]*\s?(km|m)\b/);
+    await expect(bar).not.toContainText(/Hors|Off route/);
+
+    // 550 m off the trail: the bar says so instead of pretending
+    await context.setGeolocation(aside);
+    await expect(bar).toContainText(/Hors|Off route/, { timeout: 20_000 });
+
+    await bar.locator('.follow-stop').click();
+    await expect(bar).toBeHidden();
+  });
+
+  test('following and the flyover never run at once', async ({ page, context }) => {
+    await context.grantPermissions(['geolocation']);
+    await context.setGeolocation({ longitude: CEILLAC[0], latitude: CEILLAC[1] });
+    await openPlanner(page);
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 1);
+
+    await page.locator('[data-control="follow"]').click();
+    await expect(page.locator('[data-control="follow-bar"]')).toBeVisible();
+    await page.locator('[data-control="flyover"]').click();
+    await expect(page.locator('[data-control="follow-bar"]')).toBeHidden();
+  });
+});
+
 test.describe('search as a route builder', () => {
   test('typed coordinates become a route point, twice over', async ({ page }) => {
     await openPlanner(page);
