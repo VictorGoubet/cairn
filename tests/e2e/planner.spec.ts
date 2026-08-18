@@ -812,6 +812,32 @@ test.describe('refuges and water points', () => {
     expect(categories).toContain('water');
   });
 
+  test('town fountains come from OSM, where refuges.info knows nothing', async ({ page }) => {
+    await openPlanner(page);
+    // the bois de Vincennes: zero refuges.info points, dozens of OSM fountains
+    await page.evaluate(() => {
+      (window as unknown as TestHandles).__map.jumpTo({ center: [2.43, 48.83], zoom: 13 });
+    });
+    await page.locator('[data-control="options"]').click();
+    await page
+      .locator('.option-row', { hasText: /Refuges & points d'eau|Huts & water points/ })
+      .locator('input[type="checkbox"]')
+      .check();
+    await page.keyboard.press('Escape');
+
+    const categories = await page.waitForFunction(
+      () => {
+        const found = (window as unknown as TestHandles).__map.queryRenderedFeatures({
+          layers: ['overlay-refuges'],
+        }) as { properties?: { cat?: string } }[];
+        return found.length > 0 ? found.map(f => f.properties?.cat) : false;
+      },
+      null,
+      { timeout: 30_000 },
+    );
+    expect((await categories.jsonValue()) as string[]).toContain('water');
+  });
+
   test('switched on over a wide view, the overlay says "zoom in" instead of nothing', async ({ page }) => {
     await openPlanner(page);
     await page.evaluate(() => {

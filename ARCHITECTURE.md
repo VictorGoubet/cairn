@@ -166,6 +166,10 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   failing cell yields an empty list so the map survives, and warns so the failure is findable.
   Below the overlay's zoom floor a `.zoom-hint` pill says "zoom in": switched on over a wide
   view, an empty layer reads as broken rather than as "come closer".
+- **Water points come from two sources** (`refugesInfo.ts` + `drinkingWater.ts`): refuges.info
+  knows the springs of the mountains but holds zero points over a city, where OSM maps every
+  fountain (`amenity=drinking_water`, private taps filtered out). Both land in the same layer
+  and popup shape; each paints as soon as it answers, so a slow Overpass never delays the huts.
 - **refuges.info answers 200 with a plain-text error** when a parameter is wrong (`Error : no
   valid type : all`), so `res.ok` proves nothing: the body is checked for `{` before parsing.
   `all` belongs to `nb_points`, not `type_points`, which takes numeric type ids; passing a word

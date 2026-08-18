@@ -20,6 +20,7 @@ import {
   SLOPES_TILES,
   TERRARIUM_TILES,
 } from '../config/layers';
+import { fetchDrinkingWater } from '../lib/drinkingWater';
 import { FLYOVER_EXAGGERATION, type FlyoverPoi, startFlyover } from '../lib/flyover';
 import { onFollowFix } from '../lib/follow';
 import { cumulativeDistancesM, haversineM, kmMarkerPoints, type LonLatEle, nearestIndex } from '../lib/geo';
@@ -205,7 +206,11 @@ export function MapView() {
           },
           'route-casing',
         );
-        map.addSource(REFUGES_SOURCE, { type: 'geojson', data: EMPTY_ROUTE, attribution: REFUGES_ATTRIBUTION });
+        map.addSource(REFUGES_SOURCE, {
+          type: 'geojson',
+          data: EMPTY_ROUTE,
+          attribution: `${REFUGES_ATTRIBUTION} | © OpenStreetMap`,
+        });
         for (const cat of Object.keys(REFUGE_CATEGORY_EMOJI) as RefugeCategory[]) {
           map.addImage(`refuge-${cat}`, refugeBadgeImage(cat), { pixelRatio: 2 });
         }
@@ -791,10 +796,27 @@ async function refreshPoiOverlays(map: MapLibreMap, hidden: boolean, refuges: bo
     }
   }
   if (refuges) {
-    const features = zoom >= REFUGES_MIN_ZOOM ? await fetchRefugePoints(bounds) : [];
-    if (token === poiRefreshToken) {
-      (map.getSource(REFUGES_SOURCE) as GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features });
-    }
+    // two sources, one layer: refuges.info knows the mountains, OSM knows the town fountains.
+    // Each paints as soon as it lands, so a slow overpass never holds the huts hostage
+    const sources = zoom >= REFUGES_MIN_ZOOM ? [fetchRefugePoints(bounds), fetchDrinkingWater(bounds)] : [];
+    const landed: GeoJSON.Feature[] = [];
+    const paint = () => {
+      if (token === poiRefreshToken) {
+        (map.getSource(REFUGES_SOURCE) as GeoJSONSource | undefined)?.setData({
+          type: 'FeatureCollection',
+          features: landed,
+        });
+      }
+    };
+    if (sources.length === 0) paint();
+    await Promise.all(
+      sources.map(fetching =>
+        fetching.then(features => {
+          landed.push(...features);
+          paint();
+        }),
+      ),
+    );
   }
 }
 
