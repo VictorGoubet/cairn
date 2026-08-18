@@ -135,6 +135,13 @@ test.describe('phone layout', () => {
 
     await tapAt(page, CEILLAC);
     await expect(page.locator('.topbar-sheet.open')).toHaveCount(0);
+
+    // and the toggle itself closes what it opened: its own tap must not count as "outside",
+    // or the close and the toggle cancel out and the menu looks stuck open
+    await page.locator('.menu-toggle').tap();
+    await expect(page.locator('.topbar-sheet.open')).toBeVisible();
+    await page.locator('.menu-toggle').tap();
+    await expect(page.locator('.topbar-sheet.open')).toHaveCount(0);
   });
 });
 

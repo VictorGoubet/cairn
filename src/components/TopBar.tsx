@@ -27,7 +27,8 @@ export function TopBar() {
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
-  useClickOutside(actionsRef, () => setMenuOpen(false), isMobile && menuOpen);
+  const menuToggleRef = useRef<HTMLButtonElement>(null);
+  useClickOutside([actionsRef, menuToggleRef], () => setMenuOpen(false), isMobile && menuOpen);
   useEscapeKey(() => setMenuOpen(false), isMobile && menuOpen);
   const lang = usePlanner(s => s.lang);
   const anchors = usePlanner(s => s.anchors);
@@ -140,6 +141,7 @@ export function TopBar() {
       {isMobile && (
         <button
           type="button"
+          ref={menuToggleRef}
           className={menuOpen ? 'menu-toggle on' : 'menu-toggle'}
           aria-label={t('actions')}
           aria-expanded={menuOpen}
