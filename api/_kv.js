@@ -10,8 +10,12 @@
  * the project's own typescript, and this repo runs a version its function builder cannot drive.
  */
 
+import { createHash } from 'node:crypto';
+
 /** a shared link stays alive a year, long enough for a season of hikes */
 const TTL_S = 60 * 60 * 24 * 365;
+/** 40 bits of route hash: short enough to read out, far past collision range for one hiker */
+const ID_CHARS = 10;
 
 /**
  * @typedef {object} ShareRecord
@@ -49,19 +53,33 @@ export async function readShare(id) {
 }
 
 /**
- * Stores a share record under a fresh identifier.
+ * Stores a share record under the identifier of its own content.
+ *
+ * The id is a hash of the route, not a random string: sharing the same itinerary twice overwrites
+ * one record instead of filling the store with duplicates, and hands back the same link. The
+ * write refreshes the expiry, so a route that keeps being shared keeps living.
  *
  * @param {ShareRecord} record route, name, description and thumbnail.
  * @returns {Promise<string | null>} the identifier to put in the link, or null when the store refused.
  */
 export async function writeShare(record) {
-  const id = crypto.randomUUID().replace(/-/g, '').slice(0, 10);
+  const id = shareId(record.payload);
   const res = await fetch(`${endpoint()}/set/${key(id)}?EX=${TTL_S}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token()}` },
     body: JSON.stringify(record),
   });
   return res.ok ? id : null;
+}
+
+/**
+ * The identifier a route gets: the same itinerary always lands on the same one.
+ *
+ * @param {string} payload encoded route.
+ * @returns {string}
+ */
+export function shareId(payload) {
+  return createHash('sha256').update(payload).digest('hex').slice(0, ID_CHARS);
 }
 
 /**

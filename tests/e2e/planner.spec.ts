@@ -846,6 +846,13 @@ test.describe('sharing a link', () => {
     expect(posted[0]?.payload?.length).toBeGreaterThan(10);
     expect(posted[0]?.image?.length).toBeGreaterThan(5000);
     expect(posted[0]?.description).toMatch(/km/);
+
+    // sharing the same route again reuses the link instead of storing a second copy of it
+    await page.locator('.topbar .menu-wrap button', { hasText: /Partager|Share/ }).click();
+    await page.locator('.share-menu button').first().click();
+    await expect(page.locator('.topbar .menu-wrap button').first()).toContainText(/copié|copied/i);
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/s\/abc1234567$/);
+    expect(posted).toHaveLength(1);
   });
 
   test('falls back to the self-contained link when no store answers', async ({ page }) => {

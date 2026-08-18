@@ -141,6 +141,10 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   composition, not the studio tile shrunk, and draws no map tile so link creation is instant.
   Every step degrades: no key-value store configured, no network, no canvas, and the copied link
   is the self-contained long one.
+- **A share id is a hash of the route, never a random string** (`shareId` in `api/_kv.js`): the
+  same itinerary shared twice overwrites one record and hands back the same link, instead of
+  filling the store with copies of a 40 kB tile. The client also remembers the last link it got,
+  so a second click on an untouched route renders and uploads nothing at all.
 - **Adaptive 3D exaggeration** (`MapView.tsx`): classic cartography rule (Imhof), flat
   terrain needs 2-3x, alpine reads at ~1x. On map idle, sample a viewport grid via
   `queryTerrainElevation` (zero network) and target relief ≈ 5% of viewport width,

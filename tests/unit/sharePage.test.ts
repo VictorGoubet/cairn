@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { readShare, validId } from '../../api/_kv.js';
+import { readShare, shareId, validId } from '../../api/_kv.js';
 import { sharePage } from '../../api/s.js';
 
 /** the very page vercel serves, so the test breaks if its head stops matching the injection */
@@ -48,6 +48,17 @@ describe('sharePage', () => {
 
   it('sends a visitor home rather than nowhere when the link has no usable id', () => {
     expect(sharePage(null, '../secret', TITLE, DESCRIPTION, IMAGE, PAGE_URL)).toContain('content="0;url=/"');
+  });
+});
+
+describe('shareId', () => {
+  it('gives the same itinerary the same link, so sharing twice stores one record', () => {
+    expect(shareId('payload-of-a-route')).toBe(shareId('payload-of-a-route'));
+    expect(shareId('payload-of-a-route')).not.toBe(shareId('payload-of-another-route'));
+  });
+
+  it('produces an id the routes accept', () => {
+    expect(validId(shareId('payload-of-a-route'))).toBe(true);
   });
 });
 

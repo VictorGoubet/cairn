@@ -30,6 +30,9 @@ const PRESETS: readonly RoutingPreset[] = ['balanced', 'avoid_roads', 'easy_up',
 
 type SharedPoint = [number, number, string, string];
 
+/** the last link handed out, so an unchanged route is not uploaded twice */
+let lastShare: { data: string; url: string } | null = null;
+
 interface SharePayload {
   n: string;
   p: RoutingPreset;
@@ -63,6 +66,9 @@ export async function buildPreviewableShareUrl(): Promise<string> {
   const { currentRouteName, legs } = usePlanner.getState();
   const coords = routeCoords(legs);
   if (coords.length < 2) return long;
+  // clicking share twice on an untouched route: the link is already known, and rendering a tile
+  // to upload it again would only cost a round trip
+  if (lastShare?.data === data) return lastShare.url;
   try {
     const res = await fetch('/api/share', {
       method: 'POST',
@@ -76,7 +82,10 @@ export async function buildPreviewableShareUrl(): Promise<string> {
     });
     if (!res.ok) return long;
     const { id } = (await res.json()) as { id?: string };
-    return id ? `${location.origin}${SHORT_PREFIX}${id}` : long;
+    if (!id) return long;
+    const url = `${location.origin}${SHORT_PREFIX}${id}`;
+    lastShare = { data, url };
+    return url;
   } catch {
     // no store, no network, nothing rendered: the long link says the same thing
     return long;
