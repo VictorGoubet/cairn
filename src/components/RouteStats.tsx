@@ -19,6 +19,7 @@ export function RouteStats() {
   const legs = usePlanner(s => s.legs);
   const currentRouteName = usePlanner(s => s.currentRouteName);
   const [saveOpen, setSaveOpen] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [saveName, setSaveName] = useState('');
   const saveWrapRef = useRef<HTMLDivElement>(null);
   useClickOutside(saveWrapRef, () => setSaveOpen(false), saveOpen);
@@ -37,7 +38,11 @@ export function RouteStats() {
     const name = saveName.trim();
     if (!name) return;
     track('save-route', { distanceKm: Math.round(routeDistanceM(legs) / 1000) });
-    usePlanner.getState().saveCurrentRoute(name);
+    // the celebration only follows a real save: a full storage shows its error, not a checkmark
+    if (usePlanner.getState().saveCurrentRoute(name)) {
+      setJustSaved(true);
+      window.setTimeout(() => setJustSaved(false), 2200);
+    }
     setSaveOpen(false);
   }
 
@@ -52,8 +57,30 @@ export function RouteStats() {
         <span className="stat-value">{hasRoute ? `${Math.round(gainM)} m` : '-'}</span>
       </div>
       <div className="save-wrap" ref={saveWrapRef}>
-        <button type="button" className="save-btn" title={t('save_title')} disabled={!hasRoute} onClick={openSave}>
-          {t('save')}
+        <button
+          type="button"
+          className={justSaved ? 'save-btn saved' : 'save-btn'}
+          title={t('save_title')}
+          disabled={!hasRoute}
+          onClick={openSave}
+        >
+          {justSaved ? (
+            <>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <path className="save-check" d="m5 12.5 5 5L19 7" />
+              </svg>
+              {t('saved')}
+            </>
+          ) : (
+            t('save')
+          )}
         </button>
         {saveOpen && (
           <div className="save-pop">

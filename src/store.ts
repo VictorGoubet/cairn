@@ -174,7 +174,7 @@ interface PlannerState {
   setStartDate: (date: string | null) => void;
   updateEditingPoint: (kind: PointKind, name: string) => void;
   removeEditingPoint: () => void;
-  saveCurrentRoute: (name: string) => void;
+  saveCurrentRoute: (name: string) => boolean;
   loadRoute: (id: string) => void;
   deleteRoute: (id: string) => void;
   toggleRoutesPanel: () => void;
@@ -819,7 +819,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
     saveCurrentRoute: name => {
       const { anchors, legs, offRoutePoints, currentRouteId, savedRoutes } = get();
       const coords = routeCoords(legs);
-      if (coords.length < 2) return;
+      if (coords.length < 2) return false;
       const route: SavedRoute = {
         id: currentRouteId ?? crypto.randomUUID(),
         name,
@@ -833,9 +833,10 @@ export const usePlanner = create<PlannerState>((set, get) => {
       const routes = [route, ...savedRoutes.filter(r => r.id !== route.id)];
       if (!persistRoutes(routes)) {
         set({ error: 'err_storage' });
-        return;
+        return false;
       }
       set({ savedRoutes: routes, currentRouteId: route.id, currentRouteName: name });
+      return true;
     },
 
     loadRoute: id => {

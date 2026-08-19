@@ -1268,6 +1268,47 @@ body {
   white-space: nowrap;
 }
 
+/* saved: the button turns green, pops once, and the checkmark draws itself */
+.save-btn.saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--start);
+  border-color: var(--start);
+  animation: save-pop 0.35s ease;
+}
+
+.save-btn.saved svg {
+  width: 15px;
+  height: 15px;
+}
+
+.save-btn.saved .save-check {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: save-check-draw 0.45s ease-out 0.1s forwards;
+}
+
+@keyframes save-pop {
+  0% {
+    transform: scale(1);
+  }
+
+  45% {
+    transform: scale(1.14);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes save-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 /* --- qr handoff --- */
 
 .qr-panel {

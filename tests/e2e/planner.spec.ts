@@ -193,6 +193,10 @@ test.describe('saving without an account', () => {
     await page.locator('.save-btn').click();
     await page.locator('.save-pop input').fill('Tour du Mélezet');
     await page.locator('.save-pop .primary').click();
+    // the button says it out loud for a couple of seconds, then goes back to work
+    await expect(page.locator('.save-btn.saved')).toBeVisible();
+    await expect(page.locator('.save-btn.saved')).toContainText(/Enregistré|Saved/);
+    await expect(page.locator('.save-btn.saved')).toBeHidden({ timeout: 4_000 });
     await expect(page.locator('.routes-wrap > button')).toContainText('(1)');
 
     await page.reload();
