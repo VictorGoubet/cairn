@@ -26,6 +26,7 @@ import { DEFAULT_PROFILE, type HikerProfile } from './lib/hikingTime';
 import type { MsgKey } from './lib/i18n';
 import { detectLang, type Lang, persistLang } from './lib/lang';
 import type { PointKind } from './lib/points';
+import { clearProgress } from './lib/routeProgress';
 import { spliceIntoTrace } from './lib/routeSplice';
 import { loadDraft, loadProfile, loadRoutes, persistDraft, persistProfile, persistRoutes } from './lib/storage';
 
@@ -259,7 +260,12 @@ export const usePlanner = create<PlannerState>((set, get) => {
       return [from[0] + t * (to[0] - from[0]), from[1] + t * (to[1] - from[1])];
     });
     const coords = await sampleElevations(points)
-      .then(eles => points.map((p, i) => [p[0], p[1], Math.round(eles[i])] as LonLatEle))
+      .then(eles => {
+        // a throttled tile server answers zeros point by point instead of throwing: a flat-zero
+        // profile in the mountains is a failure wearing a success suit
+        if (eles.every(e => Math.abs(e) < 0.5)) throw new Error('dem returned no relief');
+        return points.map((p, i) => [p[0], p[1], Math.round(eles[i])] as LonLatEle);
+      })
       .catch(() => elevationLine(from, to, sampling))
       .catch(() => straightLeg(from, to).coords);
     return { coords, distanceM };
@@ -901,9 +907,15 @@ export const usePlanner = create<PlannerState>((set, get) => {
     // the two playbacks both drive the camera: opening one closes the other
     toggleFlyover: () =>
       set(s => ({ flyover: !s.flyover && routeCoords(s.legs).length >= 2, flyoverPaused: false, following: false })),
-    stopFlyover: () => set({ flyover: false, flyoverPaused: false }),
+    stopFlyover: () => {
+      clearProgress();
+      set({ flyover: false, flyoverPaused: false });
+    },
     toggleFollow: () => set(s => ({ following: !s.following && routeCoords(s.legs).length >= 2, flyover: false })),
-    stopFollow: () => set({ following: false }),
+    stopFollow: () => {
+      clearProgress();
+      set({ following: false });
+    },
 
     setProfile: profile => {
       persistProfile(profile);

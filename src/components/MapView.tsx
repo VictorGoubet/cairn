@@ -485,9 +485,11 @@ export function MapView() {
     anchorMarkersRef.current = anchors.map((anchor, index) => {
       const isStart = index === 0;
       const isEnd = index === anchors.length - 1 && anchors.length > 1;
+      const loop = (isStart || isEnd) && isClosedRoute(anchors);
       const el =
         anchor.kind === 'checkpoint'
-          ? checkpointElement(isStart, isEnd, (isStart || isEnd) && isClosedRoute(anchors))
+          ? // on a loop the two ends share the spot: one bicolor flag, and a plain dot under it
+            checkpointElement(isStart, isEnd && !loop, isStart && loop)
           : pointElement(anchor.kind, anchor.name);
       attachEditOnClick(el, anchor.id);
       // a flag plants its pole on the point; a dot sits centered on it

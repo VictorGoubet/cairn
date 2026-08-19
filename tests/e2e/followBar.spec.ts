@@ -28,6 +28,24 @@ test('the follow bar prices every stretch up and down, readable on a phone', asy
 
   await page.locator('[data-control="follow"]').tap();
   await expect(page.locator('.follow-bar .follow-value').first()).toBeVisible({ timeout: 20_000 });
+  // the live position also lands on the elevation chart: open the sheet and look for the dot
+  await page.locator('.sheet-grip').tap();
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const dot = document.querySelector<SVGGElement>('.viz-flyover-dot');
+          return dot ? dot.style.display !== 'none' : false;
+        }),
+      { timeout: 10_000 },
+    )
+    .toBe(true);
+  await page.screenshot({
+    path: '/private/tmp/claude-502/-Users-victor-goubet-Documents-code-hai/20284d64-0627-46bd-b74c-e5464e104b6a/scratchpad/follow-chart.png',
+  });
+  await page.locator('.sheet-grip').tap();
+  await page.locator('.sheet-grip').tap();
+
   const texts = await page.locator('.follow-value').allTextContents();
   // every row prices its stretch in climb AND descent, and tonight's camp is not repeated as
   // "next point" when it is the very next point

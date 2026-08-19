@@ -38,6 +38,7 @@ export function ProfileChart({
 }) {
   const setHoverPoint = usePlanner(s => s.setHoverPoint);
   const flyover = usePlanner(s => s.flyover);
+  const following = usePlanner(s => s.following);
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 600, h: 130 });
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -150,11 +151,12 @@ export function ProfileChart({
     return () => el.removeEventListener('wheel', onWheel);
   }, [totalM]);
 
-  // the flying dot mirrored on the profile, moved imperatively: a React render per camera
-  // frame would reconcile the whole SVG sixty times a second for one moving circle
+  // the flyover's dot and the hiker's live position, mirrored on the profile and moved
+  // imperatively: a React render per camera frame or GPS fix would reconcile the whole SVG
+  // for one moving circle
   useEffect(() => {
     const marker = progressRef.current;
-    if (!flyover || !marker) return;
+    if ((!flyover && !following) || !marker) return;
     const { x: sx, y: sy } = makeScales(size.w, size.h, viewFromM, viewToM, eleMin, eleMax);
     let prevM: number | null = null;
     marker.style.display = 'none';
@@ -182,7 +184,7 @@ export function ProfileChart({
       off();
       marker.style.display = 'none';
     };
-  }, [flyover, dists, coords, pois, size.w, size.h, viewFromM, viewToM, eleMin, eleMax]);
+  }, [flyover, following, dists, coords, pois, size.w, size.h, viewFromM, viewToM, eleMin, eleMax]);
 
   function eventDistM(e: { clientX: number; currentTarget: Element }): number {
     const rect = e.currentTarget.getBoundingClientRect();

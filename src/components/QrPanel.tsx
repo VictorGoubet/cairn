@@ -12,6 +12,7 @@ export function QrPanel({ onClose }: { onClose: () => void }) {
   const t = useT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   useEscapeKey(onClose, true);
 
   useEffect(() => {
@@ -26,10 +27,11 @@ export function QrPanel({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     if (!url || !canvasRef.current) return;
-    // the long fallback link holds the whole route: only version-capped codes stay scannable
-    void QRCode.toCanvas(canvasRef.current, url, { width: 240, margin: 1, errorCorrectionLevel: 'M' }).catch(() => {
-      setUrl(null);
-    });
+    // the long fallback link holds the whole route, and a QR code tops out near 3 kB: a trek
+    // too big to encode gets an honest message, not an eternal spinner
+    void QRCode.toCanvas(canvasRef.current, url, { width: 240, margin: 1, errorCorrectionLevel: 'M' }).catch(() =>
+      setFailed(true),
+    );
   }, [url]);
 
   return (
@@ -43,8 +45,10 @@ export function QrPanel({ onClose }: { onClose: () => void }) {
             ×
           </button>
         </div>
-        <canvas ref={canvasRef} className="qr-canvas" data-control="qr-canvas" />
-        <p className="side-hint">{url === null ? t('computing') : t('share_qr_hint')}</p>
+        {!failed && <canvas ref={canvasRef} className="qr-canvas" data-control="qr-canvas" />}
+        <p className="side-hint">
+          {failed ? t('share_qr_failed') : url === null ? t('computing') : t('share_qr_hint')}
+        </p>
       </div>
     </div>
   );

@@ -729,13 +729,15 @@ body {
 .anchor-list .wp-name {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .wp-remaining {
-  display: block;
+  flex-basis: 100%;
   margin: 1px 0 0 23px;
   font-size: 10.5px;
   color: var(--ink-2);
+  white-space: nowrap;
 }
 
 .wp-name:hover {
@@ -1051,8 +1053,8 @@ body {
   position: absolute;
   top: 10px;
   right: 52px;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1073,8 +1075,8 @@ body {
 }
 
 .share-panel .route-offline svg {
-  width: 22px;
-  height: 22px;
+  width: 17px;
+  height: 17px;
 }
 
 .share-panel .route-offline.saved {

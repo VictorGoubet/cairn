@@ -10,13 +10,24 @@
 const PROGRESS_EVENT = 'cairn:route-progress';
 const SCRUB_EVENT = 'cairn:route-scrub';
 
+let lastProgressM: number | null = null;
+
 /** Publishes the distance travelled along the route, in metres. */
 export function emitProgress(distM: number): void {
+  lastProgressM = distM;
   window.dispatchEvent(new CustomEvent<number>(PROGRESS_EVENT, { detail: distM }));
+}
+
+/** Forgets the last position, so a later subscriber starts blank. */
+export function clearProgress(): void {
+  lastProgressM = null;
 }
 
 /**
  * Subscribes to the position along the route.
+ *
+ * The last published position is replayed immediately: a chart opened between two GPS fixes
+ * would otherwise sit empty until the hiker moves.
  *
  * Args:
  *   listener: receives the distance travelled, in metres.
@@ -27,6 +38,7 @@ export function emitProgress(distM: number): void {
 export function onProgress(listener: (distM: number) => void): () => void {
   const handler = (e: Event) => listener((e as CustomEvent<number>).detail);
   window.addEventListener(PROGRESS_EVENT, handler);
+  if (lastProgressM !== null) listener(lastProgressM);
   return () => window.removeEventListener(PROGRESS_EVENT, handler);
 }
 

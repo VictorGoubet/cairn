@@ -170,7 +170,9 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   `queryTerrainElevation` (zero network) and target relief ≈ 5% of viewport width,
   clamped to [1.1, 3].
 - **Client-side elevations** (`demElevation.ts`): Terrarium tiles at z13, bilinear
-  interpolation, LRU of 64 decoded tiles. No calls to the IGN altimetry API except for
+  interpolation, LRU of 64 decoded tiles. A throttled tile server answers zeros point by point
+  instead of throwing, so a flat-zero profile is treated as a failure and manual legs fall back
+  to the IGN altimetry service. No calls to the IGN altimetry API except for
   manual legs' profiles (`elevation.ts`).
 - **Overlay data** (refuges.info z9, fountains z10) is fetched per tile-grid cell with an LRU
   cache, refreshed on `moveend`, only while the overlay is on. A failing cell yields an empty
@@ -384,8 +386,9 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   - a transient geolocation error keeps the last fix on screen; the message only replaces it
     when there is nothing to show.
   - following and the flyover are exclusive: both drive the camera.
-- **`lib/routeProgress.ts` is the shared "where along the route" channel**, published by the
-  flyover (a virtual position) and by follow mode (a real fix), consumed by the profile chart.
+- **`lib/routeProgress.ts` is the shared "where along the route" channel** (flyover and follow
+  both publish, the chart draws). The last position replays to new subscribers, so a chart
+  opened between two GPS fixes starts where the hiker is.
 - **`lib/mapHandle.ts` publishes the one map instance.** Panels outside `MapView` need to read
   the viewport; mirroring it into the store would wake the draft writer on every pan.
 - "My routes" opens as a modal gallery: one card per saved route, its thumbnail drawn by the
