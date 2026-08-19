@@ -132,8 +132,10 @@ function OfflineButton({ route }: { route: SavedRoute }) {
     if (percent !== null) return;
     setPercent(0);
     try {
-      await downloadRouteOffline(routeCoords(route.legs), ({ done, total }) =>
-        setPercent(Math.round((done / total) * 100)),
+      await downloadRouteOffline(
+        routeCoords(route.legs),
+        ({ done, total }) => setPercent(Math.round((done / total) * 100)),
+        usePlanner.getState().baseLayerId,
       );
       markOfflineSaved(route.id);
       setSaved(true);

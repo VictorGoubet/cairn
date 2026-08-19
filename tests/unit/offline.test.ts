@@ -23,15 +23,29 @@ describe('corridorTiles', () => {
 });
 
 describe('corridorUrls', () => {
-  it('bundles the map chrome, the tiles and the poi cells of the live overlays', () => {
-    const urls = corridorUrls(ROUTE);
+  it('bundles the chrome, all four French maps, the pois and the active foreign base', () => {
+    const urls = corridorUrls(ROUTE, 'swisstopo');
     expect(urls.some(u => u.includes('standard.json'))).toBe(true);
     expect(urls.some(u => u.includes('/fonts/'))).toBe(true);
     expect(urls.some(u => u.includes('PLAN.IGN/14/'))).toBe(true);
+    expect(urls.some(u => u.includes('SCAN25TOUR') && u.includes('TILEMATRIX=15'))).toBe(true);
+    expect(urls.some(u => u.includes('ORTHOIMAGERY'))).toBe(true);
+    expect(urls.some(u => u.includes('tile.openstreetmap.org'))).toBe(true);
+    expect(urls.some(u => u.includes('wmts.geo.admin.ch'))).toBe(true);
+    // a base nobody is looking at stays out
+    expect(urls.some(u => u.includes('opentopomap'))).toBe(false);
     expect(urls.some(u => u.includes('refuges.info/api/bbox'))).toBe(true);
     expect(urls.some(u => u.includes('overpass-api.de/api/interpreter?data='))).toBe(true);
-    // an 11 km day stays a light download
-    expect(urls.length).toBeLessThan(400);
     expect(new Set(urls).size).toBe(urls.length);
+  });
+
+  it('keeps a full GR-sized trek under the download cap', () => {
+    // ~160 km with the same density a router produces
+    const gr: LonLatEle[] = Array.from({ length: 2000 }, (_, i) => [6.3 + i * 0.0008, 44.5 + i * 0.0003, 1500]);
+    const urls = corridorUrls(gr);
+    console.log(`gr bundle: ${urls.length} resources`);
+    expect(urls.length).toBeLessThan(12_000);
+    // and a day hike stays a light download
+    expect(corridorUrls(ROUTE).length).toBeLessThan(1200);
   });
 });

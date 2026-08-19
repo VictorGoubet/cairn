@@ -8,7 +8,7 @@
  * tiles would weigh hundreds of megabytes for one hike.
  */
 
-import { PLAN_IGN_STYLE_URL } from '../config/layers';
+import { PLAN_IGN_STYLE_URL, RASTER_BASE_LAYERS } from '../config/layers';
 import { FOUNTAINS_CELL_ZOOM, fountainsCellQuery } from './drinkingWater';
 import type { LonLatEle } from './geo';
 import { OVERPASS_PRIMARY, overpassUrl } from './overpass';
@@ -31,13 +31,25 @@ const FONTSTACKS = [
 ];
 const GLYPH_RANGES = ['0-255', '256-511'];
 
-/** how far off the trace the map stays readable, in degrees (~1.5 km) */
-const CORRIDOR_DEG = 0.015;
+/** margin around the trace (~2 km): losing the path must not mean losing the map */
+const CORRIDOR_DEG = 0.02;
 /** the vector source's native ceiling; deeper zooms overzoom from these tiles */
 const MIN_ZOOM = 6;
 const MAX_ZOOM = 14;
+/** per-layer zoom spans for the raster maps: scan25 is what a hiker actually reads offline,
+ * so it goes one level deeper than the context layers */
+const RASTER_ZOOMS: Record<string, [number, number]> = {
+  scan25: [8, 15],
+  ortho: [10, 14],
+  osm: [8, 14],
+  opentopo: [8, 14],
+  swisstopo: [8, 15],
+  'ngi-be': [8, 15],
+};
+/** the French core every bundle carries; an international base joins when it is the active one */
+const CORE_RASTERS = ['scan25', 'ortho', 'osm'];
 /** a runaway geometry must not eat the quota: past this the download refuses */
-const MAX_TILES = 4000;
+const MAX_TILES = 12_000;
 const CONCURRENCY = 6;
 
 export interface OfflineProgress {
@@ -68,21 +80,23 @@ export function markOfflineSaved(routeId: string): void {
 }
 
 /**
- * Downloads a route's corridor for offline use.
+ * Downloads a route's trek bundle for offline use.
  *
  * Args:
  *   coords: route geometry.
  *   onProgress: called after every fetched resource.
+ *   activeBaseId: the base layer on screen, bundled too when it is not part of the French core.
  *
  * Returns:
- *   How many resources the corridor holds, all fetched (failures are retried once, then let go:
+ *   How many resources the bundle holds, all fetched (failures are retried once, then let go:
  *   a hole in the cache degrades one tile, not the download).
  */
 export async function downloadRouteOffline(
   coords: LonLatEle[],
   onProgress: (progress: OfflineProgress) => void,
+  activeBaseId?: string,
 ): Promise<OfflineProgress> {
-  const urls = corridorUrls(coords);
+  const urls = corridorUrls(coords, activeBaseId);
   if (urls.length > MAX_TILES) throw new Error(`corridor too large: ${urls.length} tiles`);
   const cache = await caches.open(OFFLINE_CACHE);
   let done = 0;
@@ -98,8 +112,8 @@ export async function downloadRouteOffline(
   return { done, total: urls.length };
 }
 
-/** every request the corridor needs, map chrome first so a cancelled download still renders */
-export function corridorUrls(coords: LonLatEle[]): string[] {
+/** every request the bundle needs, map chrome first so a cancelled download still renders */
+export function corridorUrls(coords: LonLatEle[], activeBaseId?: string): string[] {
   const urls = [
     PLAN_IGN_STYLE_URL,
     PLAN_METADATA,
@@ -114,6 +128,18 @@ export function corridorUrls(coords: LonLatEle[]): string[] {
   for (let z = MIN_ZOOM; z <= MAX_ZOOM; z++) {
     for (const [x, y] of corridorTiles(coords, z)) {
       urls.push(PLAN_TILES.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y)));
+    }
+  }
+  // every French base map, plus the active one when the trek lives on a foreign base
+  const layerIds = new Set(CORE_RASTERS);
+  if (activeBaseId && RASTER_ZOOMS[activeBaseId]) layerIds.add(activeBaseId);
+  for (const layer of RASTER_BASE_LAYERS) {
+    if (!layerIds.has(layer.id)) continue;
+    const [zMin, zMax] = RASTER_ZOOMS[layer.id];
+    for (let z = zMin; z <= zMax; z++) {
+      for (const [x, y] of corridorTiles(coords, z)) {
+        urls.push(layer.tiles.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y)));
+      }
     }
   }
   // the same URLs the live overlays request, so the cache answers them offline

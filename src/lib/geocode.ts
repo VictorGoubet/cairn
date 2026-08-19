@@ -3,6 +3,8 @@ import { fetchWithTimeout } from './http';
 import { tNow } from './i18n';
 
 const GEOCODE_URL = 'https://data.geopf.fr/geocodage/search';
+// worldwide fallback (OSM data, no key): the IGN geocoder stops at the French border
+const PHOTON_URL = 'https://photon.komoot.io/api/';
 
 // IGN categories too vague to help tell two homonyms apart
 const GENERIC_CATEGORIES = new Set(['administratif', "zone d'activité ou d'intérêt", "zone d'habitation"]);
@@ -35,6 +37,15 @@ interface RawFeature {
 }
 
 export async function searchPlaces(query: string): Promise<GeocodeResult[]> {
+  const fromIgn = await searchIgn(query).catch(() => [] as GeocodeResult[]);
+  // a thin French answer means the place probably lives beyond the border: ask the world
+  if (fromIgn.length >= 3) return fromIgn;
+  const fromPhoton = await searchPhoton(query).catch(() => [] as GeocodeResult[]);
+  const seen = new Set(fromIgn.map(r => `${r.lon.toFixed(3)},${r.lat.toFixed(3)}`));
+  return [...fromIgn, ...fromPhoton.filter(r => !seen.has(`${r.lon.toFixed(3)},${r.lat.toFixed(3)}`))].slice(0, 6);
+}
+
+async function searchIgn(query: string): Promise<GeocodeResult[]> {
   const url = `${GEOCODE_URL}?q=${encodeURIComponent(query)}&limit=10&index=poi,address`;
   const res = await fetchWithTimeout(url);
   if (!res.ok) throw new Error(`geocodage ${res.status}`);
@@ -65,6 +76,29 @@ export async function searchPlaces(query: string): Promise<GeocodeResult[]> {
     });
   }
   return results.slice(0, 6);
+}
+
+interface PhotonFeature {
+  geometry: { coordinates: [number, number] };
+  properties: { name?: string; city?: string; state?: string; country?: string; osm_value?: string };
+}
+
+async function searchPhoton(query: string): Promise<GeocodeResult[]> {
+  const res = await fetchWithTimeout(`${PHOTON_URL}?q=${encodeURIComponent(query)}&limit=6&lang=fr`);
+  if (!res.ok) throw new Error(`photon ${res.status}`);
+  const data = await res.json();
+  return (data.features as PhotonFeature[]).flatMap(feature => {
+    const p = feature.properties;
+    if (!p.name) return [];
+    return [
+      {
+        name: p.name,
+        detail: [p.osm_value?.replaceAll('_', ' '), p.city, p.state, p.country].filter(Boolean).join(' · '),
+        lon: feature.geometry.coordinates[0],
+        lat: feature.geometry.coordinates[1],
+      },
+    ];
+  });
 }
 
 function first(value: string | string[] | undefined): string | undefined {

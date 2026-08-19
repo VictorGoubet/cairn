@@ -97,6 +97,7 @@ test.describe('offline download', () => {
   test('the routes gallery downloads a corridor into the cache storage', async ({ page }) => {
     // the corridor is fetched for real otherwise: tiny stand-ins keep the test hermetic
     await page.route('**data.geopf.fr/**', route => route.fulfill({ body: 'tile' }));
+    await page.route('**tile.openstreetmap.org/**', route => route.fulfill({ body: 'tile' }));
     await page.route('**refuges.info/**', route =>
       route.fulfill({ contentType: 'application/json', body: '{"features":[]}' }),
     );
@@ -119,14 +120,17 @@ test.describe('offline download', () => {
       const keys = await cache.keys();
       return {
         total: keys.length,
-        tiles: keys.filter(k => k.url.includes('PLAN.IGN/14/')).length,
+        plan: keys.filter(k => k.url.includes('PLAN.IGN/14/')).length,
+        scan25: keys.filter(k => k.url.includes('SCAN25TOUR')).length,
+        ortho: keys.filter(k => k.url.includes('ORTHOIMAGERY')).length,
+        osm: keys.filter(k => k.url.includes('tile.openstreetmap.org')).length,
         pois: keys.filter(k => k.url.includes('refuges.info')).length,
         fountains: keys.filter(k => k.url.includes('overpass-api.de')).length,
       };
     });
-    expect(cached.tiles).toBeGreaterThan(0);
-    expect(cached.pois).toBeGreaterThan(0);
-    expect(cached.fountains).toBeGreaterThan(0);
+    for (const [part, count] of Object.entries(cached)) {
+      expect(count, `${part} missing from the bundle`).toBeGreaterThan(0);
+    }
 
     // the badge survives a reopen: the state lives with the saved routes
     await page.reload();

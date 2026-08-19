@@ -134,6 +134,47 @@ test.describe('map options', () => {
   });
 });
 
+test.describe('international bases', () => {
+  test('swisstopo draws real tiles over Zermatt', async ({ page }) => {
+    await openPlanner(page);
+    await page.evaluate(() => {
+      (window as unknown as TestHandles).__map.jumpTo({ center: [7.74, 46.02], zoom: 13 });
+    });
+    await page.locator('[data-control="layers"]').click();
+    await page.locator('.layer-card', { hasText: /Swisstopo/ }).click();
+    const visibility = await page.evaluate(() =>
+      (window as unknown as TestHandles).__map.getLayoutProperty('swisstopo', 'visibility'),
+    );
+    expect(visibility).toBe('visible');
+    // tiles actually arrive from wmts.geo.admin.ch
+    const gotTile = page.waitForResponse(res => res.url().includes('wmts.geo.admin.ch') && res.ok(), {
+      timeout: 20_000,
+    });
+    await expect(gotTile).resolves.toBeTruthy();
+  });
+
+  test('ngi belgium draws real tiles over the Ardennes', async ({ page }) => {
+    await openPlanner(page);
+    await page.evaluate(() => {
+      (window as unknown as TestHandles).__map.jumpTo({ center: [5.57, 50.35], zoom: 13 });
+    });
+    await page.locator('[data-control="layers"]').click();
+    await page.locator('.layer-card', { hasText: /NGI/ }).click();
+    // a transposed {x}/{y} template would 404 every tile here
+    const gotTile = page.waitForResponse(res => res.url().includes('cartoweb.wmts.ngi.be') && res.ok(), {
+      timeout: 20_000,
+    });
+    await expect(gotTile).resolves.toBeTruthy();
+  });
+
+  test('a place beyond the border is found through the fallback', async ({ page }) => {
+    await openPlanner(page);
+    await page.locator('.search-box input').fill('Zermatt');
+    const row = page.locator('.search-results button, .search-result', { hasText: 'Zermatt' }).first();
+    await expect(row).toBeVisible({ timeout: 15_000 });
+  });
+});
+
 test.describe('point editing', () => {
   test('a point takes a kind and a name, shown on its marker', async ({ page }) => {
     await drawManualRoute(page);

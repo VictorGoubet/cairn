@@ -139,11 +139,14 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   draft), each stage shows its Open-Meteo forecast (`lib/weather.ts`, 16-day horizon, no key).
 - **Offline** (`public/sw.js` + `lib/offline.ts`): the install precaches the shell and its
   hashed assets; tiles and open-data answers cache on use (capped FIFO). The download button on
-  a saved route fills `cairn-offline-v1` (never trimmed, checked first) with the corridor: Plan
-  IGN vector tiles z6-14 (~1.5 km buffer), style/sprite/fonts, refuges.info and fountain cells,
-  reusing the exact URLs the live overlays request (Overpass runs on GET for this). Cache matches
-  use `ignoreVary`: cors answers carry `Vary: Origin` and a crossorigin script's Origin header
-  would never match the precache. Registered in prod only.
+  a saved route fills `cairn-offline-v1` (never trimmed, checked first) with the trek bundle:
+  a ~2 km corridor of every French base map (Plan IGN vector z6-14 with style/sprite/fonts,
+  SCAN25 z8-15, ortho and OSM z8-14) plus the active base when it is a foreign one, and the
+  refuges.info and fountain cells, reusing the exact URLs the live overlays request (Overpass
+  runs on GET for this). Forecasts are network-first with the cached answer as the dead-zone
+  fallback, never cache-first: a forecast ages by the hour. Cache matches use `ignoreVary`:
+  cors answers carry `Vary: Origin` and a crossorigin script's Origin header would never match
+  the precache. Registered in prod only.
 - **QR handoff** (`components/QrPanel.tsx`): the short share link as a code, plan big, scan, go.
 - **Share links** (`src/lib/share.ts`): payload `#r=1.<base64url(deflate-raw(JSON))>`.
   Routed legs travel as anchors only (recomputed on open); frozen legs travel as a polyline
@@ -165,6 +168,10 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   same itinerary shared twice overwrites one record and hands back the same link, instead of
   filling the store with copies of a 40 kB tile. The client also remembers the last link it got,
   so a second click on an untouched route renders and uploads nothing at all.
+- **Beyond France** the IGN layers go blank, so the base picker also carries OpenTopoMap
+  (worldwide) and the national maps of the neighbours (swisstopo, NGI Belgique, whose WMTS is
+  `{z}/{y}/{x}`: row before column). The geocoder falls back to Photon when the IGN answer is
+  thin. Routing (BRouter), DEM (Terrarium) and Overpass were worldwide already.
 - **Adaptive 3D exaggeration** (`MapView.tsx`): classic cartography rule (Imhof), flat
   terrain needs 2-3x, alpine reads at ~1x. On map idle, sample a viewport grid via
   `queryTerrainElevation` (zero network) and target relief ≈ 5% of viewport width,

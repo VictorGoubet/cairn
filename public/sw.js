@@ -29,6 +29,11 @@ const TILE_HOSTS = [
   'overpass-api.de',
   'lz4.overpass-api.de',
   'maps.mail.ru',
+  'wmts.geo.admin.ch',
+  'cartoweb.wmts.ngi.be',
+  'a.tile.opentopomap.org',
+  'b.tile.opentopomap.org',
+  'c.tile.opentopomap.org',
 ];
 
 self.addEventListener('install', event => {
@@ -70,10 +75,29 @@ self.addEventListener('fetch', event => {
     event.respondWith(cacheFirst(ASSET_CACHE, request, Number.POSITIVE_INFINITY));
     return;
   }
+  // a forecast ages by the hour: network first, and the cached one only in a dead zone
+  if (url.host === 'api.open-meteo.com') {
+    event.respondWith(freshFirst(request));
+    return;
+  }
   if (TILE_HOSTS.includes(url.host)) {
     event.respondWith(cacheFirst(TILE_CACHE, request, TILE_MAX_ENTRIES));
   }
 });
+
+async function freshFirst(request) {
+  const cache = await caches.open(TILE_CACHE);
+  try {
+    const fresh = await fetch(request);
+    if (fresh.ok) {
+      await cache.put(request, fresh.clone());
+      trim(cache, TILE_MAX_ENTRIES);
+    }
+    return fresh;
+  } catch {
+    return (await cache.match(request, { ignoreVary: true })) ?? Response.error();
+  }
+}
 
 async function networkFirst(request) {
   const cache = await caches.open(SHELL_CACHE);

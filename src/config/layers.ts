@@ -49,6 +49,29 @@ export const RASTER_BASE_LAYERS: RasterLayer[] = [
     maxzoom: 19,
     attribution: '© OpenStreetMap contributors',
   },
+  // the world beyond the IGN coverage: a global topo, and the national maps of the neighbours
+  {
+    id: 'opentopo',
+    labelKey: 'layer_opentopo',
+    tiles: 'https://a.tile.opentopomap.org/{z}/{x}/{y}.png',
+    maxzoom: 16,
+    attribution: '© OpenStreetMap contributors · © OpenTopoMap (CC-BY-SA)',
+  },
+  {
+    id: 'swisstopo',
+    labelKey: 'layer_swisstopo',
+    tiles: 'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg',
+    maxzoom: 18,
+    attribution: '© swisstopo',
+  },
+  {
+    id: 'ngi-be',
+    labelKey: 'layer_ngi_be',
+    // cartoweb follows the WMTS row/col order: {z}/{y}/{x}
+    tiles: 'https://cartoweb.wmts.ngi.be/1.0.0/topo/default/3857/{z}/{y}/{x}.png',
+    maxzoom: 17,
+    attribution: '© NGI/IGN Belgique',
+  },
 ];
 
 export const BASE_LAYER_OPTIONS: { id: string; labelKey: MsgKey }[] = [
@@ -65,13 +88,16 @@ export const FLYOVER_BASE_LAYER = 'ortho';
 export const PLAN_IGN_RASTER_TILES = `${GEOPF_WMTS}&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&FORMAT=image/png`;
 export const ORTHO_RASTER_TILES = `${GEOPF_WMTS}&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&FORMAT=image/jpeg`;
 
-// fixed tile (massif des Bornes, z12) used as the thumbnail for base layers
+// fixed thumbnail tiles at z12: the French massif des Bornes, except for the national maps
+// whose coverage stops at their border
 const THUMB_TILE = { z: 12, x: 2117, y: 1458 };
+const THUMB_TILE_BY_LAYER: Record<string, { z: number; x: number; y: number }> = {
+  swisstopo: { z: 12, x: 2150, y: 1452 },
+  'ngi-be': { z: 12, x: 2105, y: 1385 },
+};
 
 export function layerThumbUrl(id: string): string {
   const template = id === 'plan-ign' ? PLAN_IGN_RASTER_TILES : (RASTER_BASE_LAYERS.find(l => l.id === id)?.tiles ?? '');
-  return template
-    .replace('{z}', String(THUMB_TILE.z))
-    .replace('{x}', String(THUMB_TILE.x))
-    .replace('{y}', String(THUMB_TILE.y));
+  const tile = THUMB_TILE_BY_LAYER[id] ?? THUMB_TILE;
+  return template.replace('{z}', String(tile.z)).replace('{x}', String(tile.x)).replace('{y}', String(tile.y));
 }
