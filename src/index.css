@@ -1309,6 +1309,72 @@ body {
   }
 }
 
+/* --- offline areas --- */
+
+.offline-areas {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.offline-areas h4 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.share-panel .area-download {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px dashed var(--accent-line);
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.share-panel .area-download:disabled {
+  border-style: solid;
+  border-color: var(--border);
+  background: none;
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.area-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.area-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.area-name {
+  font-weight: 600;
+}
+
+.area-meta {
+  color: var(--ink-2);
+  font-size: 11.5px;
+}
+
+.area-list .wp-remove {
+  margin-left: auto;
+}
+
 /* --- qr handoff --- */
 
 .qr-panel {

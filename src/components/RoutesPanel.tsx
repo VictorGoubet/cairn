@@ -6,6 +6,7 @@ import { downloadRouteOffline, markOfflineSaved, offlineSavedAt } from '../lib/o
 import { renderShareImage } from '../lib/shareImage';
 import { useEscapeKey } from '../lib/useEscapeKey';
 import { routeCoords, type SavedRoute, usePlanner } from '../store';
+import { OfflineAreas } from './OfflineAreas';
 
 function close() {
   usePlanner.setState({ showRoutes: false });
@@ -57,6 +58,7 @@ export function RoutesPanel() {
               </li>
             ))}
           </ul>
+          <OfflineAreas />
         </div>
       </div>
     </div>

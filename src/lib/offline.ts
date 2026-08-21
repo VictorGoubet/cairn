@@ -1,11 +1,12 @@
 /**
- * Taking a route into the dead zone: one tap downloads everything its corridor needs into the
- * Cache Storage, where the service worker serves it back when the network is gone.
+ * Taking the map into the dead zone: one tap downloads a bundle into the Cache Storage, where
+ * the service worker serves it back when the network is gone.
  *
- * What goes in: the Plan IGN vector tiles along the route (plus the style, sprite and fonts the
- * map draws them with), the refuges.info cells and the OSM drinking-water cells around it. The
- * route itself already lives in localStorage. What stays out: satellite and 3D relief, whose
- * tiles would weigh hundreds of megabytes for one hike.
+ * Two shapes of bundle, one machinery: a **trek** (the corridor around a saved route) and an
+ * **area** (whatever the screen frames, for the days you head out without an itinerary). Both
+ * carry every base map of the region, the style/sprite/fonts the vector map draws with, and the
+ * refuges.info and fountain cells, at the exact URLs the live overlays request. What stays out:
+ * the 3D relief, whose DEM tiles would weigh hundreds of megabytes.
  */
 
 import { PLAN_IGN_STYLE_URL, RASTER_BASE_LAYERS } from '../config/layers';
@@ -57,6 +58,119 @@ export interface OfflineProgress {
   total: number;
 }
 
+export interface AreaBounds {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}
+
+export interface OfflineArea {
+  id: string;
+  name: string;
+  bounds: AreaBounds;
+  savedAt: string;
+  resources: number;
+}
+
+/** what one bundle resource weighs on average, measured over the tile services we use */
+const AVG_RESOURCE_KB = 24;
+/** past this an area download is refused: the honest answer is "frame a smaller place" */
+const MAX_AREA_RESOURCES = 9000;
+const AREAS_KEY = 'cairn.offline.areas.v1';
+
+/**
+ * What downloading this area would cost, for the button to say so before the tap.
+ *
+ * Args:
+ *   bounds: the framed area.
+ *   activeBaseId: base layer on screen.
+ *
+ * Returns:
+ *   Resource count, rough megabytes, and whether it fits under the cap.
+ */
+export function estimateArea(
+  bounds: AreaBounds,
+  activeBaseId?: string,
+): { resources: number; megabytes: number; tooLarge: boolean } {
+  const resources = areaUrls(bounds, activeBaseId).length;
+  return {
+    resources,
+    megabytes: bundleMegabytes(resources),
+    tooLarge: resources > MAX_AREA_RESOURCES,
+  };
+}
+
+/**
+ * Downloads a framed area for offline use, and remembers it.
+ *
+ * Args:
+ *   bounds: the framed area.
+ *   name: what to call it in the list.
+ *   onProgress: called after every fetched resource.
+ *   activeBaseId: base layer on screen.
+ *
+ * Returns:
+ *   The stored area record.
+ */
+export async function downloadAreaOffline(
+  bounds: AreaBounds,
+  name: string,
+  onProgress: (progress: OfflineProgress) => void,
+  activeBaseId?: string,
+): Promise<OfflineArea> {
+  const urls = areaUrls(bounds, activeBaseId);
+  if (urls.length > MAX_AREA_RESOURCES) throw new Error(`area too large: ${urls.length} resources`);
+  await fetchAll(urls, onProgress);
+  const area: OfflineArea = {
+    id: crypto.randomUUID(),
+    name,
+    bounds,
+    savedAt: new Date().toISOString(),
+    resources: urls.length,
+  };
+  writeAreas([area, ...listOfflineAreas()]);
+  return area;
+}
+
+/** rough weight of a stored bundle, from its resource count */
+export function bundleMegabytes(resources: number): number {
+  return Math.round((resources * AVG_RESOURCE_KB) / 1024);
+}
+
+export function listOfflineAreas(): OfflineArea[] {
+  try {
+    const areas = JSON.parse(localStorage.getItem(AREAS_KEY) ?? '[]');
+    return Array.isArray(areas) ? areas.filter(a => a?.bounds && typeof a.name === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Forgets an area and frees the tiles only it was holding.
+ *
+ * Tiles shared with another downloaded area or with a trek stay: what is still needed by
+ * something else must survive the deletion.
+ */
+export async function deleteOfflineArea(id: string): Promise<void> {
+  const areas = listOfflineAreas();
+  const gone = areas.find(a => a.id === id);
+  writeAreas(areas.filter(a => a.id !== id));
+  if (!gone) return;
+  const stillNeeded = new Set(areas.filter(a => a.id !== id).flatMap(a => areaUrls(a.bounds)));
+  const cache = await caches.open(OFFLINE_CACHE);
+  await Promise.all(areaUrls(gone.bounds).map(url => (stillNeeded.has(url) ? null : cache.delete(url))));
+}
+
+function writeAreas(areas: OfflineArea[]): void {
+  try {
+    localStorage.setItem(AREAS_KEY, JSON.stringify(areas));
+  } catch {
+    // a full storage loses the list, not the cached tiles
+  }
+}
+
 const STATE_KEY = 'cairn.offline.v1';
 
 /** ISO date a route's corridor was downloaded, or null */
@@ -98,6 +212,11 @@ export async function downloadRouteOffline(
 ): Promise<OfflineProgress> {
   const urls = corridorUrls(coords, activeBaseId);
   if (urls.length > MAX_TILES) throw new Error(`corridor too large: ${urls.length} tiles`);
+  return fetchAll(urls, onProgress);
+}
+
+/** fetches every url into the offline cache, a few at a time, reporting as it goes */
+async function fetchAll(urls: string[], onProgress: (progress: OfflineProgress) => void): Promise<OfflineProgress> {
   const cache = await caches.open(OFFLINE_CACHE);
   let done = 0;
   const queue = [...urls];
@@ -112,8 +231,25 @@ export async function downloadRouteOffline(
   return { done, total: urls.length };
 }
 
-/** every request the bundle needs, map chrome first so a cancelled download still renders */
+/** every request a route's corridor needs */
 export function corridorUrls(coords: LonLatEle[], activeBaseId?: string): string[] {
+  return bundleUrls(z => corridorTiles(coords, z), activeBaseId);
+}
+
+/** every request a framed area needs */
+export function areaUrls(bounds: AreaBounds, activeBaseId?: string): string[] {
+  return bundleUrls(z => boundsTiles(bounds, z), activeBaseId);
+}
+
+/**
+ * The bundle for whatever tiles a shape covers, map chrome first so a cancelled download
+ * still renders.
+ *
+ * Args:
+ *   tilesAt: the tiles the shape covers at a given zoom.
+ *   activeBaseId: base layer on screen, bundled when it is not part of the French core.
+ */
+function bundleUrls(tilesAt: (z: number) => [number, number][], activeBaseId?: string): string[] {
   const urls = [
     PLAN_IGN_STYLE_URL,
     PLAN_METADATA,
@@ -126,28 +262,49 @@ export function corridorUrls(coords: LonLatEle[], activeBaseId?: string): string
     ),
   ];
   for (let z = MIN_ZOOM; z <= MAX_ZOOM; z++) {
-    for (const [x, y] of corridorTiles(coords, z)) {
+    for (const [x, y] of tilesAt(z)) {
       urls.push(PLAN_TILES.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y)));
     }
   }
-  // every French base map, plus the active one when the trek lives on a foreign base
+  // every French base map, plus the active one when the bundle sits on a foreign base
   const layerIds = new Set(CORE_RASTERS);
   if (activeBaseId && RASTER_ZOOMS[activeBaseId]) layerIds.add(activeBaseId);
   for (const layer of RASTER_BASE_LAYERS) {
     if (!layerIds.has(layer.id)) continue;
     const [zMin, zMax] = RASTER_ZOOMS[layer.id];
     for (let z = zMin; z <= zMax; z++) {
-      for (const [x, y] of corridorTiles(coords, z)) {
+      for (const [x, y] of tilesAt(z)) {
         urls.push(layer.tiles.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y)));
       }
     }
   }
   // the same URLs the live overlays request, so the cache answers them offline
-  for (const [x, y] of corridorTiles(coords, REFUGES_CELL_ZOOM)) urls.push(refugesCellUrl({ x, y }));
-  for (const [x, y] of corridorTiles(coords, FOUNTAINS_CELL_ZOOM)) {
+  for (const [x, y] of tilesAt(REFUGES_CELL_ZOOM)) urls.push(refugesCellUrl({ x, y }));
+  for (const [x, y] of tilesAt(FOUNTAINS_CELL_ZOOM)) {
     urls.push(overpassUrl(OVERPASS_PRIMARY, fountainsCellQuery({ x, y })));
   }
-  return urls;
+  return [...new Set(urls)];
+}
+
+/** every tile of zoom `z` inside the bounds */
+export function boundsTiles(bounds: AreaBounds, z: number): [number, number][] {
+  const n = 2 ** z;
+  const [xMin, xMax] = [tileX(bounds.west, n), tileX(bounds.east, n)];
+  const [yMin, yMax] = [tileY(bounds.north, n), tileY(bounds.south, n)];
+  const tiles: [number, number][] = [];
+  for (let x = Math.max(xMin, 0); x <= Math.min(xMax, n - 1); x++) {
+    for (let y = Math.max(yMin, 0); y <= Math.min(yMax, n - 1); y++) tiles.push([x, y]);
+  }
+  return tiles;
+}
+
+function tileX(lon: number, n: number): number {
+  return Math.floor(((lon + 180) / 360) * n);
+}
+
+function tileY(lat: number, n: number): number {
+  const rad = (Math.max(-85, Math.min(85, lat)) * Math.PI) / 180;
+  return Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n);
 }
 
 /** distinct tiles of zoom `z` within the corridor around the trace */

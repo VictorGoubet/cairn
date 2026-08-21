@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LonLatEle } from '../../src/lib/geo';
-import { corridorTiles, corridorUrls } from '../../src/lib/offline';
+import { areaUrls, boundsTiles, corridorTiles, corridorUrls, estimateArea } from '../../src/lib/offline';
 
 /** ~11 km along the Queyras, one point per ~100 m like a routed leg */
 const ROUTE: LonLatEle[] = Array.from({ length: 100 }, (_, i) => [6.6 + i * 0.001, 44.6 + i * 0.0004, 2000]);
@@ -47,5 +47,55 @@ describe('corridorUrls', () => {
     expect(urls.length).toBeLessThan(12_000);
     // and a day hike stays a light download
     expect(corridorUrls(ROUTE).length).toBeLessThan(1200);
+  });
+});
+
+/** the bois de Vincennes: the run-without-a-route case */
+const VINCENNES = { west: 2.41, south: 48.82, east: 2.46, north: 48.85 };
+
+describe('boundsTiles', () => {
+  it('covers the frame edge to edge, corners included', () => {
+    const tiles = boundsTiles(VINCENNES, 14);
+    const n = 2 ** 14;
+    const corner = (lon: number, lat: number) => {
+      const rad = (lat * Math.PI) / 180;
+      return [
+        Math.floor(((lon + 180) / 360) * n),
+        Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n),
+      ];
+    };
+    for (const [lon, lat] of [
+      [VINCENNES.west, VINCENNES.north],
+      [VINCENNES.east, VINCENNES.south],
+    ] as const) {
+      const [x, y] = corner(lon, lat);
+      expect(tiles.some(([tx, ty]) => tx === x && ty === y), `${x}/${y} missing`).toBe(true);
+    }
+    expect(new Set(tiles.map(t => t.join('/'))).size).toBe(tiles.length);
+  });
+});
+
+describe('estimateArea', () => {
+  it('prices a park before the tap, and it stays a light download', () => {
+    const { resources, megabytes, tooLarge } = estimateArea(VINCENNES);
+    console.log(`vincennes: ${resources} resources, ~${megabytes} MB`);
+    expect(tooLarge).toBe(false);
+    expect(megabytes).toBeGreaterThan(0);
+    expect(megabytes).toBeLessThan(120);
+  });
+
+  it('refuses a whole region instead of eating the disk', () => {
+    expect(estimateArea({ west: -1, south: 43, east: 7, north: 49 }).tooLarge).toBe(true);
+  });
+
+  it('bundles every base map and the poi cells of the frame', () => {
+    const urls = areaUrls(VINCENNES, 'swisstopo');
+    expect(urls.some(u => u.includes('PLAN.IGN/14/'))).toBe(true);
+    expect(urls.some(u => u.includes('SCAN25TOUR'))).toBe(true);
+    expect(urls.some(u => u.includes('ORTHOIMAGERY'))).toBe(true);
+    expect(urls.some(u => u.includes('tile.openstreetmap.org'))).toBe(true);
+    expect(urls.some(u => u.includes('wmts.geo.admin.ch'))).toBe(true);
+    expect(urls.some(u => u.includes('overpass-api.de'))).toBe(true);
+    expect(urls.some(u => u.includes('refuges.info'))).toBe(true);
   });
 });

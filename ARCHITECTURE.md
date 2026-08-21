@@ -138,8 +138,12 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   points. GPX export writes one named `<trk>` per day. With a start date (`startDate`, in the
   draft), each stage shows its Open-Meteo forecast (`lib/weather.ts`, 16-day horizon, no key).
 - **Offline** (`public/sw.js` + `lib/offline.ts`): the install precaches the shell and its
-  hashed assets; tiles and open-data answers cache on use (capped FIFO). The download button on
-  a saved route fills `cairn-offline-v1` (never trimmed, checked first) with the trek bundle:
+  hashed assets; tiles and open-data answers cache on use (capped FIFO). Two bundles share one
+  machinery (`bundleUrls`) and one cache, `cairn-offline-v1` (never trimmed, checked first): a
+  **trek** (the corridor of a saved route) and an **area** (the framed viewport, for running
+  without an itinerary, named by reverse geocoding, priced in MB before the tap and refused past
+  9000 resources). Deleting an area frees only the tiles no other bundle still needs. The trek
+  bundle holds:
   a ~2 km corridor of every French base map (Plan IGN vector z6-14 with style/sprite/fonts,
   SCAN25 z8-15, ortho and OSM z8-14) plus the active base when it is a foreign one, and the
   refuges.info and fountain cells, reusing the exact URLs the live overlays request (Overpass
