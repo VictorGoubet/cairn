@@ -134,6 +134,55 @@ export async function downloadAreaOffline(
   return area;
 }
 
+/**
+ * The downloaded areas as a feature collection, for the map to show what is available offline.
+ */
+export function offlineAreasGeoJson(): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: listOfflineAreas().map(area => ({
+      type: 'Feature',
+      properties: { name: area.name },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [area.bounds.west, area.bounds.south],
+            [area.bounds.east, area.bounds.south],
+            [area.bounds.east, area.bounds.north],
+            [area.bounds.west, area.bounds.north],
+            [area.bounds.west, area.bounds.south],
+          ],
+        ],
+      },
+    })),
+  };
+}
+
+/**
+ * A preview tile for an area, taken from the OSM layer the bundle already downloaded, so the
+ * thumbnail shows up in a dead zone too.
+ */
+export function areaThumbUrl(bounds: AreaBounds): string {
+  const osm = RASTER_BASE_LAYERS.find(layer => layer.id === 'osm');
+  if (!osm) return '';
+  const lon = (bounds.west + bounds.east) / 2;
+  const lat = (bounds.south + bounds.north) / 2;
+  // the deepest bundled zoom whose single tile still covers the whole frame
+  const [, maxZoom] = RASTER_ZOOMS.osm;
+  let zoom = maxZoom;
+  while (zoom > 1) {
+    const n = 2 ** zoom;
+    if (tileX(bounds.west, n) === tileX(bounds.east, n) && tileY(bounds.north, n) === tileY(bounds.south, n)) break;
+    zoom--;
+  }
+  const n = 2 ** zoom;
+  return osm.tiles
+    .replace('{z}', String(zoom))
+    .replace('{x}', String(tileX(lon, n)))
+    .replace('{y}', String(tileY(lat, n)));
+}
+
 /** rough weight of a stored bundle, from its resource count */
 export function bundleMegabytes(resources: number): number {
   return Math.round((resources * AVG_RESOURCE_KB) / 1024);

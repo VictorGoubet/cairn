@@ -27,6 +27,7 @@ import { cumulativeDistancesM, haversineM, kmMarkerPoints, type LonLatEle, neare
 import { tNow, useT } from '../lib/i18n';
 import { bindLongPress, bindMiddleDragRotate, bindRotateCursor } from '../lib/mapGestures';
 import { setMapInstance } from '../lib/mapHandle';
+import { offlineAreasGeoJson } from '../lib/offline';
 import { kindDef, type PointKind } from '../lib/points';
 import {
   fetchRefugePoints,
@@ -69,6 +70,7 @@ const DRAG_SOURCE = 'drag-line';
 const HIGHLIGHT_SOURCE = 'waytype-highlight';
 const SELECTION_SOURCE = 'profile-selection';
 const REFUGES_SOURCE = 'refuge-points';
+const OFFLINE_ZONES_SOURCE = 'offline-zones';
 const FOLLOW_SOURCE = 'follow-position';
 const EMPTY_ROUTE: GeoJSON.GeoJSON = { type: 'FeatureCollection', features: [] };
 
@@ -95,6 +97,7 @@ export function MapView() {
   const hoverPoint = usePlanner(s => s.hoverPoint);
   const searchPin = usePlanner(s => s.searchPin);
   const following = usePlanner(s => s.following);
+  const offlineVersion = usePlanner(s => s.offlineVersion);
   const flyTo = usePlanner(s => s.flyTo);
   const dragging = usePlanner(s => s.dragging);
   const wayTypeHighlight = usePlanner(s => s.wayTypeHighlight);
@@ -193,6 +196,35 @@ export function MapView() {
           source: SELECTION_SOURCE,
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: { 'line-color': '#2a78d6', 'line-width': 8, 'line-opacity': 0.55 },
+        });
+        // the areas held offline, so a glance says what works in a dead zone
+        map.addSource(OFFLINE_ZONES_SOURCE, { type: 'geojson', data: EMPTY_ROUTE });
+        map.addLayer({
+          id: 'overlay-offline-fill',
+          type: 'fill',
+          source: OFFLINE_ZONES_SOURCE,
+          layout: { visibility: 'none' },
+          paint: { 'fill-color': '#008300', 'fill-opacity': 0.08 },
+        });
+        map.addLayer({
+          id: 'overlay-offline-line',
+          type: 'line',
+          source: OFFLINE_ZONES_SOURCE,
+          layout: { visibility: 'none', 'line-join': 'round' },
+          paint: { 'line-color': '#008300', 'line-width': 2, 'line-dasharray': [3, 2], 'line-opacity': 0.9 },
+        });
+        map.addLayer({
+          id: 'overlay-offline-label',
+          type: 'symbol',
+          source: OFFLINE_ZONES_SOURCE,
+          layout: {
+            visibility: 'none',
+            'text-field': ['get', 'name'],
+            'text-size': 12,
+            'text-font': ['Source Sans Pro Bold'],
+            'symbol-placement': 'point',
+          },
+          paint: { 'text-color': '#00650a', 'text-halo-color': '#fff', 'text-halo-width': 1.6 },
         });
         // refuges.info points + OSM fountains, loaded on the fly per cell (see tileGrid)
         map.addSource(REFUGES_SOURCE, {
@@ -342,6 +374,9 @@ export function MapView() {
     map.setLayoutProperty('overlay-slopes', 'visibility', overlays.slopes ? 'visible' : 'none');
     map.setLayoutProperty('overlay-gr', 'visibility', overlays.gr ? 'visible' : 'none');
     map.setLayoutProperty('overlay-refuges', 'visibility', overlays.refuges ? 'visible' : 'none');
+    for (const id of ['overlay-offline-fill', 'overlay-offline-line', 'overlay-offline-label']) {
+      map.setLayoutProperty(id, 'visibility', overlays.offlineZones ? 'visible' : 'none');
+    }
     map.setTerrain(
       overlays.terrain3d
         ? flyover
@@ -388,6 +423,14 @@ export function MapView() {
       map.off('moveend', onMoveEnd);
     };
   }, [overlays.refuges, mapReady]);
+
+  // the downloaded zones, redrawn whenever a bundle is added or freed
+  // biome-ignore lint/correctness/useExhaustiveDependencies(offlineVersion): intentional trigger, not a value we read
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !overlays.offlineZones) return;
+    (map.getSource(OFFLINE_ZONES_SOURCE) as GeoJSONSource | undefined)?.setData(offlineAreasGeoJson());
+  }, [overlays.offlineZones, offlineVersion, mapReady]);
 
   // the zoom level drives the "come closer" hint of the on-the-fly overlays
   useEffect(() => {

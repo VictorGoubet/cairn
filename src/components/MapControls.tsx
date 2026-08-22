@@ -20,6 +20,7 @@ const OPTION_ROWS: { key: keyof Overlays; labelKey: MsgKey }[] = [
   { key: 'slopes', labelKey: 'opt_slopes' },
   { key: 'gr', labelKey: 'opt_gr' },
   { key: 'refuges', labelKey: 'opt_refuges' },
+  { key: 'offlineZones', labelKey: 'opt_offline_zones' },
   { key: 'terrain3d', labelKey: 'opt_3d' },
 ];
 

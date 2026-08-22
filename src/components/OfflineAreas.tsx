@@ -4,6 +4,8 @@ import { dateLocale } from '../lib/lang';
 import { getMapInstance } from '../lib/mapHandle';
 import {
   type AreaBounds,
+  areaThumbUrl,
+  areaUrls,
   bundleMegabytes,
   deleteOfflineArea,
   downloadAreaOffline,
@@ -54,6 +56,7 @@ export function OfflineAreas() {
         usePlanner.getState().baseLayerId,
       );
       setAreas([area, ...areas]);
+      usePlanner.getState().bumpOfflineVersion();
       setNaming(false);
       setName('');
     } catch {
@@ -66,6 +69,7 @@ export function OfflineAreas() {
   async function remove(id: string) {
     await deleteOfflineArea(id);
     setAreas(listOfflineAreas());
+    usePlanner.getState().bumpOfflineVersion();
   }
 
   return (
@@ -111,9 +115,14 @@ export function OfflineAreas() {
         <ul className="area-list">
           {areas.map(area => (
             <li key={area.id}>
+              <img className="area-thumb" src={areaThumbUrl(area.bounds)} alt="" loading="lazy" />
               <span className="area-name">{area.name}</span>
               <span className="area-meta">
-                ~{bundleMegabytes(area.resources)} Mo · {new Date(area.savedAt).toLocaleDateString(dateLocale(lang))}
+                {/* recomputed, never the count stored at download time: a stored number goes
+                    stale the day the bundle's layers or zooms change, and then the per-area
+                    sizes contradict the total underneath */}
+                ~{bundleMegabytes(areaUrls(area.bounds).length)} Mo ·{' '}
+                {new Date(area.savedAt).toLocaleDateString(dateLocale(lang))}
               </span>
               <button type="button" className="wp-remove" title={t('delete')} onClick={() => remove(area.id)}>
                 ×

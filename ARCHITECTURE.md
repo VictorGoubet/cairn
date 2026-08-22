@@ -144,8 +144,12 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   without an itinerary, named by the hiker, priced in MB before the tap and refused past 9000
   resources). Bundles are kept as descriptors (bounds, route id) and their URLs recomputed, so
   `offlineBundles` can price the whole store with the zones shared between bundles counted once,
-  and a deletion (area removed, or route deleted from the gallery) frees only what no surviving
-  bundle still needs. Every bundle holds:
+  and a deletion (area removed, trek unloaded from its card, or route deleted from the gallery)
+  frees only what no surviving bundle still needs. A bundle's weight is always recomputed from
+  its descriptor, never read from a count stored at download time, so the per-bundle sizes and
+  the total can never contradict each other. The `offlineZones` option draws the downloaded areas
+  on the map, and each one previews with a tile the bundle already carries (so the thumbnail
+  shows up in a dead zone too). Every bundle holds:
   a ~2 km corridor of every French base map (Plan IGN vector z6-14 with style/sprite/fonts,
   SCAN25 z8-15, ortho and OSM z8-14) plus the active base when it is a foreign one, and the
   refuges.info and fountain cells, reusing the exact URLs the live overlays request (Overpass

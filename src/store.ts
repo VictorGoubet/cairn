@@ -105,6 +105,7 @@ export interface Overlays {
   slopes: boolean;
   gr: boolean;
   refuges: boolean;
+  offlineZones: boolean;
   terrain3d: boolean;
 }
 
@@ -172,6 +173,9 @@ interface PlannerState {
   setEditing: (id: string | null) => void;
   setEditingLeg: (index: number | null) => void;
   setStartDate: (date: string | null) => void;
+  /** bumped when a bundle is downloaded or freed, so the map redraws its zones */
+  offlineVersion: number;
+  bumpOfflineVersion: () => void;
   updateEditingPoint: (kind: PointKind, name: string) => void;
   removeEditingPoint: () => void;
   saveCurrentRoute: (name: string) => boolean;
@@ -390,6 +394,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
       slopes: false,
       gr: false,
       refuges: false,
+      offlineZones: false,
       terrain3d: false,
     },
     manualMode: false,
@@ -409,6 +414,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
     currentRouteId: draft?.currentRouteId ?? null,
     currentRouteName: draft?.currentRouteName ?? '',
     startDate: draft?.startDate ?? null,
+    offlineVersion: 0,
     showRoutes: false,
     dragging: false,
     editing: null,
@@ -794,6 +800,8 @@ export const usePlanner = create<PlannerState>((set, get) => {
     setStartDate: startDate => {
       set({ startDate });
     },
+
+    bumpOfflineVersion: () => set(s => ({ offlineVersion: s.offlineVersion + 1 })),
 
     // a single undo step per editing session, not one per keystroke
     updateEditingPoint: (kind, name) => {

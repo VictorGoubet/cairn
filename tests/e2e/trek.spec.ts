@@ -141,6 +141,59 @@ test.describe('offline download', () => {
 });
 
 test.describe('offline areas', () => {
+  test('the downloaded zones can be seen on the map, and a trek can be unloaded', async ({ page }) => {
+    await page.route('**data.geopf.fr/**', route => route.fulfill({ body: 'tile' }));
+    await page.route('**tile.openstreetmap.org/**', route => route.fulfill({ body: 'tile' }));
+    await page.route('**refuges.info/**', route =>
+      route.fulfill({ contentType: 'application/json', body: '{"features":[]}' }),
+    );
+    await page.route('**overpass-api.de/**', route =>
+      route.fulfill({ contentType: 'application/json', body: '{"elements":[]}' }),
+    );
+    await openPlanner(page);
+    await page.locator('.segmented button', { hasText: /Manuel|Manual/ }).click();
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 1);
+    await page.evaluate(() => (window as unknown as TestHandles).__planner.getState().saveCurrentRoute('Tour'));
+
+    // download a framed area, and see it appear on the map through the option
+    await page.locator('.topbar button', { hasText: /itinéraires|routes/i }).click();
+    await page.locator('[data-control="area-download"]').click();
+    await page.locator('.area-name-row input').fill('Ceillac');
+    await page.locator('[data-control="area-confirm"]').click();
+    await expect(page.locator('.area-list li', { hasText: 'Ceillac' })).toBeVisible({ timeout: 60_000 });
+    // the preview comes from the bundle itself
+    await expect(page.locator('.area-thumb').first()).toHaveAttribute('src', /tile\.openstreetmap\.org/);
+
+    // a trek can be taken back off the device, and put back
+    const offline = page.locator('[data-control="route-offline"]');
+    await offline.click();
+    await expect(page.locator('[data-control="route-offline"].saved')).toBeVisible({ timeout: 60_000 });
+    await offline.click();
+    await expect(page.locator('[data-control="route-offline"].saved')).toHaveCount(0);
+    await expect(offline).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await page.locator('[data-control="options"]').click();
+    await page
+      .locator('.option-row', { hasText: /Zones hors-ligne|Downloaded offline/ })
+      .locator('input[type="checkbox"]')
+      .check();
+    await page.keyboard.press('Escape');
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              (window as unknown as TestHandles).__map.queryRenderedFeatures({ layers: ['overlay-offline-fill'] })
+                .length,
+          ),
+        { timeout: 15_000 },
+      )
+      .toBeGreaterThan(0);
+  });
+
   test('two overlapping areas are stored once, and deleting one keeps the other whole', async ({ page }) => {
     await page.route('**data.geopf.fr/**', route => route.fulfill({ body: 'tile' }));
     await page.route('**tile.openstreetmap.org/**', route => route.fulfill({ body: 'tile' }));

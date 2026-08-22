@@ -113,28 +113,61 @@ function RouteCard({
           {new Date(route.updatedAt).toLocaleDateString(dateLocale(lang))}
         </span>
       </button>
-      <OfflineButton route={route} />
-      <button
-        type="button"
-        className={confirming ? 'route-remove armed' : 'route-remove'}
-        title={t('delete')}
-        onBlur={onDisarm}
-        onClick={onRemove}
-      >
-        {confirming ? t('confirm') : '×'}
-      </button>
+      <div className="route-actions">
+        <OfflineButton route={route} />
+        <button
+          type="button"
+          className={confirming ? 'route-action route-remove armed' : 'route-action route-remove'}
+          title={t('delete')}
+          aria-label={t('delete')}
+          onBlur={onDisarm}
+          onClick={onRemove}
+        >
+          {confirming ? (
+            // a red check, not the word: a text pill gets clipped inside an icon bar
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.6"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="m5 12 5 5L19 8" />
+            </svg>
+          ) : (
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" />
+            </svg>
+          )}
+        </button>
+      </div>
     </>
   );
 }
 
 /** downloads the route's corridor into the cache, and says so once it is there */
+/** downloads the route's bundle, and takes it back off the device on the next tap */
 function OfflineButton({ route }: { route: SavedRoute }) {
   const t = useT();
   const [percent, setPercent] = useState<number | null>(null);
   const [saved, setSaved] = useState(() => offlineSavedAt(route.id) !== null);
 
-  async function download() {
+  async function toggle() {
     if (percent !== null) return;
+    if (saved) {
+      // freeing is cheap to undo (one tap re-downloads), so it needs no confirmation
+      await releaseOfflineRoute(route.id, routeCoords(route.legs));
+      setSaved(false);
+      return;
+    }
     setPercent(0);
     try {
       await downloadRouteOffline(
@@ -151,28 +184,46 @@ function OfflineButton({ route }: { route: SavedRoute }) {
     }
   }
 
+  const label = saved ? t('offline_remove_hint') : t('offline_download_hint');
   return (
     <button
       type="button"
-      className={saved ? 'route-offline saved' : 'route-offline'}
+      className={saved ? 'route-action route-offline saved' : 'route-action route-offline'}
       data-control="route-offline"
-      title={saved ? t('offline_saved_hint') : t('offline_download_hint')}
+      title={label}
+      aria-label={label}
       disabled={percent !== null}
-      onClick={download}
+      onClick={toggle}
     >
       {percent !== null ? (
-        `${percent}%`
+        <span className="route-percent">{percent}%</span>
       ) : saved ? (
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.4"
-          strokeLinecap="round"
-          aria-hidden="true"
-        >
-          <path d="m5 12 5 5L19 8" />
-        </svg>
+        <>
+          {/* stored: a check at rest, and what the tap would do on hover */}
+          <svg
+            className="on-rest"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="m5 12 5 5L19 8" />
+          </svg>
+          <svg
+            className="on-hover"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M7 12h10" />
+            <circle cx="12" cy="12" r="9" />
+          </svg>
+        </>
       ) : (
         <svg
           viewBox="0 0 24 24"

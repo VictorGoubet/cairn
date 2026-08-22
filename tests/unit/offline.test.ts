@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { LonLatEle } from '../../src/lib/geo';
-import { areaUrls, boundsTiles, corridorTiles, corridorUrls, estimateArea } from '../../src/lib/offline';
+import {
+  areaThumbUrl,
+  areaUrls,
+  boundsTiles,
+  corridorTiles,
+  corridorUrls,
+  estimateArea,
+} from '../../src/lib/offline';
 
 /** ~11 km along the Queyras, one point per ~100 m like a routed leg */
 const ROUTE: LonLatEle[] = Array.from({ length: 100 }, (_, i) => [6.6 + i * 0.001, 44.6 + i * 0.0004, 2000]);
@@ -97,5 +104,18 @@ describe('estimateArea', () => {
     expect(urls.some(u => u.includes('wmts.geo.admin.ch'))).toBe(true);
     expect(urls.some(u => u.includes('overpass-api.de'))).toBe(true);
     expect(urls.some(u => u.includes('refuges.info'))).toBe(true);
+  });
+});
+
+describe('areaThumbUrl', () => {
+  it('picks a bundled tile that covers the whole frame', () => {
+    const url = areaThumbUrl(VINCENNES);
+    // the osm layer, at a zoom the bundle downloaded (z8-14), so the preview shows up offline
+    expect(url).toContain('tile.openstreetmap.org');
+    const [z] = url.split('/').slice(-3).map(Number);
+    expect(z).toBeGreaterThanOrEqual(8);
+    expect(z).toBeLessThanOrEqual(14);
+    // one tile, covering the frame: that zoom holds the whole box in a single tile
+    expect(boundsTiles(VINCENNES, z)).toHaveLength(1);
   });
 });
