@@ -28,7 +28,7 @@
 <br>
 
 Draw a hiking route that follows real trails, over official IGN maps. Elevation profile, typed
-waypoints, multi-day stages with weather, marked routes around you, 3D flyover, follow mode on
+waypoints, bivouac spots scored from the terrain, multi-day stages with weather, marked routes around you, 3D flyover, follow mode on
 the trail, offline once visited (PWA), GPX/KML/TCX export, share by link, QR or social image. Built entirely on open data (IGN Géoplateforme, OpenStreetMap, refuges.info)
 and queried straight from your browser: no account, no personal tracking, and everything but the
 short share link works with no backend at all. France-first (IGN maps), usable worldwide

@@ -1,6 +1,6 @@
 // the trek features: multi-day stages, weather, qr handoff, offline shell
 import { expect, test } from '@playwright/test';
-import { CEILLAC, clickAt, openPlanner, type TestHandles, waitForRouting } from './helpers';
+import { CEILLAC, clickAt, openPlanner, planner, type TestHandles, waitForRouting } from './helpers';
 
 // all three inside the z14 viewport: a click projected past its edge lands on nothing
 const FURTHER: [number, number] = [CEILLAC[0] + 0.008, CEILLAC[1] + 0.001];
@@ -137,6 +137,49 @@ test.describe('offline download', () => {
     await page.waitForFunction(() => '__planner' in window);
     await page.locator('.topbar button', { hasText: /itinéraires|routes/i }).click();
     await expect(page.locator('[data-control="route-offline"].saved')).toBeVisible();
+  });
+});
+
+test.describe('bivouac scoring', () => {
+  test('scores spots along the route and plants the camp where it was scored', async ({ page }) => {
+    // a spring beside the route, so the water sub-score is deterministic
+    await page.route('**overpass-api.de/**', route => {
+      const query = decodeURIComponent(route.request().url());
+      const body = query.includes('spring')
+        ? { elements: [{ type: 'node', lon: CEILLAC[0] + 0.004, lat: CEILLAC[1] + 0.001 }] }
+        : { elements: [] };
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await openPlanner(page);
+    await page.locator('.segmented button', { hasText: /Manuel|Manual/ }).click();
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await waitForRouting(page, 1);
+
+    await page.locator('[data-control="bivouac"]').click();
+    await page.locator('[data-control="bivouac-search"]').click();
+    const rows = page.locator('[data-control="bivouac-spot"]');
+    await expect(rows.first()).toBeVisible({ timeout: 60_000 });
+    // every row says why it scored: altitude, slope, and the walk to water
+    await expect(rows.first()).toContainText(/m/);
+    await expect(rows.first()).toContainText(/pente|slope/);
+    await expect(rows.first()).toContainText(/min/);
+    // the same badges are on the map
+    expect(await page.locator('.bivouac-marker').count()).toBeGreaterThan(0);
+
+    const target = await page.evaluate(
+      () => (window as unknown as TestHandles).__planner.getState().bivouacSpots[0].point,
+    );
+    await rows.first().click();
+    await expect.poll(async () => (await planner(page).state()).anchorKinds.includes('camp')).toBe(true);
+    const camp = await page.evaluate(() =>
+      (window as unknown as TestHandles).__planner.getState().anchors.find(a => a.kind === 'camp'),
+    );
+    // planted off the path, at its own coordinates: the route detours instead of snapping back
+    expect(camp?.lon).toBeCloseTo(target[0], 6);
+    expect(camp?.lat).toBeCloseTo(target[1], 6);
+    // and being a camp, it cuts the trek into stages
+    await expect(page.locator('[data-control="stages"]')).toBeVisible();
   });
 });
 

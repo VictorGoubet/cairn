@@ -7,9 +7,10 @@ import { SLOPE_LEGEND } from '../lib/slopeTiles';
 import { useClickOutside } from '../lib/useClickOutside';
 import { useEscapeKey } from '../lib/useEscapeKey';
 import { type Overlays, usePlanner } from '../store';
+import { BivouacPanel } from './BivouacPanel';
 import { NearbyHikes } from './NearbyHikes';
 
-type Panel = 'explore' | 'layers' | 'options' | null;
+type Panel = 'explore' | 'bivouac' | 'layers' | 'options' | null;
 
 const PACES: HikerPace[] = ['strolling', 'steady', 'sporty', 'athletic'];
 
@@ -137,6 +138,27 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
       </button>
       <button
         type="button"
+        className={open === 'bivouac' ? 'mc-btn active' : 'mc-btn'}
+        data-control="bivouac"
+        aria-label={t('bivouac')}
+        data-tip={t('bivouac')}
+        onClick={() => togglePanel('bivouac')}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 4 4 19h16z" />
+          <path d="M12 4v15" />
+        </svg>
+      </button>
+      <button
+        type="button"
         className={open === 'explore' ? 'mc-btn active' : 'mc-btn'}
         data-control="explore"
         aria-label={t('nearby_hikes')}
@@ -204,6 +226,8 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
           <NearbyHikes onLoaded={() => setOpen(null)} />
         </div>
       )}
+
+      {open === 'bivouac' && <BivouacPanel />}
 
       {open === 'layers' && (
         <div className="mc-panel">

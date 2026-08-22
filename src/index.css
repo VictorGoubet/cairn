@@ -1323,6 +1323,91 @@ body {
   }
 }
 
+/* --- bivouac scoring --- */
+
+.bivouac-panel .bivouac-search {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bivouac-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bivouac-list button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bivouac-list button:hover {
+  background: var(--accent-soft);
+}
+
+.bivouac-score {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bivouac-detail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.bivouac-detail small {
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
+/* the same badge on the map, clickable to plant the camp */
+.bivouac-marker {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #008300;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 35%);
+}
+
+.bivouac-marker:hover {
+  transform: scale(1.15);
+}
+
 /* --- offline areas --- */
 
 .offline-areas {

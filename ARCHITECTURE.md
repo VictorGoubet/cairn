@@ -134,6 +134,16 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - **Map controls carry `data-tip`**, a CSS-only tooltip on hover and keyboard focus: the native
   `title` waits a second and wears the operating system's looks. Behind `@media (hover: hover)`,
   so a finger never triggers a label it cannot dismiss.
+- **Bivouac score** (`lib/bivouac.ts`): candidates every 250 m along the route and up to 160 m
+  off it, each probed against the DEM already cached for the relief (a 25 m cross for the slope,
+  a 12-point ring at 120 m for shelter and view) and against two Overpass queries (springs,
+  drinking water, water bodies, streams / roads and buildings). Five weighted criteria, kept as
+  sub-scores so the panel can say *why*: flat .30, walk to water .25 (priced on the hiking curve,
+  not the crow flight), discreet .15, sheltered .15, view .15. Shelter and view pull against each
+  other on purpose. Two vetoes score 0 outright: slope past 20 degrees, or a road or building
+  closer than 25 m. Overpass refusing degrades to a terrain-only score that says so. Planting a
+  suggestion uses `insertDetour`, not `insertAnchor`: splicing would project the camp back onto
+  the trace and lose the spot that was picked.
 - **Stages** (`lib/stages.ts`): derived, never stored: a stage is what lies between two `camp`
   points. GPX export writes one named `<trk>` per day. With a start date (`startDate`, in the
   draft), each stage shows its Open-Meteo forecast (`lib/weather.ts`, 16-day horizon, no key).

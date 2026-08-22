@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { DEFAULT_BASE_LAYER } from './config/layers';
+import type { BivouacSpot } from './lib/bivouac';
 import {
   computeLeg,
   computeRoute,
@@ -27,7 +28,7 @@ import type { MsgKey } from './lib/i18n';
 import { detectLang, type Lang, persistLang } from './lib/lang';
 import type { PointKind } from './lib/points';
 import { clearProgress } from './lib/routeProgress';
-import { spliceIntoTrace } from './lib/routeSplice';
+import { nearestOnTrace, spliceIntoTrace } from './lib/routeSplice';
 import { loadDraft, loadProfile, loadRoutes, persistDraft, persistProfile, persistRoutes } from './lib/storage';
 
 const HISTORY_LIMIT = 50;
@@ -150,6 +151,8 @@ interface PlannerState {
   setLang: (lang: Lang) => void;
   addAnchor: (p: LonLat) => void;
   insertAnchor: (p: LonLat, kind?: PointKind) => boolean;
+  /** inserts a point at its own coordinates, detouring the route to reach it */
+  insertDetour: (p: LonLat, kind?: PointKind) => boolean;
   beginDragAnchor: () => void;
   dragAnchor: (index: number, p: LonLat) => void;
   moveAnchor: (index: number, p: LonLat) => void;
@@ -173,6 +176,9 @@ interface PlannerState {
   setEditing: (id: string | null) => void;
   setEditingLeg: (index: number | null) => void;
   setStartDate: (date: string | null) => void;
+  /** bivouac suggestions currently on the map, empty until a search runs */
+  bivouacSpots: BivouacSpot[];
+  setBivouacSpots: (spots: BivouacSpot[]) => void;
   /** bumped when a bundle is downloaded or freed, so the map redraws its zones */
   offlineVersion: number;
   bumpOfflineVersion: () => void;
@@ -415,6 +421,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
     currentRouteName: draft?.currentRouteName ?? '',
     startDate: draft?.startDate ?? null,
     offlineVersion: 0,
+    bivouacSpots: [],
     showRoutes: false,
     dragging: false,
     editing: null,
@@ -444,6 +451,26 @@ export const usePlanner = create<PlannerState>((set, get) => {
       if (!spliced) return false;
       pushHistory();
       set(spliced);
+      return true;
+    },
+
+    // a bivouac sits off the path on purpose: splicing would project it back onto the trace and
+    // lose the very spot that was picked, so the route takes the detour instead
+    insertDetour: (p, kind) => {
+      const { anchors, legs, manualMode } = get();
+      const hit = nearestOnTrace(legs, p);
+      if (!hit || anchors.length < 2) return false;
+      const index = hit.legIndex;
+      const anchor = newAnchor(p, kind);
+      const before = newSlot(manualMode);
+      const after = newSlot(manualMode);
+      pushHistory();
+      set(s => ({
+        anchors: s.anchors.toSpliced(index + 1, 0, anchor),
+        legs: s.legs.toSpliced(index, 1, before, after),
+      }));
+      launchLeg(before, lonLat(anchors[index]), p);
+      launchLeg(after, p, lonLat(anchors[index + 1]));
       return true;
     },
 
@@ -802,6 +829,8 @@ export const usePlanner = create<PlannerState>((set, get) => {
     },
 
     bumpOfflineVersion: () => set(s => ({ offlineVersion: s.offlineVersion + 1 })),
+
+    setBivouacSpots: bivouacSpots => set({ bivouacSpots }),
 
     // a single undo step per editing session, not one per keystroke
     updateEditingPoint: (kind, name) => {

@@ -83,6 +83,7 @@ export function MapView() {
   const anchorMarkersRef = useRef<Marker[]>([]);
   const offRouteMarkersRef = useRef<Marker[]>([]);
   const kmMarkersRef = useRef<Marker[]>([]);
+  const bivouacMarkersRef = useRef<Marker[]>([]);
   const hoverMarkerRef = useRef<Marker | null>(null);
   const searchPinRef = useRef<Marker | null>(null);
   const terrainExagRef = useRef(TERRAIN_EXAGGERATION_MIN);
@@ -98,6 +99,7 @@ export function MapView() {
   const searchPin = usePlanner(s => s.searchPin);
   const following = usePlanner(s => s.following);
   const offlineVersion = usePlanner(s => s.offlineVersion);
+  const bivouacSpots = usePlanner(s => s.bivouacSpots);
   const flyTo = usePlanner(s => s.flyTo);
   const dragging = usePlanner(s => s.dragging);
   const wayTypeHighlight = usePlanner(s => s.wayTypeHighlight);
@@ -423,6 +425,28 @@ export function MapView() {
       map.off('moveend', onMoveEnd);
     };
   }, [overlays.refuges, mapReady]);
+
+  // bivouac suggestions: a scored badge each, clicking one plants the camp
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    bivouacMarkersRef.current.forEach(marker => {
+      marker.remove();
+    });
+    bivouacMarkersRef.current = bivouacSpots.map(spot => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'bivouac-marker';
+      el.title = tNow('bivouac_place');
+      el.textContent = String(spot.total);
+      el.addEventListener('click', event => {
+        event.stopPropagation();
+        usePlanner.getState().insertDetour(spot.point, 'camp');
+        usePlanner.getState().setBivouacSpots([]);
+      });
+      return new Marker({ element: el }).setLngLat(spot.point).addTo(map);
+    });
+  }, [bivouacSpots, mapReady]);
 
   // the downloaded zones, redrawn whenever a bundle is added or freed
   // biome-ignore lint/correctness/useExhaustiveDependencies(offlineVersion): intentional trigger, not a value we read

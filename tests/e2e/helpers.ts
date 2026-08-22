@@ -28,6 +28,7 @@ interface PlannerHandle {
   offRoutePoints: { id: string; kind: string; name: string }[];
   overlays: Record<string, boolean>;
   savedRoutes: { id: string; name: string }[];
+  bivouacSpots: { point: [number, number]; total: number }[];
   clear(): void;
   addAnchor(p: [number, number]): void;
   undo(): void;
