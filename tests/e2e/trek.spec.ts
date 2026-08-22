@@ -181,6 +181,47 @@ test.describe('bivouac scoring', () => {
     // and being a camp, it cuts the trek into stages
     await expect(page.locator('[data-control="stages"]')).toBeVisible();
   });
+
+  test('a search is kept until the route changes, and one camp does not consume the others', async ({ page }) => {
+    await page.route('**overpass-api.de/**', route => {
+      const query = decodeURIComponent(route.request().url());
+      const body = query.includes('spring')
+        ? { elements: [{ type: 'node', lon: CEILLAC[0] + 0.004, lat: CEILLAC[1] + 0.001 }] }
+        : { elements: [] };
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await openPlanner(page);
+    // built through the store: a route long enough for several suggestions leaves the viewport
+    await page.evaluate(center => {
+      const s = (window as unknown as TestHandles).__planner;
+      s.setState({ manualMode: true });
+      s.getState().addAnchor(center);
+      s.getState().addAnchor([center[0] + 0.02, center[1] + 0.004]);
+    }, CEILLAC);
+    await waitForRouting(page, 1);
+
+    await page.locator('[data-control="bivouac"]').click();
+    await page.locator('[data-control="bivouac-search"]').click();
+    const rows = page.locator('[data-control="bivouac-spot"]');
+    await expect(rows.first()).toBeVisible({ timeout: 60_000 });
+    const found = await rows.count();
+    expect(found).toBeGreaterThan(1);
+
+    // closing the panel keeps the search: reopening must not mean running it again
+    await page.locator('[data-control="bivouac"]').click();
+    await expect(page.locator('.bivouac-panel')).toHaveCount(0);
+    await page.locator('[data-control="bivouac"]').click();
+    await expect(rows).toHaveCount(found);
+
+    // planting one camp leaves the others standing, for the next night
+    await rows.first().click();
+    await expect(rows).toHaveCount(found - 1);
+
+    // editing the route drops them instead of showing spots scored for another itinerary
+    await page.evaluate(() => (window as unknown as TestHandles).__planner.getState().addAnchor([6.79, 44.64]));
+    await expect(rows).toHaveCount(0);
+    await expect(page.locator('.bivouac-marker')).toHaveCount(0);
+  });
 });
 
 test.describe('offline areas', () => {

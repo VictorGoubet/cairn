@@ -39,7 +39,7 @@ import {
 } from '../lib/refugesInfo';
 import { registerSlopeProtocol } from '../lib/slopeTiles';
 import { SURFACE_COLORS, type SurfaceCategory, WAY_COLORS, type WayCategory } from '../lib/waytypes';
-import { isClosedRoute, routeCoords, usePlanner } from '../store';
+import { isClosedRoute, liveBivouacSpots, routeCoords, usePlanner } from '../store';
 
 // standard reroute cadence while dragging (see Leaflet Routing Machine's routeDragInterval)
 const DRAG_REROUTE_MS = 450;
@@ -99,7 +99,7 @@ export function MapView() {
   const searchPin = usePlanner(s => s.searchPin);
   const following = usePlanner(s => s.following);
   const offlineVersion = usePlanner(s => s.offlineVersion);
-  const bivouacSpots = usePlanner(s => s.bivouacSpots);
+  const bivouacSpots = usePlanner(liveBivouacSpots);
   const flyTo = usePlanner(s => s.flyTo);
   const dragging = usePlanner(s => s.dragging);
   const wayTypeHighlight = usePlanner(s => s.wayTypeHighlight);
@@ -441,8 +441,9 @@ export function MapView() {
       el.textContent = String(spot.total);
       el.addEventListener('click', event => {
         event.stopPropagation();
+        const rest = liveBivouacSpots(usePlanner.getState()).filter(other => other !== spot);
         usePlanner.getState().insertDetour(spot.point, 'camp');
-        usePlanner.getState().setBivouacSpots([]);
+        usePlanner.getState().setBivouacSpots(rest);
       });
       return new Marker({ element: el }).setLngLat(spot.point).addTo(map);
     });

@@ -178,6 +178,8 @@ interface PlannerState {
   setStartDate: (date: string | null) => void;
   /** bivouac suggestions currently on the map, empty until a search runs */
   bivouacSpots: BivouacSpot[];
+  /** the route they were computed for: a different one makes them stale, not wrong */
+  bivouacRouteKey: string | null;
   setBivouacSpots: (spots: BivouacSpot[]) => void;
   /** bumped when a bundle is downloaded or freed, so the map redraws its zones */
   offlineVersion: number;
@@ -422,6 +424,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
     startDate: draft?.startDate ?? null,
     offlineVersion: 0,
     bivouacSpots: [],
+    bivouacRouteKey: null,
     showRoutes: false,
     dragging: false,
     editing: null,
@@ -830,7 +833,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
 
     bumpOfflineVersion: () => set(s => ({ offlineVersion: s.offlineVersion + 1 })),
 
-    setBivouacSpots: bivouacSpots => set({ bivouacSpots }),
+    setBivouacSpots: bivouacSpots => set(s => ({ bivouacSpots, bivouacRouteKey: bivouacKey(s.anchors) })),
 
     // a single undo step per editing session, not one per keystroke
     updateEditingPoint: (kind, name) => {
@@ -1055,6 +1058,29 @@ function legMatchesImport(routed: RouteLeg, imported: RouteLeg): boolean {
 // cache keyed by the identity of the legs array: every component calling routeCoords in its render
 // reuses the same flattening pass instead of rescanning the whole trace
 const coordsCache = new WeakMap<LegSlot[], LonLatEle[]>();
+
+/**
+ * A cheap signature of the route, to tell whether a bivouac search still applies.
+ *
+ * Built on the anchors, not on the leg distances: a leg finishing its routing changes the
+ * distance without changing the itinerary, and keying on that expired the search a second
+ * after it ran.
+ */
+export function bivouacKey(anchors: Anchor[]): string {
+  return anchors.map(a => `${a.lon.toFixed(4)},${a.lat.toFixed(4)}`).join('|');
+}
+
+/** one shared instance: a zustand selector handing back a fresh [] re-renders forever */
+const NO_SPOTS: BivouacSpot[] = [];
+
+/** the suggestions still standing: a search made for another route is dropped, never shown stale */
+export function liveBivouacSpots(state: {
+  bivouacSpots: BivouacSpot[];
+  bivouacRouteKey: string | null;
+  anchors: Anchor[];
+}): BivouacSpot[] {
+  return state.bivouacRouteKey === bivouacKey(state.anchors) ? state.bivouacSpots : NO_SPOTS;
+}
 
 export function routeCoords(legs: LegSlot[]): LonLatEle[] {
   const cached = coordsCache.get(legs);

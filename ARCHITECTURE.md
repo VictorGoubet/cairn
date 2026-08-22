@@ -143,7 +143,12 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   other on purpose. Two vetoes score 0 outright: slope past 20 degrees, or a road or building
   closer than 25 m. Overpass refusing degrades to a terrain-only score that says so. Planting a
   suggestion uses `insertDetour`, not `insertAnchor`: splicing would project the camp back onto
-  the trace and lose the spot that was picked.
+  the trace and lose the spot that was picked, and it leaves the other suggestions standing for
+  the next night. A search is kept until the itinerary changes: `bivouacKey` signs it with the
+  anchor coordinates (not the leg distances, which move on their own when a leg finishes routing
+  and would expire the search a second after it ran), and `liveBivouacSpots` hides a search made
+  for another route rather than showing stale spots. That selector returns one shared empty array,
+  never a fresh one: a zustand selector handing back a new `[]` re-renders forever.
 - **Stages** (`lib/stages.ts`): derived, never stored: a stage is what lies between two `camp`
   points. GPX export writes one named `<trk>` per day. With a start date (`startDate`, in the
   draft), each stage shows its Open-Meteo forecast (`lib/weather.ts`, 16-day horizon, no key).

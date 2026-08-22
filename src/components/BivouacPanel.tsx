@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { track } from '../lib/analytics';
 import { type BivouacSpot, findBivouacSpots } from '../lib/bivouac';
 import { useT } from '../lib/i18n';
-import { routeCoords, usePlanner } from '../store';
+import { liveBivouacSpots, routeCoords, usePlanner } from '../store';
 
 /**
  * Bivouac suggestions along the loaded route.
@@ -14,7 +14,7 @@ import { routeCoords, usePlanner } from '../store';
 export function BivouacPanel() {
   const t = useT();
   const legs = usePlanner(s => s.legs);
-  const spots = usePlanner(s => s.bivouacSpots);
+  const spots = usePlanner(liveBivouacSpots);
   const [status, setStatus] = useState<'idle' | 'searching' | 'terrain-only' | 'empty'>('idle');
 
   const coords = routeCoords(legs);
@@ -29,8 +29,11 @@ export function BivouacPanel() {
   }
 
   function place(spot: BivouacSpot) {
+    const rest = spots.filter(other => other !== spot);
     usePlanner.getState().insertDetour(spot.point, 'camp');
-    usePlanner.getState().setBivouacSpots([]);
+    // a trek has more than one night: the other suggestions stay, re-keyed onto the route the
+    // detour just created, so planting the second camp needs no second search
+    usePlanner.getState().setBivouacSpots(rest);
   }
 
   return (
