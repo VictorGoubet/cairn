@@ -1346,6 +1346,22 @@ body {
   cursor: default;
 }
 
+.area-name-row {
+  display: flex;
+  gap: 6px;
+}
+
+.area-name-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font: inherit;
+  color: var(--ink);
+}
+
 .area-list {
   margin: 8px 0 0;
   padding: 0;

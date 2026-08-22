@@ -14,6 +14,7 @@ import { FOUNTAINS_CELL_ZOOM, fountainsCellQuery } from './drinkingWater';
 import type { LonLatEle } from './geo';
 import { OVERPASS_PRIMARY, overpassUrl } from './overpass';
 import { REFUGES_CELL_ZOOM, refugesCellUrl } from './refugesInfo';
+import { loadRoutes } from './storage';
 
 /** everything the download fetches lands here, never trimmed by the browsing cache's FIFO */
 export const OFFLINE_CACHE = 'cairn-offline-v1';
@@ -148,19 +149,72 @@ export function listOfflineAreas(): OfflineArea[] {
 }
 
 /**
- * Forgets an area and frees the tiles only it was holding.
+ * Every bundle currently held offline, areas and treks alike, with the URLs it owns.
  *
- * Tiles shared with another downloaded area or with a trek stay: what is still needed by
- * something else must survive the deletion.
+ * The Cache Storage keys by URL, so two bundles sharing a zone already share its entries: this
+ * inventory is what makes that visible and what keeps a deletion from taking a neighbour's
+ * tiles with it. Bundles are stored as descriptors (bounds, route id) and their URLs recomputed,
+ * so localStorage never holds thousands of strings.
  */
+export function offlineBundles(): { id: string; kind: 'area' | 'trek'; name: string; urls: string[] }[] {
+  const areas = listOfflineAreas().map(area => ({
+    id: area.id,
+    kind: 'area' as const,
+    name: area.name,
+    urls: areaUrls(area.bounds),
+  }));
+  const treks = loadRoutes()
+    .filter(route => offlineSavedAt(route.id) !== null)
+    .map(route => ({
+      id: route.id,
+      kind: 'trek' as const,
+      name: route.name,
+      urls: corridorUrls(route.legs.flatMap(slot => slot.leg?.coords ?? [])),
+    }));
+  return [...areas, ...treks];
+}
+
+/**
+ * What the offline data really costs, once the zones shared between bundles are counted once.
+ *
+ * Returns:
+ *   Distinct resources held and their rough weight; the sum of the bundles taken apart would
+ *   overstate both.
+ */
+export function offlineStorageReport(): { bundles: number; resources: number; megabytes: number } {
+  const bundles = offlineBundles();
+  const distinct = new Set(bundles.flatMap(b => b.urls));
+  return { bundles: bundles.length, resources: distinct.size, megabytes: bundleMegabytes(distinct.size) };
+}
+
+/** frees the urls of one bundle, keeping whatever the surviving bundles still need */
+async function releaseUrls(owned: string[], survivorsId: string): Promise<void> {
+  const stillNeeded = new Set(
+    offlineBundles()
+      .filter(b => b.id !== survivorsId)
+      .flatMap(b => b.urls),
+  );
+  const cache = await caches.open(OFFLINE_CACHE);
+  await Promise.all(owned.map(url => (stillNeeded.has(url) ? null : cache.delete(url))));
+}
+
+/** Forgets an area and frees only the tiles no other bundle, area or trek, still needs. */
 export async function deleteOfflineArea(id: string): Promise<void> {
   const areas = listOfflineAreas();
   const gone = areas.find(a => a.id === id);
-  writeAreas(areas.filter(a => a.id !== id));
   if (!gone) return;
-  const stillNeeded = new Set(areas.filter(a => a.id !== id).flatMap(a => areaUrls(a.bounds)));
-  const cache = await caches.open(OFFLINE_CACHE);
-  await Promise.all(areaUrls(gone.bounds).map(url => (stillNeeded.has(url) ? null : cache.delete(url))));
+  writeAreas(areas.filter(a => a.id !== id));
+  await releaseUrls(areaUrls(gone.bounds), id);
+}
+
+/**
+ * Frees a trek bundle when its route is deleted: without this its corridor would sit in the
+ * cache forever with nothing left to point at it.
+ */
+export async function releaseOfflineRoute(routeId: string, coords: LonLatEle[]): Promise<void> {
+  if (offlineSavedAt(routeId) === null) return;
+  forgetOfflineSaved(routeId);
+  await releaseUrls(corridorUrls(coords), routeId);
 }
 
 function writeAreas(areas: OfflineArea[]): void {
@@ -180,6 +234,16 @@ export function offlineSavedAt(routeId: string): string | null {
     return state[routeId] ?? null;
   } catch {
     return null;
+  }
+}
+
+export function forgetOfflineSaved(routeId: string): void {
+  try {
+    const state = JSON.parse(localStorage.getItem(STATE_KEY) ?? '{}') as Record<string, string>;
+    delete state[routeId];
+    localStorage.setItem(STATE_KEY, JSON.stringify(state));
+  } catch {
+    // the badge outliving its tiles is cosmetic, and a re-download fixes it
   }
 }
 

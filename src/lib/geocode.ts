@@ -5,8 +5,6 @@ import { tNow } from './i18n';
 const GEOCODE_URL = 'https://data.geopf.fr/geocodage/search';
 // worldwide fallback (OSM data, no key): the IGN geocoder stops at the French border
 const PHOTON_URL = 'https://photon.komoot.io/api/';
-const PHOTON_REVERSE_URL = 'https://photon.komoot.io/reverse';
-const IGN_REVERSE_URL = 'https://data.geopf.fr/geocodage/reverse';
 
 // IGN categories too vague to help tell two homonyms apart
 const GENERIC_CATEGORIES = new Set(['administratif', "zone d'activité ou d'intérêt", "zone d'habitation"]);
@@ -78,30 +76,6 @@ async function searchIgn(query: string): Promise<GeocodeResult[]> {
     });
   }
   return results.slice(0, 6);
-}
-
-/**
- * What to call the place at these coordinates: the town, or the nearest named thing.
- *
- * Args:
- *   lon: longitude.
- *   lat: latitude.
- *
- * Returns:
- *   A short label, or null when neither service knows the spot.
- */
-export async function describePlace(lon: number, lat: number): Promise<string | null> {
-  const fromIgn = await fetchWithTimeout(`${IGN_REVERSE_URL}?lon=${lon}&lat=${lat}&index=poi,address&limit=1`)
-    .then(res => (res.ok ? res.json() : null))
-    .catch(() => null);
-  const ign = fromIgn?.features?.[0]?.properties;
-  if (ign) return first(ign.city) ?? first(ign.name) ?? ign.toponym ?? null;
-
-  const fromPhoton = await fetchWithTimeout(`${PHOTON_REVERSE_URL}?lon=${lon}&lat=${lat}&limit=1&lang=fr`)
-    .then(res => (res.ok ? res.json() : null))
-    .catch(() => null);
-  const photon = fromPhoton?.features?.[0]?.properties;
-  return photon ? (photon.city ?? photon.name ?? photon.state ?? null) : null;
 }
 
 interface PhotonFeature {

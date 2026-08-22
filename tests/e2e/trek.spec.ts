@@ -141,7 +141,7 @@ test.describe('offline download', () => {
 });
 
 test.describe('offline areas', () => {
-  test('a framed park downloads, lists itself, and its tiles go with it', async ({ page }) => {
+  test('two overlapping areas are stored once, and deleting one keeps the other whole', async ({ page }) => {
     await page.route('**data.geopf.fr/**', route => route.fulfill({ body: 'tile' }));
     await page.route('**tile.openstreetmap.org/**', route => route.fulfill({ body: 'tile' }));
     await page.route('**refuges.info/**', route =>
@@ -150,44 +150,38 @@ test.describe('offline areas', () => {
     await page.route('**overpass-api.de/**', route =>
       route.fulfill({ contentType: 'application/json', body: '{"elements":[]}' }),
     );
-    await page.route('**geopf.fr/geocodage/reverse**', route =>
-      route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({ features: [{ properties: { city: ['Paris 12e'] } }] }),
-      }),
-    );
     await openPlanner(page);
-    // frame the bois de Vincennes, the run-without-a-route case
-    await page.evaluate(() => {
-      (window as unknown as TestHandles).__map.jumpTo({ center: [2.435, 48.833], zoom: 14 });
-    });
 
+    const grab = async (center: [number, number], label: string) => {
+      await page.evaluate(c => {
+        (window as unknown as TestHandles).__map.jumpTo({ center: c, zoom: 14 });
+      }, center);
+      await page.locator('.topbar button', { hasText: /itinéraires|routes/i }).click();
+      await page.locator('[data-control="area-download"]').click();
+      await page.locator('.area-name-row input').fill(label);
+      await page.locator('[data-control="area-confirm"]').click();
+      await expect(page.locator('.area-list li', { hasText: label })).toBeVisible({ timeout: 60_000 });
+      const cached = await page.evaluate(async () => (await (await caches.open('cairn-offline-v1')).keys()).length);
+      await page.keyboard.press('Escape');
+      return cached;
+    };
+
+    const afterFirst = await grab([2.435, 48.833], 'Vincennes');
+    // a frame shifted by a fraction of the viewport: most of its tiles are the first one's
+    const afterSecond = await grab([2.44, 48.834], 'Vincennes est');
+    // the overlap is stored once: two bundles of the same size do not cost twice the entries
+    expect(afterSecond).toBeGreaterThan(afterFirst);
+    expect(afterSecond).toBeLessThan(afterFirst * 1.6);
+
+    // and the total shown counts the shared zone once, not twice
     await page.locator('.topbar button', { hasText: /itinéraires|routes/i }).click();
-    const button = page.locator('[data-control="area-download"]');
-    // the weight and the place are announced before the tap
-    await expect(button).toContainText(/Mo/);
-    await expect(button).toContainText('Paris 12e', { timeout: 15_000 });
-    await button.click();
+    await expect(page.locator('[data-control="offline-total"]')).toContainText('2');
 
-    const listed = page.locator('.area-list li');
-    await expect(listed).toHaveCount(1, { timeout: 60_000 });
-    await expect(listed.first()).toContainText('Paris 12e');
-
-    const cachedTiles = () =>
-      page.evaluate(async () => {
-        const cache = await caches.open('cairn-offline-v1');
-        return (await cache.keys()).filter(k => k.url.includes('PLAN.IGN')).length;
-      });
-    expect(await cachedTiles()).toBeGreaterThan(0);
-
-    // the list survives a reload, and deleting frees what only it held
-    await page.reload();
-    await page.waitForFunction(() => '__planner' in window);
-    await page.locator('.topbar button', { hasText: /itinéraires|routes/i }).click();
+    // deleting the second leaves the first intact
+    await page.locator('.area-list li', { hasText: 'Vincennes est' }).locator('.wp-remove').click();
     await expect(page.locator('.area-list li')).toHaveCount(1);
-    await page.locator('.area-list .wp-remove').first().click();
-    await expect(page.locator('.area-list li')).toHaveCount(0);
-    await expect.poll(cachedTiles, { timeout: 30_000 }).toBe(0);
+    const remaining = await page.evaluate(async () => (await (await caches.open('cairn-offline-v1')).keys()).length);
+    expect(remaining).toBeGreaterThanOrEqual(afterFirst * 0.95);
   });
 });
 

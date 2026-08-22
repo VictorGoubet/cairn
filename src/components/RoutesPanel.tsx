@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { formatDistance } from '../lib/geo';
 import { useT } from '../lib/i18n';
 import { dateLocale } from '../lib/lang';
-import { downloadRouteOffline, markOfflineSaved, offlineSavedAt } from '../lib/offline';
+import { downloadRouteOffline, markOfflineSaved, offlineSavedAt, releaseOfflineRoute } from '../lib/offline';
 import { renderShareImage } from '../lib/shareImage';
 import { useEscapeKey } from '../lib/useEscapeKey';
 import { routeCoords, type SavedRoute, usePlanner } from '../store';
@@ -25,12 +25,15 @@ export function RoutesPanel() {
 
   // first click arms the confirmation, second click deletes: no native dialog
   function remove(id: string) {
-    if (confirmId === id) {
-      usePlanner.getState().deleteRoute(id);
-      setConfirmId(null);
-    } else {
+    if (confirmId !== id) {
       setConfirmId(id);
+      return;
     }
+    // the route goes, and with it the corridor it had downloaded: nothing would point at it
+    const route = usePlanner.getState().savedRoutes.find(r => r.id === id);
+    if (route) void releaseOfflineRoute(id, routeCoords(route.legs));
+    usePlanner.getState().deleteRoute(id);
+    setConfirmId(null);
   }
 
   return (

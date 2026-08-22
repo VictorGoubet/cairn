@@ -141,9 +141,11 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   hashed assets; tiles and open-data answers cache on use (capped FIFO). Two bundles share one
   machinery (`bundleUrls`) and one cache, `cairn-offline-v1` (never trimmed, checked first): a
   **trek** (the corridor of a saved route) and an **area** (the framed viewport, for running
-  without an itinerary, named by reverse geocoding, priced in MB before the tap and refused past
-  9000 resources). Deleting an area frees only the tiles no other bundle still needs. The trek
-  bundle holds:
+  without an itinerary, named by the hiker, priced in MB before the tap and refused past 9000
+  resources). Bundles are kept as descriptors (bounds, route id) and their URLs recomputed, so
+  `offlineBundles` can price the whole store with the zones shared between bundles counted once,
+  and a deletion (area removed, or route deleted from the gallery) frees only what no surviving
+  bundle still needs. Every bundle holds:
   a ~2 km corridor of every French base map (Plan IGN vector z6-14 with style/sprite/fonts,
   SCAN25 z8-15, ortho and OSM z8-14) plus the active base when it is a foreign one, and the
   refuges.info and fountain cells, reusing the exact URLs the live overlays request (Overpass
