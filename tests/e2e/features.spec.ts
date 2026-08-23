@@ -218,6 +218,36 @@ test.describe('saved routes', () => {
   });
 });
 
+test.describe('offline zones', () => {
+  test('tapping a downloaded zone frames it on the map', async ({ page }) => {
+    await openPlanner(page);
+    // one zone around the framed view, named by hand the way the panel asks
+    await page.locator('.topbar button', { hasText: /itinéraires|routes/i }).click();
+    await page.locator('[data-control="area-download"]').click();
+    await page.locator('.area-name-row input').fill('Vincennes');
+    await page.locator('[data-control="area-confirm"]').click();
+    await expect(page.locator('.area-list li')).toHaveCount(1, { timeout: 60_000 });
+
+    // moving away first, so framing the zone is visibly the panel's doing
+    await page.evaluate(() => {
+      (window as unknown as TestHandles).__map.jumpTo({ center: [2.35, 48.85], zoom: 8 });
+    });
+    await page.locator('[data-control="area-open"]').click();
+
+    // the gallery gets out of the way, the layer comes on, and the camera lands on the zone
+    await expect(page.locator('.routes-panel')).toHaveCount(0);
+    await expect.poll(async () => (await planner(page).state()).overlays.offlineZones).toBe(true);
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const centre = (window as unknown as TestHandles).__map.getCenter();
+          return Math.round(centre.lng * 10) / 10;
+        }),
+      )
+      .toBeCloseTo(6.8, 0);
+  });
+});
+
 test.describe('gallery thumbnails', () => {
   test('a card is drawn once, and reopening the gallery asks for no tile again', async ({ page }) => {
     await openPlanner(page);
@@ -254,6 +284,14 @@ test.describe('gallery thumbnails', () => {
 
     // second open: the thumbnails come back from the cache, and the network is left alone
     await page.keyboard.press('Escape');
+    tiles = 0;
+    await openGallery();
+    await expect(drawn()).toHaveCount(3);
+    expect(tiles).toBe(0);
+
+    // a reload used to start from nothing, which is what still felt slow: the store outlives it
+    await page.reload();
+    await page.waitForFunction(() => '__planner' in window);
     tiles = 0;
     await openGallery();
     await expect(drawn()).toHaveCount(3);
@@ -307,6 +345,32 @@ test.describe('walking or running', () => {
     await expect.poll(async () => estimate.textContent()).not.toBe(hiking);
     // the pace names change with the mode: nobody strolls a trail race
     await expect(page.locator('.mc-panel .segmented.wrap')).toContainText(/Élite|Elite/);
+  });
+});
+
+test.describe('a hiker who has measured themselves', () => {
+  test('the custom profile prices the route with the three rates typed in', async ({ page }) => {
+    await drawManualRoute(page);
+    const estimate = page.locator('.stat').filter({ hasText: /Est\. time|Durée est/ });
+    const preset = await estimate.textContent();
+
+    await page.locator('[data-control="options"]').click();
+    await page.locator('.mc-panel .segmented button', { hasText: /Perso|Custom/ }).click();
+    // the pace names give way to the three rates: they would say nothing over them
+    await expect(page.locator('.mc-panel .segmented.wrap')).toHaveCount(0);
+    await expect(page.locator('[data-control="profile-flat"]')).toHaveValue('4.2');
+
+    const flat = page.locator('[data-control="profile-flat"]');
+    await flat.fill('2');
+    await flat.blur();
+    // half the flat speed on a route this flat means a visibly longer day
+    await expect.poll(async () => estimate.textContent()).not.toBe(preset);
+
+    // and the rates survive a reload, like the rest of the profile
+    await page.reload();
+    await page.waitForFunction(() => '__planner' in window);
+    await page.locator('[data-control="options"]').click();
+    await expect(page.locator('[data-control="profile-flat"]')).toHaveValue('2');
   });
 });
 

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { track } from '../lib/analytics';
 import { sampleElevations } from '../lib/demElevation';
 import { buildKml, buildTcx, downloadTextFile, type ExportPoint } from '../lib/exportFormats';
@@ -13,11 +13,33 @@ import { useClickOutside } from '../lib/useClickOutside';
 import { useEscapeKey } from '../lib/useEscapeKey';
 import { useIsMobile } from '../lib/useMediaQuery';
 import { routeCoords, routeDistanceM, routePois, usePlanner } from '../store';
-import { QrPanel } from './QrPanel';
-import { RoadbookSheet } from './RoadbookSheet';
 import { RoutesPanel } from './RoutesPanel';
 import { SearchBox } from './SearchBox';
-import { SharePanel } from './SharePanel';
+
+// three panels nobody has open on arrival, kept out of the first payload; the qr one drags a
+// whole encoder behind it, and the share studio its own renderer
+const SharePanel = lazy(() => import('./SharePanel').then(m => ({ default: m.SharePanel })));
+const QrPanel = lazy(() => import('./QrPanel').then(m => ({ default: m.QrPanel })));
+const RoadbookSheet = lazy(() => import('./RoadbookSheet').then(m => ({ default: m.RoadbookSheet })));
+
+/**
+ * Pulls those chunks in once the browser has nothing better to do.
+ *
+ * They are not in the page's html, so the service worker's install cannot precache them: without
+ * this a hiker who had never opened the qr panel would find it missing in a dead zone. Fetched
+ * after first paint, they cost nothing on arrival and are in the cache a second later.
+ */
+function warmLazyPanels(): void {
+  const warm = () => {
+    void import('./SharePanel');
+    void import('./QrPanel');
+    void import('./RoadbookSheet');
+  };
+  // safari only shipped requestIdleCallback recently, so a timer stands in for it
+  const idle = window.requestIdleCallback;
+  if (typeof idle === 'function') idle(warm, { timeout: 4000 });
+  else window.setTimeout(warm, 2000);
+}
 
 type ExportFormat = 'gpx' | 'kml' | 'tcx';
 
@@ -27,6 +49,7 @@ function closeRoutesPanel() {
 
 export function TopBar() {
   const t = useT();
+  useEffect(warmLazyPanels, []);
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
@@ -290,9 +313,11 @@ export function TopBar() {
         </div>
       </div>
 
-      {showShareImage && <SharePanel onClose={() => setShowShareImage(false)} />}
-      {showQr && <QrPanel onClose={() => setShowQr(false)} />}
-      {showRoadbook && <RoadbookSheet onClose={() => setShowRoadbook(false)} />}
+      <Suspense fallback={null}>
+        {showShareImage && <SharePanel onClose={() => setShowShareImage(false)} />}
+        {showQr && <QrPanel onClose={() => setShowQr(false)} />}
+        {showRoadbook && <RoadbookSheet onClose={() => setShowRoadbook(false)} />}
+      </Suspense>
 
       <input
         ref={fileRef}

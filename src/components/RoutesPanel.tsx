@@ -9,16 +9,22 @@ import { byCollection, routeCoords, type SavedRoute, usePlanner } from '../store
 import { OfflineAreas } from './OfflineAreas';
 
 /**
- * Thumbnails already drawn, so reopening the gallery costs nothing.
+ * Thumbnails already drawn, so a gallery never redraws what it has already shown.
  *
  * Each card renders real map tiles, which is a handful of requests per route: measured at 66 for
  * eight routes on first open and still 44 on the second, since every canvas was redrawn from
- * scratch. Kept as jpeg data urls rather than canvases, which is 30 kB against 420 kB of bitmap
- * apiece and lets the cache hold a whole gallery instead of a screenful. Keyed by `updatedAt` as
- * well as id, so re-saving a route redraws it.
+ * scratch. Two levels: this map for the session, and the cache storage underneath so a reload does
+ * not start from nothing either — which is what was still slow, the memory dying with the page.
+ * Jpeg rather than canvases, 30 kB against 420 kB of bitmap apiece.
+ *
+ * Keyed by `updatedAt` as well as id, so re-saving a route redraws it and the stale entry is swept
+ * on the next open.
  */
 const thumbCache = new Map<string, string>();
 const THUMB_CACHE_MAX = 60;
+const THUMB_STORE = 'cairn-thumbs-v1';
+/** cache storage needs urls, so the key becomes one; nothing ever fetches it */
+const thumbUrl = (key: string) => `/__thumb/${encodeURIComponent(key)}`;
 
 function close() {
   usePlanner.setState({ showRoutes: false });
@@ -26,8 +32,11 @@ function close() {
 
 async function paintThumb(target: HTMLCanvasElement, route: SavedRoute): Promise<void> {
   const key = `${route.id}@${route.updatedAt}`;
-  const cached = thumbCache.get(key);
-  if (cached) return drawDataUrl(target, cached);
+  const cached = thumbCache.get(key) ?? (await readStoredThumb(key));
+  if (cached) {
+    thumbCache.set(key, cached);
+    return drawDataUrl(target, cached);
+  }
 
   const coords = routeCoords(route.legs);
   if (coords.length < 2) return;
@@ -42,10 +51,46 @@ async function paintThumb(target: HTMLCanvasElement, route: SavedRoute): Promise
   // a tile server that ever answers without cors headers taints the canvas: then there is nothing
   // to keep, and the card is still drawn
   try {
+    const dataUrl = target.toDataURL('image/jpeg', 0.82);
     if (thumbCache.size >= THUMB_CACHE_MAX) thumbCache.delete(thumbCache.keys().next().value as string);
-    thumbCache.set(key, target.toDataURL('image/jpeg', 0.82));
+    thumbCache.set(key, dataUrl);
+    void storeThumb(key, dataUrl);
   } catch {
     thumbCache.delete(key);
+  }
+}
+
+async function readStoredThumb(key: string): Promise<string | null> {
+  if (!('caches' in globalThis)) return null;
+  try {
+    const cache = await caches.open(THUMB_STORE);
+    const hit = await cache.match(thumbUrl(key));
+    return hit ? await hit.text() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function storeThumb(key: string, dataUrl: string): Promise<void> {
+  if (!('caches' in globalThis)) return;
+  try {
+    const cache = await caches.open(THUMB_STORE);
+    await cache.put(thumbUrl(key), new Response(dataUrl, { headers: { 'content-type': 'text/plain' } }));
+  } catch {
+    // a full or blocked cache storage costs a redraw, never a broken gallery
+  }
+}
+
+/** thumbnails of routes that no longer exist, or of versions that have been re-saved */
+async function sweepStoredThumbs(routes: SavedRoute[]): Promise<void> {
+  if (!('caches' in globalThis)) return;
+  try {
+    const cache = await caches.open(THUMB_STORE);
+    const live = new Set(routes.map(route => thumbUrl(`${route.id}@${route.updatedAt}`)));
+    const stored = await cache.keys();
+    await Promise.all(stored.map(request => (live.has(new URL(request.url).pathname) ? null : cache.delete(request))));
+  } catch {
+    // nothing to sweep is not a failure worth reporting
   }
 }
 
@@ -67,6 +112,11 @@ export function RoutesPanel() {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   useEscapeKey(close, showRoutes);
   const groups = byCollection(savedRoutes).length;
+
+  // one sweep per opening keeps the store in step with the gallery it serves
+  useEffect(() => {
+    if (showRoutes) void sweepStoredThumbs(savedRoutes);
+  }, [showRoutes, savedRoutes]);
 
   if (!showRoutes) return null;
 

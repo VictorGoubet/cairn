@@ -3,7 +3,7 @@ import { DEFAULT_PROFILE, type HikerPace, type HikerProfile, type TravelMode } f
 import { parseKind } from './points';
 
 const PACES: HikerPace[] = ['strolling', 'steady', 'sporty', 'athletic'];
-const MODES: TravelMode[] = ['hike', 'run'];
+const MODES: TravelMode[] = ['hike', 'run', 'custom'];
 
 const ROUTES_KEY = 'cairn.routes.v1';
 const DRAFT_KEY = 'cairn.draft.v1';
@@ -64,6 +64,9 @@ export function loadProfile(): HikerProfile | null {
     pace,
     weightKg: clamp(stored.weightKg, 30, 200, DEFAULT_PROFILE.weightKg),
     packKg: clamp(stored.packKg, 0, 60, DEFAULT_PROFILE.packKg),
+    flatKmh: clamp(stored.flatKmh, 0.5, 25, DEFAULT_PROFILE.flatKmh),
+    ascentMH: clamp(stored.ascentMH, 50, 2500, DEFAULT_PROFILE.ascentMH),
+    descentMH: clamp(stored.descentMH, 50, 4000, DEFAULT_PROFILE.descentMH),
   };
 }
 

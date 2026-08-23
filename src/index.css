@@ -1526,6 +1526,16 @@ body {
   }
 }
 
+/* three rates share the row the two body fields use: the labels give way, and align on their
+   inputs so a wrapped one does not push its field out of line */
+.profile-fields.three {
+  align-items: flex-end;
+}
+
+.profile-fields.three label {
+  font-size: 10.5px;
+}
+
 .routes-group h4 {
   display: flex;
   align-items: baseline;
@@ -1746,6 +1756,23 @@ body {
   object-fit: cover;
   border: 1px solid var(--border);
   border-radius: 7px;
+  background: var(--accent-soft);
+}
+
+.area-open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 2px 2px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.area-open:hover {
   background: var(--accent-soft);
 }
 

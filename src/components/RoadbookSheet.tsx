@@ -4,7 +4,7 @@ import { cumulativeDistancesM, formatDistance, formatDuration, type LonLatEle } 
 import { useT } from '../lib/i18n';
 import { dateLocale } from '../lib/lang';
 import { kindDef, kindLabelKey } from '../lib/points';
-import { buildRoadbook } from '../lib/roadbook';
+import { buildRoadbook, type RoadbookRow } from '../lib/roadbook';
 import { useEscapeKey } from '../lib/useEscapeKey';
 import { routeCoords, usePlanner } from '../store';
 
@@ -65,7 +65,7 @@ export function RoadbookSheet({ onClose }: { onClose: () => void }) {
             {formatDuration(book.hours)} · {t(`mode_${profile.mode}`)}
             {departure && ` · ${departure.toLocaleDateString(locale)}`}
           </p>
-          <ProfileSparkline coords={routeCoords(legs)} marks={book.rows.map(row => row.distanceM)} />
+          <ProfileSparkline coords={routeCoords(legs)} marks={book.rows} />
           <table className="roadbook-table">
             <thead>
               <tr>
@@ -111,7 +111,7 @@ export function RoadbookSheet({ onClose }: { onClose: () => void }) {
  * available width rather than measured, which is what makes it print at any paper size; strokes
  * opt out of that scaling so they stay hairlines instead of turning into wedges.
  */
-function ProfileSparkline({ coords, marks }: { coords: LonLatEle[]; marks: number[] }) {
+function ProfileSparkline({ coords, marks }: { coords: LonLatEle[]; marks: RoadbookRow[] }) {
   if (coords.length < 2) return null;
   const dists = cumulativeDistancesM(coords);
   const total = dists[dists.length - 1] || 1;
@@ -136,12 +136,12 @@ function ProfileSparkline({ coords, marks }: { coords: LonLatEle[]; marks: numbe
       aria-label={`${Math.round(floor)} - ${Math.round(floor + span)} m`}
     >
       <polygon points={`0,${SPARK_H} ${line} ${SPARK_W},${SPARK_H}`} />
-      {marks.map(mark => (
+      {marks.map(row => (
         <line
-          key={mark}
+          key={row.anchorIndex}
           className="rb-mark"
-          x1={x(mark)}
-          x2={x(mark)}
+          x1={x(row.distanceM)}
+          x2={x(row.distanceM)}
           y1={0}
           y2={SPARK_H}
           vectorEffect="non-scaling-stroke"

@@ -63,6 +63,25 @@ describe('buildTcx', () => {
     expect(doc.querySelectorAll('CoursePoint')).toHaveLength(POINTS.length);
   });
 
+  it('never writes an empty name, which invalidates the whole file for Garmin', () => {
+    // the schema's Name is a token of at least one character: a point named with a space collapses
+    // to nothing, and Garmin Connect then refuses the file entirely, not just that point
+    const doc = parseXml(buildTcx('   ', COORDS, [{ lon: 6.5, lat: 44.6, name: ' ', kind: 'water' }]));
+    expect(doc.querySelector('Course > Name')?.textContent).toBe('Course');
+    expect(doc.querySelector('CoursePoint > Name')?.textContent).toBe('Water');
+  });
+
+  it('keeps the name a valid token: no overflow, no half emoji', () => {
+    const doc = parseXml(
+      buildTcx('Traversée du Queyras', COORDS, [{ lon: 6.5, lat: 44.6, name: 'Bivouac d🏔 lac', kind: 'camp' }]),
+    );
+    // 15 characters for a course, 10 for a point, and the truncation must not split a surrogate
+    expect(doc.querySelector('Course > Name')?.textContent).toBe('Traversée du Qu');
+    const point = doc.querySelector('CoursePoint > Name')?.textContent ?? '';
+    expect(point).toBe('Bivouac d');
+    expect(/[\uD800-\uDFFF]/.test(point)).toBe(false);
+  });
+
   it('maps kinds onto TCX point types, falling back to Generic', () => {
     const doc = parseXml(buildTcx('Tour', COORDS, [...POINTS, { lon: 6.5, lat: 44.6, name: 'Camp', kind: 'camp' }]));
     const types = [...doc.querySelectorAll('CoursePoint > PointType')].map(n => n.textContent);
@@ -74,7 +93,8 @@ describe('buildTcx', () => {
     expect(doc.querySelectorAll('CoursePoint > AltitudeMeters')).toHaveLength(POINTS.length);
     // "Source du Mélezet" overflows the 10-character Name, so the full name rides in Notes
     expect(doc.querySelector('CoursePoint > Notes')?.textContent).toBe('Source du Mélezet');
-    expect([...doc.querySelectorAll('CoursePoint > Name')][0]?.textContent).toBe('Source du ');
+    // trimmed, since the truncation fell on a space and an xml token drops it anyway
+    expect([...doc.querySelectorAll('CoursePoint > Name')][0]?.textContent).toBe('Source du');
   });
 
   it('respects the schema length limits', () => {

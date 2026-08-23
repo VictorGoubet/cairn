@@ -66,6 +66,20 @@ export function OfflineAreas() {
     }
   }
 
+  // a downloaded zone is an abstraction until it is framed on the map, so showing it means
+  // leaving the gallery, turning its layer on, and flying there
+  function reveal(area: OfflineArea) {
+    const state = usePlanner.getState();
+    if (!state.overlays.offlineZones) state.toggleOverlay('offlineZones');
+    state.setFlyTo({
+      bounds: [
+        [area.bounds.west, area.bounds.south],
+        [area.bounds.east, area.bounds.north],
+      ],
+    });
+    usePlanner.setState({ showRoutes: false });
+  }
+
   async function remove(id: string) {
     await deleteOfflineArea(id);
     setAreas(listOfflineAreas());
@@ -115,8 +129,10 @@ export function OfflineAreas() {
         <ul className="area-list">
           {areas.map(area => (
             <li key={area.id}>
-              <img className="area-thumb" src={areaThumbUrl(area.bounds)} alt="" loading="lazy" />
-              <span className="area-name">{area.name}</span>
+              <button type="button" className="area-open" data-control="area-open" onClick={() => reveal(area)}>
+                <img className="area-thumb" src={areaThumbUrl(area.bounds)} alt="" loading="lazy" />
+                <span className="area-name">{area.name}</span>
+              </button>
               <span className="area-meta">
                 {/* recomputed, never the count stored at download time: a stored number goes
                     stale the day the bundle's layers or zooms change, and then the per-area

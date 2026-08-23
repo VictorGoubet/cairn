@@ -160,3 +160,41 @@ describe('energyKcal', () => {
     expect(energyKcal(track(40, 100, -20))).toBeGreaterThan(0);
   });
 });
+
+describe('a hiker who has measured themselves', () => {
+  const MINE: HikerProfile = { ...DEFAULT_PROFILE, mode: 'custom', flatKmh: 5, ascentMH: 500, descentMH: 1000 };
+
+  it('walks the flat at exactly the speed typed in', () => {
+    expect((speedMs(0, MINE) * 3600) / 1000).toBeCloseTo(5, 3);
+    // and the body fields no longer touch the pace: these three rates are already the answer
+    expect(speedMs(0, { ...MINE, packKg: 25 })).toBeCloseTo(speedMs(0, MINE), 6);
+  });
+
+  it('prices a climb as the sum of its distance and its ascent, the linear rule', () => {
+    // 2 km horizontal, 400 m up: 0.4 h of walking plus 0.8 h of climbing
+    const hours = durationH(track(20, 100, 20), MINE);
+    expect(hours).toBeCloseTo(2 / 5 + 400 / 500, 2);
+  });
+
+  it('prices a descent on its own rate, and a flat walk on distance alone', () => {
+    expect(durationH(track(20, 100, -20), MINE)).toBeCloseTo(2 / 5 + 400 / 1000, 2);
+    expect(durationH(track(50, 100, 0), MINE)).toBeCloseTo(5 / 5, 2);
+    // a slower climber is slower, which is the whole point of typing the numbers
+    expect(durationH(track(20, 100, 20), { ...MINE, ascentMH: 250 })).toBeGreaterThan(
+      durationH(track(20, 100, 20), MINE),
+    );
+  });
+
+  it('approaches the typed ascent rate as the ground gets steeper', () => {
+    const vertical = (slope: number) => speedMs(slope, MINE) * 3600 * (slope / Math.hypot(1, slope));
+    expect(vertical(0.5)).toBeGreaterThan(vertical(0.1));
+    expect(vertical(0.8)).toBeLessThan(500);
+    expect(vertical(0.8)).toBeGreaterThan(400);
+  });
+
+  it('cannot be driven to a standstill by a zero or a negative', () => {
+    const zeroed: HikerProfile = { ...MINE, flatKmh: 0, ascentMH: 0, descentMH: -50 };
+    expect(speedMs(0, zeroed)).toBeGreaterThan(0);
+    expect(Number.isFinite(durationH(track(20, 100, 20), zeroed))).toBe(true);
+  });
+});

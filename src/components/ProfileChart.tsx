@@ -92,14 +92,16 @@ export function ProfileChart({
   const { runs, areaPath } = useMemo(() => {
     const scales = makeScales(size.w, size.h, viewFromM, viewToM, eleMin, eleMax);
     const point = (i: number) => `${scales.x(dists[i]).toFixed(1)},${scales.y(coords[i][2]).toFixed(1)}`;
-    const runList: { color: string; d: string }[] = [];
-    let current: { color: string; d: string } | null = null;
+    // `from` is the run's identity: two runs can share the start of their path string, and a key
+    // built from that path made React drop segments as duplicates
+    const runList: { color: string; d: string; from: number }[] = [];
+    let current: { color: string; d: string; from: number } | null = null;
     let line = `M${point(0)}`;
     for (let i = 1; i < coords.length; i++) {
       const color = slopeColorForDeg((slopes[i - 1] + slopes[i]) / 2);
       if (!current || current.color !== color) {
         if (current) runList.push(current);
-        current = { color, d: `M${point(i - 1)}L${point(i)}` };
+        current = { color, d: `M${point(i - 1)}L${point(i)}`, from: i - 1 };
       } else {
         current.d += `L${point(i)}`;
       }
@@ -351,7 +353,7 @@ export function ProfileChart({
         <g clipPath="url(#profile-clip)">
           <path d={areaPath} className="viz-area" />
           {runs.map(r => (
-            <path key={r.d.slice(0, 24)} d={r.d} className="viz-line-seg" stroke={r.color} />
+            <path key={r.from} d={r.d} className="viz-line-seg" stroke={r.color} />
           ))}
           {pois.map(p => {
             const dragged = poiDrag?.id === p.id ? poiDrag.distM : p.distM;

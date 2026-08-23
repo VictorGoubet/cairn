@@ -71,6 +71,12 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   become off-route points.
 - **Anchor drag**: elastic line during drag, re-route throttled at 450 ms (Leaflet Routing
   Machine's cadence), snap-on-drop to the router's junction.
+- **A TCX name is a token of 1 to 15 characters** (10 for a course point), and the schema means it:
+  a point named with a single space collapsed to `<Name></Name>` and Garmin Connect refused the
+  *whole file*, not that point. Checked against Garmin's published XSD with `xmllint`, which is the
+  way to settle any doubt about an export. `tcxName` collapses whitespace, truncates, drops a lone
+  surrogate left by cutting an emoji in half, and falls back to the Garmin point type rather than
+  emit nothing.
 - **Exports carry everything a Garmin can read**: GPX waypoints get `<sym>` (the watch's
   pictogram), `<type>` (our kind, read back first on import) and the track's elevation when the
   point sits within 120 m of it; the track is typed `hiking`. TCX CoursePoints get the altitude
@@ -173,7 +179,12 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   the gait the speed picked, not the cheaper one — deciding on cost alone answers "walk" everywhere,
   since walking is cheaper per metre even on the flat. The panel prints the km/h the chosen pace
   buys, because pace names are relative and a speed is not. The walk to water in the bivouac score
-  stays a walk whatever the mode.
+  stays a walk whatever the mode. A third mode, `custom`, is the linear family instead: the hiker
+  types their own flat speed, ascent rate and descent rate, and a segment costs its horizontal
+  distance over the first plus its climb or drop over the others. Naismith with your own figures,
+  offered because the result is verifiable by hand, which no fitted curve is; it inherits what
+  every linear rule costs, adding the terms rather than taking the dominant one. The load then
+  changes calories only, and the panel says so rather than repeating the pace hint.
 - **Roadbook** (`lib/roadbook.ts` + `RoadbookSheet`): the route as a printable table, derived like
   the stages. One row per landmark (the ends, plus anything typed or named: a bare checkpoint is
   geometry), each carrying cumulative distance, climb, loss, duration and the clock time of the
@@ -193,6 +204,17 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   keyed by route id *and* `updatedAt`, so re-saving redraws and reopening asks for nothing. Data
   urls rather than canvases: 30 kB against 420 kB of bitmap apiece, which is the difference between
   caching a screenful and a whole gallery. A card still drawing pulses instead of staying blank.
+  Two levels, because memory dies with the page and a reload was what still felt slow: the session
+  map, and the `cairn-thumbs-v1` cache storage underneath, swept of dead ids and stale versions
+  once per opening. Measured after: a reload then an open costs 0 tile requests and 7 ms a card.
+  Careful with what a profiler says here: the boot cost that remains is the map's own first render,
+  which a headless browser inflates to seconds through software rendering while a real GPU does not.
+- **The first payload carries only what is on screen.** The three panels nobody has open on arrival
+  (share studio, qr, roadbook) are `lazy` chunks, which took the entry from 388 to 352 kB gzipped,
+  the qr encoder alone being 24 kB of it. They are then warmed on `requestIdleCallback`, and that
+  is not an optimisation but a correctness fix: a dynamic chunk is absent from the html the service
+  worker's install parses, so without the warm-up the qr panel would be missing in a dead zone.
+  `production.pwa.spec.ts` opens it offline for exactly that reason.
 - **Collections** (`collectionSiblings`, `byCollection`): a project is one optional name on a saved
   route, so the four distances of a race group in the gallery (with their totals in the heading) and
   the siblings of the open course draw behind it as grey dashed lines. Nothing new is stored and
@@ -202,6 +224,9 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - **Stages** (`lib/stages.ts`): derived, never stored: a stage is what lies between two `camp`
   points. GPX export writes one named `<trk>` per day. With a start date (`startDate`, in the
   draft), each stage shows its Open-Meteo forecast (`lib/weather.ts`, 16-day horizon, no key).
+- **A downloaded zone is framed on tap** (`OfflineAreas`): the gallery closes, the zones overlay
+  turns itself on and the camera flies to the bounds, since a zone nobody can see on the map is an
+  abstraction.
 - **Offline** (`public/sw.js` + `lib/offline.ts`): the install precaches the shell and its
   hashed assets; tiles and open-data answers cache on use (capped FIFO). Two bundles share one
   machinery (`bundleUrls`) and one cache, `cairn-offline-v1` (never trimmed, checked first): a

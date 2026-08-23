@@ -26,6 +26,14 @@
  * equation (1977) predicts the metabolic rate from mass, load, speed and grade. Pace, not sex or
  * age, is what the literature ties to hiking speed, so the profile keeps them apart.
  *
+ * A hiker who has measured themselves gets the linear family instead, which is what those three
+ * numbers are: `custom` prices a segment as its horizontal distance over the flat speed, plus its
+ * climb over the ascent rate, plus its descent over the descent rate. Naismith with your own
+ * figures, and the reason it is offered: the estimate is then verifiable by hand, which no fitted
+ * curve is. It costs what every linear rule costs, being blind to steepness within each term, and
+ * it adds the terms rather than taking the dominant one, so a climb spread over kilometres is
+ * priced above the same climb taken straight up.
+ *
  * **Running is not walking scaled up**, so it gets its own model rather than a bigger pace
  * factor. Minetti et al. (2002) measured the energy cost of walking and of running from -45% to
  * +45% of gradient, in joules per kilogram per metre. At a sustained power, speed is that power
@@ -43,19 +51,35 @@
 import { haversineM, type LonLatEle } from './geo';
 
 export type HikerPace = 'strolling' | 'steady' | 'sporty' | 'athletic';
-/** on foot, but a hiker and a trail runner do not obey the same curve */
-export type TravelMode = 'hike' | 'run';
+/** on foot, but a hiker, a trail runner and a self-measured walker obey three different models */
+export type TravelMode = 'hike' | 'run' | 'custom';
 
 export interface HikerProfile {
   mode: TravelMode;
+  /** ignored in `custom` mode, where the three rates below say everything */
   pace: HikerPace;
   /** body mass in kg, used by the energy estimate */
   weightKg: number;
   /** pack mass in kg: it slows the walker and costs energy */
   packKg: number;
+  /** custom mode: km/h held on flat ground */
+  flatKmh: number;
+  /** custom mode: metres of ascent per hour */
+  ascentMH: number;
+  /** custom mode: metres of descent per hour */
+  descentMH: number;
 }
 
-export const DEFAULT_PROFILE: HikerProfile = { mode: 'hike', pace: 'steady', weightKg: 72, packKg: 8 };
+export const DEFAULT_PROFILE: HikerProfile = {
+  mode: 'hike',
+  pace: 'steady',
+  weightKg: 72,
+  packKg: 8,
+  // the Swiss Alpine Club scale, so switching to custom starts where the default hiker already was
+  flatKmh: 4.2,
+  ascentMH: 400,
+  descentMH: 800,
+};
 
 /**
  * Pace factors applied to Tobler's speed.
@@ -118,6 +142,7 @@ const MAX_SLOPE = 0.8;
  */
 export function speedMs(slope: number, profile: HikerProfile): number {
   const clamped = Math.max(-MAX_SLOPE, Math.min(MAX_SLOPE, slope));
+  if (profile.mode === 'custom') return customSpeedMs(clamped, profile);
   if (profile.mode === 'run') return runStep(clamped, profile).speedMs;
   const tobler = 6 * Math.exp(-3.5 * Math.abs(clamped + 0.05));
   return (tobler * 1000 * paceFactor(profile)) / 3600;
@@ -209,6 +234,22 @@ function runEnergyKcal(coords: LonLatEle[], profile: HikerProfile): number {
     joules += step.costJPerKgM * mass * coveredM + 1.5 * profile.weightKg * (coveredM / step.speedMs);
   }
   return (joules / 1000) * KCAL_PER_KJ;
+}
+
+/**
+ * The hiker's own three rates, as a speed along the ground.
+ *
+ * The linear rule prices one horizontal metre at `1 / flat + climb / ascent + drop / descent`
+ * seconds; the speed along the path is then the 3D length of that metre over the same time. On the
+ * flat it is exactly the typed speed, and on a climb steep enough that the horizontal term
+ * vanishes, exactly the typed ascent rate.
+ */
+function customSpeedMs(slope: number, profile: HikerProfile): number {
+  const flat = Math.max(0.2, profile.flatKmh) / 3.6;
+  const up = Math.max(20, profile.ascentMH) / 3600;
+  const down = Math.max(20, profile.descentMH) / 3600;
+  const secondsPerHorizontalM = 1 / flat + Math.max(slope, 0) / up + Math.max(-slope, 0) / down;
+  return Math.hypot(1, slope) / secondsPerHorizontalM;
 }
 
 /**

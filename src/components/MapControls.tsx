@@ -13,7 +13,7 @@ import { NearbyHikes } from './NearbyHikes';
 type Panel = 'explore' | 'bivouac' | 'layers' | 'options' | null;
 
 const PACES: HikerPace[] = ['strolling', 'steady', 'sporty', 'athletic'];
-const MODES: TravelMode[] = ['hike', 'run'];
+const MODES: TravelMode[] = ['hike', 'run', 'custom'];
 
 const OPTION_ROWS: { key: keyof Overlays; labelKey: MsgKey }[] = [
   { key: 'km', labelKey: 'opt_km' },
@@ -284,21 +284,65 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
               </button>
             ))}
           </div>
-          <div className="segmented wrap">
-            {PACES.map(pace => (
-              <button
-                key={pace}
-                type="button"
-                className={profile.pace === pace ? 'on' : ''}
-                onClick={() => usePlanner.getState().setProfile({ ...profile, pace })}
-              >
-                {t(profile.mode === 'run' ? (`pace_run_${pace}` as MsgKey) : (`pace_${pace}` as MsgKey))}
-              </button>
-            ))}
-          </div>
+          {/* a measured hiker types their three rates; the pace names would say nothing over them */}
+          {profile.mode === 'custom' ? (
+            <div className="profile-fields three">
+              <label>
+                {t('profile_flat_speed')}
+                <input
+                  type="number"
+                  min={0.5}
+                  max={25}
+                  step={0.1}
+                  data-control="profile-flat"
+                  value={profile.flatKmh}
+                  onChange={e => usePlanner.getState().setProfile({ ...profile, flatKmh: Number(e.target.value) })}
+                />
+              </label>
+              <label>
+                {t('profile_ascent')}
+                <input
+                  type="number"
+                  min={50}
+                  max={2500}
+                  step={10}
+                  data-control="profile-ascent"
+                  value={profile.ascentMH}
+                  onChange={e => usePlanner.getState().setProfile({ ...profile, ascentMH: Number(e.target.value) })}
+                />
+              </label>
+              <label>
+                {t('profile_descent')}
+                <input
+                  type="number"
+                  min={50}
+                  max={4000}
+                  step={10}
+                  data-control="profile-descent"
+                  value={profile.descentMH}
+                  onChange={e => usePlanner.getState().setProfile({ ...profile, descentMH: Number(e.target.value) })}
+                />
+              </label>
+            </div>
+          ) : (
+            <div className="segmented wrap">
+              {PACES.map(pace => (
+                <button
+                  key={pace}
+                  type="button"
+                  className={profile.pace === pace ? 'on' : ''}
+                  onClick={() => usePlanner.getState().setProfile({ ...profile, pace })}
+                >
+                  {t(profile.mode === 'run' ? (`pace_run_${pace}` as MsgKey) : (`pace_${pace}` as MsgKey))}
+                </button>
+              ))}
+            </div>
+          )}
           {/* the pace names are relative; the speed they buy is the thing the hiker can judge */}
           <p className="mc-hint">
-            {((speedMs(0, profile) * 3600) / 1000).toFixed(1)} km/h {t('profile_flat')}
+            {profile.mode === 'custom'
+              ? t('profile_custom_hint')
+              : `${((speedMs(0, profile) * 3600) / 1000).toFixed(1)} km/h ${t('profile_flat')}`}
           </p>
           <div className="profile-fields">
             <label>
@@ -322,7 +366,7 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
               />
             </label>
           </div>
-          <p className="mc-hint">{t('profile_hint')}</p>
+          <p className="mc-hint">{t(profile.mode === 'custom' ? 'profile_hint_custom' : 'profile_hint')}</p>
           {overlays.slopes && (
             <div className="slope-legend">
               {SLOPE_LEGEND.map((c, i) => (

@@ -16,6 +16,9 @@ export interface ExportPoint {
 }
 
 const WALKING_SPEED_M_S = 4000 / 3600;
+/** the TCX schema's own limits on a course name and on a course point's */
+const TCX_COURSE_NAME_MAX = 15;
+const TCX_POINT_NAME_MAX = 10;
 // CoursePoint types of the TCX schema; the vocabulary is cycling-flavored, so the mapping
 // borrows the closest alert a watch can raise, and other kinds fall back to "Generic"
 const TCX_POINT_TYPES: Partial<Record<PointKind, string>> = {
@@ -70,6 +73,21 @@ ${placemarks}
  *   coords: full track (lon, lat, elevation).
  *   pois: route POIs (off-track markers have no place in a route).
  */
+/**
+ * A name the TCX schema accepts: a token of 1 to `max` characters.
+ *
+ * Both limits are real: `RestrictedToken_t` collapses whitespace and demands at least one
+ * character, so a point named with a single space produced an empty element and Garmin Connect
+ * refused the whole file (checked against the published schema). Truncating can also cut an emoji
+ * in half, leaving a lone surrogate that every encoder turns into a replacement character, so the
+ * orphan is dropped rather than shipped.
+ */
+function tcxName(value: string, max: number, fallback: string): string {
+  let token = value.replace(/\s+/g, ' ').trim().slice(0, max);
+  if (/[\uD800-\uDBFF]$/.test(token)) token = token.slice(0, -1);
+  return escXml(token.trim() || fallback);
+}
+
 export function buildTcx(name: string, coords: LonLatEle[], pois: ExportPoint[]): string {
   const start = Date.now();
   const distances = cumulativeDistancesM(coords);
@@ -89,13 +107,14 @@ export function buildTcx(name: string, coords: LonLatEle[], pois: ExportPoint[])
       const i = nearestCoordIndex(coords, p.lon, p.lat);
       // the watch shows Name (10 chars max on most devices) in the alert and Notes on the
       // point's page; altitude feeds the ascent-to-next-point screens
-      const notes = p.name.length > 10 ? `\n        <Notes>${escXml(p.name)}</Notes>` : '';
+      const notes = p.name.length > TCX_POINT_NAME_MAX ? `\n        <Notes>${escXml(p.name)}</Notes>` : '';
+      const type = TCX_POINT_TYPES[p.kind] ?? 'Generic';
       return `      <CoursePoint>
-        <Name>${escXml(p.name.slice(0, 10))}</Name>
+        <Name>${tcxName(p.name, TCX_POINT_NAME_MAX, type)}</Name>
         <Time>${timeAt(i)}</Time>
         <Position><LatitudeDegrees>${p.lat.toFixed(6)}</LatitudeDegrees><LongitudeDegrees>${p.lon.toFixed(6)}</LongitudeDegrees></Position>
         <AltitudeMeters>${coords[i][2].toFixed(1)}</AltitudeMeters>
-        <PointType>${TCX_POINT_TYPES[p.kind] ?? 'Generic'}</PointType>${notes}
+        <PointType>${type}</PointType>${notes}
       </CoursePoint>`;
     })
     .join('\n');
@@ -104,7 +123,7 @@ export function buildTcx(name: string, coords: LonLatEle[], pois: ExportPoint[])
 <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
   <Courses>
     <Course>
-      <Name>${escXml(name.slice(0, 15))}</Name>
+      <Name>${tcxName(name, TCX_COURSE_NAME_MAX, 'Course')}</Name>
       <Lap>
         <TotalTimeSeconds>${(distances[last] / WALKING_SPEED_M_S).toFixed(0)}</TotalTimeSeconds>
         <DistanceMeters>${distances[last].toFixed(1)}</DistanceMeters>
