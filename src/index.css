@@ -1388,7 +1388,7 @@ body {
   color: var(--ink-2);
 }
 
-/* the same badge on the map, clickable to plant the camp */
+/* the same badge on the map, clickable to open the spot's card */
 .bivouac-marker {
   width: 30px;
   height: 30px;
@@ -1406,6 +1406,112 @@ body {
 
 .bivouac-marker:hover {
   transform: scale(1.15);
+}
+
+.bivouac-group h3 {
+  margin: 12px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+/* the card of one suggestion, in the floating slot the point editor uses */
+.bivouac-card {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  width: min(300px, calc(100vw - 24px));
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22);
+}
+
+.bivouac-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.bivouac-photo {
+  display: block;
+  width: 100%;
+  height: 132px;
+  object-fit: cover;
+  border-radius: 9px;
+  background: var(--accent-soft);
+}
+
+.bivouac-shot {
+  margin: 0;
+}
+
+.bivouac-shot figcaption {
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--ink-2);
+}
+
+.bivouac-shot figcaption a {
+  color: var(--accent);
+}
+
+.bivouac-criteria {
+  margin: 10px 0 8px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bivouac-criteria li {
+  display: grid;
+  grid-template-columns: 74px 1fr 46px;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+
+.criterion-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  overflow: hidden;
+}
+
+.criterion-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.criterion-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bivouac-move {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 /* --- offline areas --- */

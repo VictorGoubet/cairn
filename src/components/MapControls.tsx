@@ -36,7 +36,15 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
   const following = usePlanner(s => s.following);
   const profile = usePlanner(s => s.profile);
   const legs = usePlanner(s => s.legs);
-  useClickOutside(rootRef, () => setOpen(null), open !== null);
+  // the bivouac card floats outside the panel but is opened from it: using it is not "elsewhere"
+  useClickOutside(
+    rootRef,
+    target => {
+      if (target instanceof Element && target.closest('.bivouac-card')) return;
+      setOpen(null);
+    },
+    open !== null,
+  );
   useEscapeKey(() => setOpen(null), open !== null);
   useEscapeKey(() => usePlanner.getState().stopFlyover(), flyover);
   const hasRoute = legs.some(l => (l.leg?.coords.length ?? 0) > 0);

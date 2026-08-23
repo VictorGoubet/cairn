@@ -28,7 +28,7 @@
 <br>
 
 Draw a hiking route that follows real trails, over official IGN maps. Elevation profile, typed
-waypoints, bivouac spots scored from the terrain, multi-day stages with weather, marked routes around you, 3D flyover, follow mode on
+waypoints, bivouac spots scored for each night, multi-day stages with weather, marked routes around you, 3D flyover, follow mode on
 the trail, offline once visited (PWA), GPX/KML/TCX export, share by link, QR or social image. Built entirely on open data (IGN Géoplateforme, OpenStreetMap, refuges.info)
 and queried straight from your browser: no account, no personal tracking, and everything but the
 short share link works with no backend at all. France-first (IGN maps), usable worldwide
@@ -54,6 +54,7 @@ make dev     # http://localhost:5173
 | Geocoding and elevation | IGN Géoplateforme APIs |
 | Terrain (3D, slopes, client-side elevations) | Terrarium DEM tiles (AWS Open Data) |
 | POIs and hidden trails | refuges.info API, Overpass API |
+| Ground photos of a spot | Panoramax (IGN + OpenStreetMap France) |
 | Tests | vitest + jsdom (unit), playwright (e2e) |
 | Analytics | Umami, cookieless and open source, production domain only |
 
@@ -100,4 +101,4 @@ MIT, see [LICENSE](LICENSE).
 
 ## Data and credits
 
-[IGN Géoplateforme](https://geoservices.ign.fr) • [OpenStreetMap](https://www.openstreetmap.org) • [BRouter](https://brouter.de) • [refuges.info](https://www.refuges.info) • [Terrarium DEM](https://registry.opendata.aws/terrain-tiles/) • [Waymarked Trails](https://hiking.waymarkedtrails.org)
+[IGN Géoplateforme](https://geoservices.ign.fr) • [OpenStreetMap](https://www.openstreetmap.org) • [BRouter](https://brouter.de) • [refuges.info](https://www.refuges.info) • [Panoramax](https://panoramax.fr) • [Terrarium DEM](https://registry.opendata.aws/terrain-tiles/) • [Waymarked Trails](https://hiking.waymarkedtrails.org)

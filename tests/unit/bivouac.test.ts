@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type BivouacProbe,
+  isInsideRing,
   nearestDistanceM,
+  type PlannedCamp,
   RING_SAMPLES,
   scoreBivouac,
+  SHIFT_RADIUS_M,
   waterMinutes,
 } from '../../src/lib/bivouac';
 import type { LonLatEle } from '../../src/lib/geo';
@@ -17,7 +20,7 @@ function probe(slopeDeg: number, ringDelta: number | number[], elevation = 2000)
   return { elevation, cross: [elevation + drop, elevation, elevation - drop, elevation], ring };
 }
 
-const IDEAL = { waterMinutes: 3, intrusionM: 900 };
+const IDEAL = { waterMinutes: 3, intrusionM: 900, shiftM: 0, inWater: false };
 
 describe('scoreBivouac', () => {
   it('rates a flat sheltered spot by a spring near the top', () => {
@@ -38,8 +41,14 @@ describe('scoreBivouac', () => {
   });
 
   it('refuses a spot up against a road or a house', () => {
-    const score = scoreBivouac(probe(1, 30), { waterMinutes: 2, intrusionM: 10 });
+    const score = scoreBivouac(probe(1, 30), { ...IDEAL, waterMinutes: 2, intrusionM: 10 });
     expect(score.veto).toBe('intrusion');
+    expect(score.total).toBe(0);
+  });
+
+  it('refuses the inside of a lake, however flat and quiet it is', () => {
+    const score = scoreBivouac(probe(0, 30), { ...IDEAL, inWater: true, waterMinutes: 0 });
+    expect(score.veto).toBe('water');
     expect(score.total).toBe(0);
   });
 
@@ -56,6 +65,14 @@ describe('scoreBivouac', () => {
     expect(near.total - far.total).toBeGreaterThan(15);
     // and no water at all is the worst of the three
     expect(scoreBivouac(probe(1, 30), { ...IDEAL, waterMinutes: null }).water).toBe(0);
+  });
+
+  it('prefers the planned stop to a better meadow an hour further on', () => {
+    const onPlan = scoreBivouac(probe(1, 30), IDEAL);
+    const pastIt = scoreBivouac(probe(1, 30), { ...IDEAL, shiftM: SHIFT_RADIUS_M });
+    expect(onPlan.onPlan).toBe(1);
+    expect(pastIt.onPlan).toBe(0);
+    expect(onPlan.total - pastIt.total).toBeGreaterThan(15);
   });
 
   it('separates a sheltered hollow from an exposed crest', () => {
@@ -77,8 +94,8 @@ describe('scoreBivouac', () => {
   });
 
   it('treats an empty answer around as quiet, and a close road as not', () => {
-    expect(scoreBivouac(probe(1, 30), { waterMinutes: 3, intrusionM: null }).quiet).toBe(1);
-    expect(scoreBivouac(probe(1, 30), { waterMinutes: 3, intrusionM: 60 }).quiet).toBeLessThan(0.3);
+    expect(scoreBivouac(probe(1, 30), { ...IDEAL, intrusionM: null }).quiet).toBe(1);
+    expect(scoreBivouac(probe(1, 30), { ...IDEAL, intrusionM: 60 }).quiet).toBeLessThan(0.3);
   });
 });
 
@@ -103,6 +120,23 @@ describe('waterMinutes', () => {
   });
 });
 
+describe('isInsideRing', () => {
+  // a square kilometre of lake, and the shore itself, where camping is the whole point
+  const LAKE: [number, number][] = [
+    [6.7, 44.6],
+    [6.71, 44.6],
+    [6.71, 44.61],
+    [6.7, 44.61],
+    [6.7, 44.6],
+  ];
+
+  it('tells the middle of the water from the bank', () => {
+    expect(isInsideRing([6.705, 44.605], LAKE)).toBe(true);
+    expect(isInsideRing([6.6995, 44.605], LAKE)).toBe(false);
+    expect(isInsideRing([6.705, 44.62], LAKE)).toBe(false);
+  });
+});
+
 describe('nearestDistanceM', () => {
   it('measures to the closest point, or nothing at all', () => {
     expect(nearestDistanceM([6.7, 44.6], [])).toBeNull();
@@ -123,38 +157,73 @@ describe('findBivouacSpots', () => {
     vi.restoreAllMocks();
   });
 
-  /** a 3 km route across a valley floor */
+  /** a 2.3 km route across a valley floor */
   const ROUTE: LonLatEle[] = Array.from({ length: 60 }, (_, i) => [6.7 + i * 0.0005, 44.6, 2000]);
+  /** two nights planned on it, a kilometre and a half apart */
+  const CAMPS: PlannedCamp[] = [
+    { id: 'a', name: 'Col', distanceM: 600 },
+    { id: 'b', name: 'Lac', distanceM: 2100 },
+  ];
 
-  it('suggests spots along the route, spaced out, best first', async () => {
-    // a DEM that is flat everywhere, and one spring beside the route
+  function mockFlatWithSpring() {
     vi.doMock('../../src/lib/demElevation', () => ({
       sampleElevations: async (points: [number, number][]) => points.map(() => 2000),
       DEM_TILE_SIZE: 256,
     }));
     vi.doMock('../../src/lib/overpass', () => ({
-      overpassQuery: async (query: string) =>
-        query.includes('spring') ? [{ lon: 6.707, lat: 44.601 }] : [],
+      overpassQuery: async (query: string) => (query.includes('spring') ? [{ lon: 6.707, lat: 44.601 }] : []),
       overpassUrl: (endpoint: string, q: string) => `${endpoint}?data=${q}`,
       OVERPASS_PRIMARY: 'https://overpass-api.de/api/interpreter',
     }));
+  }
+
+  it('answers per planned camp, in walking reach of it, best first', async () => {
+    mockFlatWithSpring();
     const { findBivouacSpots: find } = await import('../../src/lib/bivouac');
 
-    const { spots, terrainOnly } = await find(ROUTE);
+    const { groups, terrainOnly } = await find(ROUTE, CAMPS);
     expect(terrainOnly).toBe(false);
-    expect(spots.length).toBeGreaterThan(1);
-    // sorted, spaced, and each one honest about why it scored
-    for (let i = 1; i < spots.length; i++) expect(spots[i - 1].total).toBeGreaterThanOrEqual(spots[i].total);
-    for (const spot of spots) {
-      expect(spot.veto).toBeNull();
-      expect(spot.total).toBeGreaterThanOrEqual(45);
-      expect(spot.waterMinutes).not.toBeNull();
+    expect(groups.map(g => g.campId)).toEqual(['a', 'b']);
+    expect(groups.map(g => g.day)).toEqual([1, 2]);
+    for (const group of groups) {
+      expect(group.spots.length).toBeGreaterThan(0);
+      for (let i = 1; i < group.spots.length; i++) {
+        expect(group.spots[i - 1].total).toBeGreaterThanOrEqual(group.spots[i].total);
+      }
+      for (const spot of group.spots) {
+        // a suggestion belongs to its night, and never drags the stage further than a short walk
+        expect(spot.campId).toBe(group.campId);
+        expect(spot.shiftM).toBeLessThanOrEqual(SHIFT_RADIUS_M);
+        expect(spot.veto).toBeNull();
+        expect(spot.waterMinutes).not.toBeNull();
+      }
+      const [first, second] = group.spots;
+      if (second) {
+        const gap = Math.hypot(
+          (first.point[0] - second.point[0]) * 79_000,
+          (first.point[1] - second.point[1]) * 111_000,
+        );
+        expect(gap).toBeGreaterThan(300);
+      }
     }
-    const [first, second] = spots;
-    if (second) {
-      const gap = Math.hypot((first.point[0] - second.point[0]) * 79_000, (first.point[1] - second.point[1]) * 111_000);
-      expect(gap).toBeGreaterThan(300);
-    }
+  });
+
+  it('samples a two-vertex straight leg as finely as a routed one', async () => {
+    mockFlatWithSpring();
+    const { findBivouacSpots: find } = await import('../../src/lib/bivouac');
+    // what a manual leg or a coarse GPX looks like: 3 km, two points, no vertices in between
+    const straight: LonLatEle[] = [
+      [6.7, 44.6, 2000],
+      [6.738, 44.6, 2000],
+    ];
+    const [group] = (await find(straight, [{ id: 'a', name: 'Nuit 1', distanceM: 1500 }])).groups;
+    expect(group.spots.length).toBeGreaterThan(1);
+  });
+
+  it('has nothing to refine until the days are cut', async () => {
+    mockFlatWithSpring();
+    const { findBivouacSpots: find } = await import('../../src/lib/bivouac');
+    expect((await find(ROUTE, [])).groups).toEqual([]);
   });
 
   it('says so when the map data cannot be reached, instead of claiming there is no water', async () => {
@@ -171,9 +240,9 @@ describe('findBivouacSpots', () => {
     }));
     const { findBivouacSpots: find } = await import('../../src/lib/bivouac');
 
-    const { spots, terrainOnly } = await find(ROUTE);
+    const { groups, terrainOnly } = await find(ROUTE, CAMPS);
     expect(terrainOnly).toBe(true);
-    for (const spot of spots) expect(spot.waterMinutes).toBeNull();
+    for (const group of groups) for (const spot of group.spots) expect(spot.waterMinutes).toBeNull();
   });
 
   it('finds nothing on a route with no room for a tent', async () => {
@@ -188,6 +257,6 @@ describe('findBivouacSpots', () => {
       OVERPASS_PRIMARY: 'https://overpass-api.de/api/interpreter',
     }));
     const { findBivouacSpots: find } = await import('../../src/lib/bivouac');
-    expect((await find(ROUTE)).spots).toEqual([]);
+    expect((await find(ROUTE, CAMPS)).groups).toEqual([]);
   });
 });

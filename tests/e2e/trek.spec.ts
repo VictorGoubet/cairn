@@ -1,12 +1,12 @@
 // the trek features: multi-day stages, weather, qr handoff, offline shell
-import { expect, test } from '@playwright/test';
-import { CEILLAC, clickAt, openPlanner, planner, type TestHandles, waitForRouting } from './helpers';
+import { expect, type Page, test } from '@playwright/test';
+import { CEILLAC, clickAt, openPlanner, plantCamp, type TestHandles, waitForRouting } from './helpers';
 
 // all three inside the z14 viewport: a click projected past its edge lands on nothing
 const FURTHER: [number, number] = [CEILLAC[0] + 0.008, CEILLAC[1] + 0.001];
 const BEYOND: [number, number] = [CEILLAC[0] + 0.013, CEILLAC[1] + 0.005];
 
-async function drawTrek(page: import('@playwright/test').Page): Promise<void> {
+async function drawTrek(page: Page): Promise<void> {
   await openPlanner(page);
   await page.locator('.segmented button', { hasText: /Manuel|Manual/ }).click();
   await clickAt(page, CEILLAC);
@@ -25,7 +25,7 @@ test.describe('multi-day stages', () => {
     await drawTrek(page);
     const rows = page.locator('.stages-list li');
     await expect(rows).toHaveCount(2);
-    await expect(rows.first()).toContainText('J1');
+    await expect(rows.first()).toContainText(/J1|D1/);
     await expect(rows.first()).toContainText('Bivouac du lac');
     await expect(rows.first()).toContainText(/min|h/);
     // the block folds away when the panel gets crowded, and remembers nothing: a session choice
@@ -141,8 +141,15 @@ test.describe('offline download', () => {
 });
 
 test.describe('bivouac scoring', () => {
-  test('scores spots along the route and plants the camp where it was scored', async ({ page }) => {
-    // a spring beside the route, so the water sub-score is deterministic
+  /** ground photos are real data at Lac Miroir: mocked so each test picks the branch it asserts */
+  async function mockGroundPhotos(page: Page, photos: unknown[]) {
+    await page.route('**api.panoramax.xyz/**', route =>
+      route.fulfill({ contentType: 'application/json', body: JSON.stringify({ features: photos }) }),
+    );
+  }
+
+  /** a spring beside the route, so the water sub-score is deterministic */
+  async function mockSpring(page: Page) {
     await page.route('**overpass-api.de/**', route => {
       const query = decodeURIComponent(route.request().url());
       const body = query.includes('spring')
@@ -150,62 +157,127 @@ test.describe('bivouac scoring', () => {
         : { elements: [] };
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
     });
+  }
+
+  test('refines a planned camp, and moves it only when the card says so', async ({ page }) => {
+    await mockSpring(page);
+    await mockGroundPhotos(page, []);
     await openPlanner(page);
     await page.locator('.segmented button', { hasText: /Manuel|Manual/ }).click();
     await clickAt(page, CEILLAC);
     await clickAt(page, FURTHER);
-    await waitForRouting(page, 1);
+    await clickAt(page, BEYOND);
+    await waitForRouting(page, 2);
+
+    await page.locator('[data-control="bivouac"]').click();
+    // the search refines a plan: with no camp cut yet it says so instead of scoring the route
+    await expect(page.locator('[data-control="bivouac-search"]')).toHaveCount(0);
+    await page.locator('.bivouac-panel .mc-hint').first().waitFor();
+
+    await plantCamp(page, 1, 'Nuit 1');
+    await page.locator('[data-control="bivouac-search"]').click();
+    const rows = page.locator('[data-control="bivouac-spot"]');
+    await expect(rows.first()).toBeVisible({ timeout: 60_000 });
+    // the suggestions hang under the night they belong to
+    await expect(page.locator('.bivouac-group h3').first()).toContainText(/Nuit 1/);
+    // every row says why it scored: altitude, slope, and the walk to water
+    await expect(rows.first()).toContainText(/m/);
+    await expect(rows.first()).toContainText(/pente|slope/);
+    await expect(rows.first()).toContainText(/min/);
+    expect(await page.locator('.bivouac-marker').count()).toBeGreaterThan(0);
+
+    const before = await page.evaluate(
+      () => (window as unknown as TestHandles).__planner.getState().anchors[1],
+    );
+    const target = await page.evaluate(
+      () => (window as unknown as TestHandles).__planner.getState().bivouacSpots[0].point,
+    );
+
+    // a row opens the card and touches nothing: the camp is still where the hiker put it
+    await rows.first().click();
+    await expect(page.locator('[data-control="bivouac-card"]')).toBeVisible();
+    // nobody photographed this spot: the card falls back to the aerial view of the exact tile
+    await expect(page.locator('.bivouac-photo')).toHaveAttribute('src', /geopf\.fr/);
+    await expect(page.locator('.bivouac-criteria li')).toHaveCount(5);
+    const stillThere = await page.evaluate(
+      () => (window as unknown as TestHandles).__planner.getState().anchors[1],
+    );
+    expect(stillThere.lon).toBeCloseTo(before.lon, 9);
+    expect(stillThere.lat).toBeCloseTo(before.lat, 9);
+
+    // the card's button is what moves it, to the exact spot that was scored
+    await page.locator('[data-control="bivouac-move"]').click();
+    await expect.poll(async () => {
+      const camp = await page.evaluate(
+        () => (window as unknown as TestHandles).__planner.getState().anchors[1],
+      );
+      return Math.abs(camp.lon - target[0]) < 1e-6 && Math.abs(camp.lat - target[1]) < 1e-6;
+    }).toBe(true);
+    // and being a camp, it still cuts the trek into stages
+    await expect(page.locator('[data-control="stages"]')).toBeVisible();
+  });
+
+  test('shows the ground photo of a spot somebody walked past, with its distance and credit', async ({ page }) => {
+    await mockSpring(page);
+    await openPlanner(page);
+    await page.locator('.segmented button', { hasText: /Manuel|Manual/ }).click();
+    await clickAt(page, CEILLAC);
+    await clickAt(page, FURTHER);
+    await clickAt(page, BEYOND);
+    await waitForRouting(page, 2);
+    await plantCamp(page, 1, 'Nuit 1');
 
     await page.locator('[data-control="bivouac"]').click();
     await page.locator('[data-control="bivouac-search"]').click();
     const rows = page.locator('[data-control="bivouac-spot"]');
     await expect(rows.first()).toBeVisible({ timeout: 60_000 });
-    // every row says why it scored: altitude, slope, and the walk to water
-    await expect(rows.first()).toContainText(/m/);
-    await expect(rows.first()).toContainText(/pente|slope/);
-    await expect(rows.first()).toContainText(/min/);
-    // the same badges are on the map
-    expect(await page.locator('.bivouac-marker').count()).toBeGreaterThan(0);
 
-    const target = await page.evaluate(
+    // the photo is planted a hundred metres from the spot the search actually returned: only the
+    // card asks Panoramax, so mocking it after the search is soon enough
+    const spot = await page.evaluate(
       () => (window as unknown as TestHandles).__planner.getState().bivouacSpots[0].point,
     );
+    await mockGroundPhotos(page, [
+      {
+        id: 'pic-1',
+        geometry: { coordinates: [spot[0], spot[1] + 0.0009] },
+        assets: { thumb: { href: 'https://panoramax.openstreetmap.fr/thumb.jpg' } },
+        properties: { 'geovisio:producer': 'Patchi', license: 'CC-BY-SA-4.0' },
+      },
+    ]);
     await rows.first().click();
-    await expect.poll(async () => (await planner(page).state()).anchorKinds.includes('camp')).toBe(true);
-    const camp = await page.evaluate(() =>
-      (window as unknown as TestHandles).__planner.getState().anchors.find(a => a.kind === 'camp'),
-    );
-    // planted off the path, at its own coordinates: the route detours instead of snapping back
-    expect(camp?.lon).toBeCloseTo(target[0], 6);
-    expect(camp?.lat).toBeCloseTo(target[1], 6);
-    // and being a camp, it cuts the trek into stages
-    await expect(page.locator('[data-control="stages"]')).toBeVisible();
+
+    await expect(page.locator('.bivouac-photo')).toHaveAttribute('src', /panoramax/);
+    // the photo is near the spot, not of it: the card says whose it is and how far away
+    const caption = page.locator('.bivouac-shot figcaption');
+    await expect(caption).toContainText('Patchi');
+    await expect(caption).toContainText('CC-BY-SA-4.0');
+    await expect(caption).toContainText(/\d+\s?m/);
   });
 
-  test('a search is kept until the route changes, and one camp does not consume the others', async ({ page }) => {
-    await page.route('**overpass-api.de/**', route => {
-      const query = decodeURIComponent(route.request().url());
-      const body = query.includes('spring')
-        ? { elements: [{ type: 'node', lon: CEILLAC[0] + 0.004, lat: CEILLAC[1] + 0.001 }] }
-        : { elements: [] };
-      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
-    });
+  test('a search is kept until the route changes, and one night does not consume the others', async ({ page }) => {
+    await mockSpring(page);
+    await mockGroundPhotos(page, []);
     await openPlanner(page);
-    // built through the store: a route long enough for several suggestions leaves the viewport
+    // built through the store: a route long enough for two nights leaves the viewport
     await page.evaluate(center => {
       const s = (window as unknown as TestHandles).__planner;
       s.setState({ manualMode: true });
       s.getState().addAnchor(center);
       s.getState().addAnchor([center[0] + 0.02, center[1] + 0.004]);
+      s.getState().addAnchor([center[0] + 0.05, center[1] + 0.008]);
+      s.getState().addAnchor([center[0] + 0.07, center[1] + 0.012]);
     }, CEILLAC);
-    await waitForRouting(page, 1);
+    await waitForRouting(page, 3);
+    await plantCamp(page, 1, 'Nuit 1');
+    await plantCamp(page, 2, 'Nuit 2');
 
     await page.locator('[data-control="bivouac"]').click();
     await page.locator('[data-control="bivouac-search"]').click();
     const rows = page.locator('[data-control="bivouac-spot"]');
     await expect(rows.first()).toBeVisible({ timeout: 60_000 });
     const found = await rows.count();
-    expect(found).toBeGreaterThan(1);
+    expect(await page.locator('.bivouac-group').count()).toBe(2);
 
     // closing the panel keeps the search: reopening must not mean running it again
     await page.locator('[data-control="bivouac"]').click();
@@ -213,14 +285,30 @@ test.describe('bivouac scoring', () => {
     await page.locator('[data-control="bivouac"]').click();
     await expect(rows).toHaveCount(found);
 
-    // planting one camp leaves the others standing, for the next night
+    // moving the first night spends its own suggestions and leaves the second night's standing
+    const firstNight = await page.evaluate(
+      () => (window as unknown as TestHandles).__planner.getState().bivouacSpots[0].campId,
+    );
+    const kept = await page.evaluate(
+      campId =>
+        (window as unknown as TestHandles).__planner
+          .getState()
+          .bivouacSpots.filter(spot => spot.campId !== campId).length,
+      firstNight,
+    );
     await rows.first().click();
-    await expect(rows).toHaveCount(found - 1);
+    await page.locator('[data-control="bivouac-move"]').click();
+    await expect(rows).toHaveCount(kept);
+    await expect(page.locator('.bivouac-group')).toHaveCount(1);
 
-    // editing the route drops them instead of showing spots scored for another itinerary
+    // editing the route drops them instead of showing spots scored for another itinerary,
+    // the open card included: its button would move a night scored for another route
+    await rows.first().click();
+    await expect(page.locator('[data-control="bivouac-card"]')).toBeVisible();
     await page.evaluate(() => (window as unknown as TestHandles).__planner.getState().addAnchor([6.79, 44.64]));
     await expect(rows).toHaveCount(0);
     await expect(page.locator('.bivouac-marker')).toHaveCount(0);
+    await expect(page.locator('[data-control="bivouac-card"]')).toHaveCount(0);
   });
 });
 

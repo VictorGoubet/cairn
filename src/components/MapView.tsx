@@ -426,7 +426,7 @@ export function MapView() {
     };
   }, [overlays.refuges, mapReady]);
 
-  // bivouac suggestions: a scored badge each, clicking one plants the camp
+  // bivouac suggestions: a scored badge each, clicking one opens its card without touching the route
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -437,13 +437,11 @@ export function MapView() {
       const el = document.createElement('button');
       el.type = 'button';
       el.className = 'bivouac-marker';
-      el.title = tNow('bivouac_place');
+      el.title = tNow('bivouac_reveal');
       el.textContent = String(spot.total);
       el.addEventListener('click', event => {
         event.stopPropagation();
-        const rest = liveBivouacSpots(usePlanner.getState()).filter(other => other !== spot);
-        usePlanner.getState().insertDetour(spot.point, 'camp');
-        usePlanner.getState().setBivouacSpots(rest);
+        usePlanner.getState().setBivouacSelected(spot);
       });
       return new Marker({ element: el }).setLngLat(spot.point).addTo(map);
     });

@@ -47,7 +47,8 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - `src/lib/`: pure logic, one module per concern; `brouter` (routing), `share` (link
   encoding), `gpx` + `exportFormats` (GPX/KML/TCX), `routeSplice` (insert point in trace),
   `demElevation` (client-side DEM reads), `storage` (localStorage + migrations),
-  `refugesInfo` / `drinkingWater` (on-the-fly overlays), `tileGrid` (per-cell caching).
+  `refugesInfo` / `drinkingWater` (on-the-fly overlays), `panoramax` (ground photos),
+  `tileGrid` (per-cell caching).
 - `api/`: the only server-side code, three vercel functions serving share links (`share`
   records, `preview` image, `s` the previewable page) over one key-value store (`_kv`). Plain
   javascript typed by jsdoc: vercel's function builder type-checks a typescript function with the
@@ -134,21 +135,33 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
 - **Map controls carry `data-tip`**, a CSS-only tooltip on hover and keyboard focus: the native
   `title` waits a second and wears the operating system's looks. Behind `@media (hover: hover)`,
   so a finger never triggers a label it cannot dismiss.
-- **Bivouac score** (`lib/bivouac.ts`): candidates every 250 m along the route and up to 160 m
-  off it, each probed against the DEM already cached for the relief (a 25 m cross for the slope,
-  a 12-point ring at 120 m for shelter and view) and against two Overpass queries (springs,
-  drinking water, water bodies, streams / roads and buildings). Five weighted criteria, kept as
-  sub-scores so the panel can say *why*: flat .30, walk to water .25 (priced on the hiking curve,
-  not the crow flight), discreet .15, sheltered .15, view .15. Shelter and view pull against each
-  other on purpose. Two vetoes score 0 outright: slope past 20 degrees, or a road or building
-  closer than 25 m. Overpass refusing degrades to a terrain-only score that says so. Planting a
-  suggestion uses `insertDetour`, not `insertAnchor`: splicing would project the camp back onto
-  the trace and lose the spot that was picked, and it leaves the other suggestions standing for
-  the next night. A search is kept until the itinerary changes: `bivouacKey` signs it with the
-  anchor coordinates (not the leg distances, which move on their own when a leg finishes routing
-  and would expire the search a second after it ran), and `liveBivouacSpots` hides a search made
-  for another route rather than showing stale spots. That selector returns one shared empty array,
-  never a fresh one: a zustand selector handing back a new `[]` re-renders forever.
+- **Bivouac score** (`lib/bivouac.ts`): refines a plan instead of replacing it. The hiker cuts the
+  days first (`camp` points); each planned camp is then searched on its own within 1200 m along the
+  route, sampled every 200 m of *walking* and up to 160 m off the path (by distance, not by vertex:
+  a manual leg or a coarse GPX can be two points over kilometres). Each candidate is probed against
+  the DEM already cached for the relief (a 25 m cross for the slope, a 12-point ring at 120 m for
+  shelter and view) and against two Overpass queries: springs, drinking water, streams as centres,
+  and lakes as outlines (`out geom`), which give both a nearest-shore distance and the footprint to
+  stay out of. Six weighted criteria, kept as sub-scores so the panel can say *why*: flat .25, walk
+  to water .20 (priced on the hiking curve, not the crow flight), on plan .20, discreet .15,
+  sheltered .10, view .10. Shelter and view pull against each other on purpose. Three vetoes score 0
+  outright: slope past 20 degrees, inside a water body (flat, quiet and by the water, hence the top
+  suggestion until it was refused), or a road or building closer than 25 m. Overpass refusing
+  degrades to a terrain-only score that says so. Clicking a suggestion, in the list or on the map,
+  changes nothing: it flies there and opens a card (a photo, criteria bars, the shift it would
+  cost), and only its button moves the camp, with `moveAnchorTo` so the spot keeps its own
+  coordinates. The photo comes from Panoramax (`lib/panoramax.ts`), the open street-level imagery
+  of the IGN and OpenStreetMap France: free, no key, contributed by hikers, so a lake or a col
+  often has a ground photo within 250 m and the ground in between has none. Its distance is
+  printed next to it, since it is not the spot itself, with the author and licence CC-BY-SA asks
+  for. With no photo in range it falls back to the IGN orthophoto of the exact tile, which covers
+  France only and drops the image rather than showing a broken one elsewhere. A search is kept until the itinerary changes: `bivouacKey` signs
+  it with the anchor coordinates (not the leg distances, which move on their own when a leg finishes
+  routing and would expire the search a second after it ran), and `liveBivouacSpots` hides a search
+  made for another route rather than showing stale spots. That selector returns one shared empty
+  array, never a fresh one: a zustand selector handing back a new `[]` re-renders forever. The
+  panel rebuilds its groups from that store on every render, so a night that has been moved drops
+  its rows at the same moment as its markers.
 - **Stages** (`lib/stages.ts`): derived, never stored: a stage is what lies between two `camp`
   points. GPX export writes one named `<trk>` per day. With a start date (`startDate`, in the
   draft), each stage shows its Open-Meteo forecast (`lib/weather.ts`, 16-day horizon, no key).

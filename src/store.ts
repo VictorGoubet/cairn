@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { DEFAULT_BASE_LAYER } from './config/layers';
-import type { BivouacSpot } from './lib/bivouac';
+import type { BivouacSpot, PlannedCamp } from './lib/bivouac';
 import {
   computeLeg,
   computeRoute,
@@ -28,7 +28,7 @@ import type { MsgKey } from './lib/i18n';
 import { detectLang, type Lang, persistLang } from './lib/lang';
 import type { PointKind } from './lib/points';
 import { clearProgress } from './lib/routeProgress';
-import { nearestOnTrace, spliceIntoTrace } from './lib/routeSplice';
+import { spliceIntoTrace } from './lib/routeSplice';
 import { loadDraft, loadProfile, loadRoutes, persistDraft, persistProfile, persistRoutes } from './lib/storage';
 
 const HISTORY_LIMIT = 50;
@@ -151,8 +151,8 @@ interface PlannerState {
   setLang: (lang: Lang) => void;
   addAnchor: (p: LonLat) => void;
   insertAnchor: (p: LonLat, kind?: PointKind) => boolean;
-  /** inserts a point at its own coordinates, detouring the route to reach it */
-  insertDetour: (p: LonLat, kind?: PointKind) => boolean;
+  /** moves an existing point to exact coordinates, the route detouring to reach it */
+  moveAnchorTo: (id: string, p: LonLat) => void;
   beginDragAnchor: () => void;
   dragAnchor: (index: number, p: LonLat) => void;
   moveAnchor: (index: number, p: LonLat) => void;
@@ -178,6 +178,9 @@ interface PlannerState {
   setStartDate: (date: string | null) => void;
   /** bivouac suggestions currently on the map, empty until a search runs */
   bivouacSpots: BivouacSpot[];
+  /** the suggestion whose card is open, if any */
+  bivouacSelected: BivouacSpot | null;
+  setBivouacSelected: (spot: BivouacSpot | null) => void;
   /** the route they were computed for: a different one makes them stale, not wrong */
   bivouacRouteKey: string | null;
   setBivouacSpots: (spots: BivouacSpot[]) => void;
@@ -210,6 +213,9 @@ interface PlannerState {
   setFlyTo: (target: FlyTo | null) => void;
   dismissError: () => void;
 }
+
+/** below this the router simply landed on the same spot: no spur worth drawing */
+const SPUR_MIN_M = 20;
 
 const inFlight = new Set<string>();
 let editingDirty = false;
@@ -247,7 +253,8 @@ export const usePlanner = create<PlannerState>((set, get) => {
           return computeManualLeg(from, to);
         });
     promise
-      .then(leg => {
+      .then(rawLeg => {
+        const leg = snap ? rawLeg : reachEnds(rawLeg, from, to);
         set(s => {
           // stale answer: the slot was replaced by an undo, a clear or a drag meanwhile
           if (!s.legs.some(l => l.id === slot.id)) return {};
@@ -261,6 +268,20 @@ export const usePlanner = create<PlannerState>((set, get) => {
         });
       })
       .finally(() => inFlight.delete(slot.id));
+  }
+
+  // a routed leg ends where the router found a way, which for a bivouac chosen in a meadow is
+  // the trail it left: without this spur the line stops short and the tent floats beside its own
+  // route. Only for legs that are not snapping their anchor onto the trace instead.
+  function reachEnds(leg: RouteLeg, from: LonLat, to: LonLat): RouteLeg {
+    if (leg.coords.length === 0) return leg;
+    const coords = [...leg.coords];
+    const gapStart = haversineM(from, [coords[0][0], coords[0][1]]);
+    const gapEnd = haversineM(to, [coords[coords.length - 1][0], coords[coords.length - 1][1]]);
+    if (gapStart > SPUR_MIN_M) coords.unshift([from[0], from[1], coords[0][2]]);
+    if (gapEnd > SPUR_MIN_M) coords.push([to[0], to[1], coords[coords.length - 1][2]]);
+    if (coords.length === leg.coords.length) return leg;
+    return { ...leg, coords, distanceM: pathDistanceM(coords) };
   }
 
   // straight-line segment, elevations read from the client-side DEM (IGN API as fallback)
@@ -425,6 +446,7 @@ export const usePlanner = create<PlannerState>((set, get) => {
     offlineVersion: 0,
     bivouacSpots: [],
     bivouacRouteKey: null,
+    bivouacSelected: null,
     showRoutes: false,
     dragging: false,
     editing: null,
@@ -457,28 +479,22 @@ export const usePlanner = create<PlannerState>((set, get) => {
       return true;
     },
 
-    // a bivouac sits off the path on purpose: splicing would project it back onto the trace and
-    // lose the very spot that was picked, so the route takes the detour instead
-    insertDetour: (p, kind) => {
-      const { anchors, legs, manualMode } = get();
-      const hit = nearestOnTrace(legs, p);
-      if (!hit || anchors.length < 2) return false;
-      const index = hit.legIndex;
-      const anchor = newAnchor(p, kind);
-      const before = newSlot(manualMode);
-      const after = newSlot(manualMode);
+    // a camp moved onto a chosen spot must stay there: no snap, so the anchor keeps its
+    // coordinates and the legs grow their spur to reach it
+    moveAnchorTo: (id, p) => {
+      const index = get().anchors.findIndex(a => a.id === id);
+      if (index < 0) return;
       pushHistory();
-      set(s => ({
-        anchors: s.anchors.toSpliced(index + 1, 0, anchor),
-        legs: s.legs.toSpliced(index, 1, before, after),
-      }));
-      launchLeg(before, lonLat(anchors[index]), p);
-      launchLeg(after, p, lonLat(anchors[index + 1]));
-      return true;
+      set(s => ({ anchors: s.anchors.map((a, i) => (i === index ? { ...a, lon: p[0], lat: p[1] } : a)) }));
+      const { anchors, legs, manualMode } = get();
+      for (const legIndex of [index - 1, index]) {
+        if (legIndex < 0 || legIndex >= legs.length) continue;
+        const slot = newSlot(manualMode);
+        set(s => ({ legs: s.legs.map((l, i) => (i === legIndex ? slot : l)) }));
+        launchLeg(slot, lonLat(anchors[legIndex]), lonLat(anchors[legIndex + 1]));
+      }
     },
 
-    // right click: informative off-route marker (a spring, a viewpoint... we want to know about
-    // without necessarily passing by), for a POI on the route we click on the trace
     // route received through a share link: the current draft stays one undo away
     applySharedRoute: ({ name, preset, anchors, legs, offRoutePoints }) => {
       if (anchors.length === 0 || legs.length !== anchors.length - 1) throw new Error('invalid shared route');
@@ -833,7 +849,12 @@ export const usePlanner = create<PlannerState>((set, get) => {
 
     bumpOfflineVersion: () => set(s => ({ offlineVersion: s.offlineVersion + 1 })),
 
-    setBivouacSpots: bivouacSpots => set(s => ({ bivouacSpots, bivouacRouteKey: bivouacKey(s.anchors) })),
+    setBivouacSpots: bivouacSpots =>
+      set(s => ({ bivouacSpots, bivouacRouteKey: bivouacKey(s.anchors), bivouacSelected: null })),
+
+    // the card takes the floating slot the point editor uses: only one of the two can be open
+    setBivouacSelected: bivouacSelected =>
+      set(bivouacSelected ? { bivouacSelected, editing: null } : { bivouacSelected }),
 
     // a single undo step per editing session, not one per keystroke
     updateEditingPoint: (kind, name) => {
@@ -1080,6 +1101,17 @@ export function liveBivouacSpots(state: {
   anchors: Anchor[];
 }): BivouacSpot[] {
   return state.bivouacRouteKey === bivouacKey(state.anchors) ? state.bivouacSpots : NO_SPOTS;
+}
+
+/** the camps already planned, in route order, with where they sit along it */
+export function plannedCamps(anchors: Anchor[], legs: LegSlot[]): PlannedCamp[] {
+  const camps: PlannedCamp[] = [];
+  let cum = 0;
+  anchors.forEach((anchor, i) => {
+    if (i > 0) cum += legs[i - 1]?.leg?.distanceM ?? 0;
+    if (anchor.kind === 'camp') camps.push({ id: anchor.id, name: anchor.name, distanceM: cum });
+  });
+  return camps;
 }
 
 export function routeCoords(legs: LegSlot[]): LonLatEle[] {

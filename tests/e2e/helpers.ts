@@ -28,9 +28,11 @@ interface PlannerHandle {
   offRoutePoints: { id: string; kind: string; name: string }[];
   overlays: Record<string, boolean>;
   savedRoutes: { id: string; name: string }[];
-  bivouacSpots: { point: [number, number]; total: number }[];
+  bivouacSpots: { point: [number, number]; total: number; campId: string }[];
   clear(): void;
   addAnchor(p: [number, number]): void;
+  setEditing(id: string | null): void;
+  updateEditingPoint(kind: string, name: string): void;
   undo(): void;
   redo(): void;
   toggleOverlay(name: string): void;
@@ -51,6 +53,18 @@ export async function openPlanner(page: Page): Promise<void> {
     (window as unknown as TestHandles).__map.jumpTo({ center, zoom: 14 });
   }, CEILLAC);
   await page.waitForTimeout(1500);
+}
+
+/** turns an existing anchor into a planned camp, the way the point editor does */
+export async function plantCamp(page: Page, anchorIndex: number, name: string): Promise<void> {
+  await page.evaluate(
+    ({ index, label }) => {
+      const state = (window as unknown as TestHandles).__planner.getState();
+      state.setEditing(state.anchors[index].id);
+      state.updateEditingPoint('camp', label);
+    },
+    { index: anchorIndex, label: name },
+  );
 }
 
 export function planner(page: Page) {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { BivouacCard } from './components/BivouacCard';
 import { BottomPanel } from './components/BottomPanel';
 import { BottomSheet, type SheetStop } from './components/BottomSheet';
 import { FollowBar } from './components/FollowBar';
@@ -112,6 +113,7 @@ export default function App() {
           <MapControls onPanelOpen={() => setSheetStop('peek')} />
           <PointEditor />
           <LegEditor />
+          <BivouacCard />
           <FollowBar />
           {toast}
         </div>
@@ -142,6 +144,7 @@ export default function App() {
           <StatsCard />
           <PointEditor />
           <LegEditor />
+          <BivouacCard />
           <FollowBar />
           <BottomPanel />
           {toast}

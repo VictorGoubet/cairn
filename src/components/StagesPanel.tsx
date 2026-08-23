@@ -62,7 +62,8 @@ export function StagesPanel({ stages }: { stages: Stage[] }) {
             return (
               <li key={stage.fromAnchor}>
                 <span className="stage-day">
-                  J{i + 1}
+                  {t('day_prefix')}
+                  {i + 1}
                   {startDate && <small>{shortDate(addDays(startDate, i))}</small>}
                 </span>
                 <span className="stage-name">{stage.name || (i === stages.length - 1 ? t('end') : t('stage'))}</span>

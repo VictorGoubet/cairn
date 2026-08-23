@@ -10,12 +10,13 @@ import { type RefObject, useEffect, useRef } from 'react';
  * Args:
  *   ref: the widget, or several elements to treat as one (a menu and the button that toggles
  *     it: closing on the toggle's own tap would fight the toggle and reopen instead of closing).
- *   onOutside: called when the interaction lands elsewhere.
+ *   onOutside: called when the interaction lands elsewhere, with what it landed on, so a caller
+ *     can spare a companion widget it opened itself.
  *   active: false unsubscribes.
  */
 export function useClickOutside(
   ref: RefObject<HTMLElement | null> | RefObject<HTMLElement | null>[],
-  onOutside: () => void,
+  onOutside: (target: EventTarget | null) => void,
   active: boolean,
 ): void {
   const latest = useRef({ onOutside, refs: Array.isArray(ref) ? ref : [ref] });
@@ -26,7 +27,7 @@ export function useClickOutside(
     function onPointerDown(e: PointerEvent) {
       const { refs, onOutside } = latest.current;
       const anchored = refs.filter(r => r.current !== null);
-      if (anchored.length > 0 && anchored.every(r => !r.current?.contains(e.target as Node))) onOutside();
+      if (anchored.length > 0 && anchored.every(r => !r.current?.contains(e.target as Node))) onOutside(e.target);
     }
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
