@@ -1,8 +1,9 @@
 import type { Anchor, LegSlot, OffRoutePoint, SavedRoute } from '../store';
-import { DEFAULT_PROFILE, type HikerPace, type HikerProfile } from './hikingTime';
+import { DEFAULT_PROFILE, type HikerPace, type HikerProfile, type TravelMode } from './hikingTime';
 import { parseKind } from './points';
 
 const PACES: HikerPace[] = ['strolling', 'steady', 'sporty', 'athletic'];
+const MODES: TravelMode[] = ['hike', 'run'];
 
 const ROUTES_KEY = 'cairn.routes.v1';
 const DRAFT_KEY = 'cairn.draft.v1';
@@ -34,6 +35,8 @@ export function loadRoutes(): SavedRoute[] {
       {
         id: typeof route.id === 'string' ? route.id : crypto.randomUUID(),
         name: typeof route.name === 'string' ? route.name : '',
+        // routes saved before collections existed simply belong to none
+        collection: typeof route.collection === 'string' && route.collection !== '' ? route.collection : undefined,
         updatedAt: typeof route.updatedAt === 'string' ? route.updatedAt : new Date(0).toISOString(),
         distanceM: Number.isFinite(route.distanceM) ? route.distanceM : 0,
         gainM: Number.isFinite(route.gainM) ? route.gainM : 0,
@@ -56,6 +59,8 @@ export function loadProfile(): HikerProfile | null {
   // a hand-edited or stale entry must not poison the estimates
   const pace = PACES.includes(stored.pace as HikerPace) ? (stored.pace as HikerPace) : DEFAULT_PROFILE.pace;
   return {
+    // profiles saved before the running model knew only one way of moving
+    mode: MODES.includes(stored.mode as TravelMode) ? (stored.mode as TravelMode) : DEFAULT_PROFILE.mode,
     pace,
     weightKg: clamp(stored.weightKg, 30, 200, DEFAULT_PROFILE.weightKg),
     packKg: clamp(stored.packKg, 0, 60, DEFAULT_PROFILE.packKg),

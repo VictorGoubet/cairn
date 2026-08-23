@@ -191,7 +191,7 @@ test.describe('saving without an account', () => {
     await waitForRouting(page, 1);
 
     await page.locator('.save-btn').click();
-    await page.locator('.save-pop input').fill('Tour du Mélezet');
+    await page.locator('.save-name').fill('Tour du Mélezet');
     await page.locator('.save-pop .primary').click();
     // the button says it out loud for a couple of seconds, then goes back to work
     await expect(page.locator('.save-btn.saved')).toBeVisible();

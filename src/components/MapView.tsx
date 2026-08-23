@@ -39,7 +39,7 @@ import {
 } from '../lib/refugesInfo';
 import { registerSlopeProtocol } from '../lib/slopeTiles';
 import { SURFACE_COLORS, type SurfaceCategory, WAY_COLORS, type WayCategory } from '../lib/waytypes';
-import { isClosedRoute, liveBivouacSpots, routeCoords, usePlanner } from '../store';
+import { collectionSiblings, isClosedRoute, liveBivouacSpots, routeCoords, usePlanner } from '../store';
 
 // standard reroute cadence while dragging (see Leaflet Routing Machine's routeDragInterval)
 const DRAG_REROUTE_MS = 450;
@@ -72,6 +72,7 @@ const SELECTION_SOURCE = 'profile-selection';
 const REFUGES_SOURCE = 'refuge-points';
 const OFFLINE_ZONES_SOURCE = 'offline-zones';
 const FOLLOW_SOURCE = 'follow-position';
+const SIBLINGS_SOURCE = 'collection-siblings';
 const EMPTY_ROUTE: GeoJSON.GeoJSON = { type: 'FeatureCollection', features: [] };
 
 export function MapView() {
@@ -100,6 +101,7 @@ export function MapView() {
   const following = usePlanner(s => s.following);
   const offlineVersion = usePlanner(s => s.offlineVersion);
   const bivouacSpots = usePlanner(liveBivouacSpots);
+  const siblings = usePlanner(collectionSiblings);
   const flyTo = usePlanner(s => s.flyTo);
   const dragging = usePlanner(s => s.dragging);
   const wayTypeHighlight = usePlanner(s => s.wayTypeHighlight);
@@ -129,6 +131,15 @@ export function MapView() {
       map.addControl(new ScaleControl());
       map.on('load', () => {
         if (!map) return;
+        // the other courses of the same project, behind everything: context, not content
+        map.addSource(SIBLINGS_SOURCE, { type: 'geojson', data: EMPTY_ROUTE });
+        map.addLayer({
+          id: 'collection-siblings',
+          type: 'line',
+          source: SIBLINGS_SOURCE,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': '#8a8a86', 'line-width': 3, 'line-dasharray': [2, 2], 'line-opacity': 0.8 },
+        });
         map.addSource(ROUTE_SOURCE, { type: 'geojson', data: EMPTY_ROUTE });
         map.addLayer({
           id: 'route-casing',
@@ -466,6 +477,26 @@ export function MapView() {
       map.off('zoomend', onZoom);
     };
   }, [mapReady]);
+
+  // the sibling courses change only when another route is opened or saved, not while drawing
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    (map.getSource(SIBLINGS_SOURCE) as GeoJSONSource).setData({
+      type: 'FeatureCollection',
+      features: siblings.flatMap(route => {
+        const coords = routeCoords(route.legs);
+        if (coords.length < 2) return [];
+        return [
+          {
+            type: 'Feature' as const,
+            properties: { name: route.name },
+            geometry: { type: 'LineString' as const, coordinates: coords.map(([lon, lat]) => [lon, lat]) },
+          },
+        ];
+      }),
+    });
+  }, [siblings, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;

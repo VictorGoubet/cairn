@@ -162,6 +162,43 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   array, never a fresh one: a zustand selector handing back a new `[]` re-renders forever. The
   panel rebuilds its groups from that store on every render, so a night that has been moved drops
   its rows at the same moment as its markers.
+- **Walking or running** (`lib/hikingTime.ts`): one profile, two models, because running is not
+  walking scaled up. Hiking keeps Tobler calibrated on the SAC scale. Running uses Minetti's (2002)
+  energy cost of each gait against gradient: at a sustained power, speed is that power over the
+  cost, which gives a running and a walking speed at every gradient, and taking the faster
+  reproduces the walk-run switch a trail runner actually makes. Two ceilings do the rest, since
+  neither gait is limited by breath alone: power-hiking tops out at 6.5 km/h *and* at a share of
+  the athlete's own flat speed (an absolute ceiling alone had slow runners "walking" at 6.5 km/h up
+  8% slopes), and a descent is capped by braking, more tightly the steeper it gets. Energy follows
+  the gait the speed picked, not the cheaper one — deciding on cost alone answers "walk" everywhere,
+  since walking is cheaper per metre even on the flat. The panel prints the km/h the chosen pace
+  buys, because pace names are relative and a speed is not. The walk to water in the bivouac score
+  stays a walk whatever the mode.
+- **Roadbook** (`lib/roadbook.ts` + `RoadbookSheet`): the route as a printable table, derived like
+  the stages. One row per landmark (the ends, plus anything typed or named: a bare checkpoint is
+  geometry), each carrying cumulative distance, climb, loss, duration and the clock time of the
+  passage, with the split measured against the previous *row* so a dropped point is not lost from
+  the total. Printing is the delivery: `@media print` hides `#root` and keeps the sheet, which is
+  also how it becomes a PDF. Hence the portal to `document.body` — rendered inside the topbar the
+  sheet would be a descendant of the very element print hides — and hiding `#root` rather than
+  `.app`, since a hidden child still leaves its full-height parent behind and pushed the sheet onto
+  page two. The profile above the table is its own tiny SVG, stretched to the paper width with
+  `preserveAspectRatio="none"` and `vector-effect="non-scaling-stroke"` so the strokes stay
+  hairlines instead of turning into wedges.
+- **Gallery thumbnails** are real map tiles drawn per card, so they are cached and lazy. Measured
+  before: eight saved routes cost 66 tile requests on the first open of "my routes" and still 44 on
+  every reopen, since each canvas was redrawn from scratch. Now a card renders only once it scrolls
+  into the modal (the bounded scroller is `.share-panel`, not `.routes-panel`, which has
+  `overflow-y` but no height and therefore never scrolls) and its result is kept as a jpeg data url
+  keyed by route id *and* `updatedAt`, so re-saving redraws and reopening asks for nothing. Data
+  urls rather than canvases: 30 kB against 420 kB of bitmap apiece, which is the difference between
+  caching a screenful and a whole gallery. A card still drawing pulses instead of staying blank.
+- **Collections** (`collectionSiblings`, `byCollection`): a project is one optional name on a saved
+  route, so the four distances of a race group in the gallery (with their totals in the heading) and
+  the siblings of the open course draw behind it as grey dashed lines. Nothing new is stored and
+  routes saved before it simply belong to none. `collectionSiblings` is memoised on the identity of
+  the saved list: it is read as a selector, and a fresh array on every call is a render loop —
+  guarding only the empty case was not enough, which the map proved by crashing.
 - **Stages** (`lib/stages.ts`): derived, never stored: a stage is what lies between two `camp`
   points. GPX export writes one named `<trk>` per day. With a start date (`startDate`, in the
   draft), each stage shows its Open-Meteo forecast (`lib/weather.ts`, 16-day horizon, no key).

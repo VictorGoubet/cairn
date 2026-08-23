@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { BASE_LAYER_OPTIONS, layerThumbUrl } from '../config/layers';
 import { track } from '../lib/analytics';
-import type { HikerPace } from '../lib/hikingTime';
+import { type HikerPace, speedMs, type TravelMode } from '../lib/hikingTime';
 import { type MsgKey, useT } from '../lib/i18n';
 import { SLOPE_LEGEND } from '../lib/slopeTiles';
 import { useClickOutside } from '../lib/useClickOutside';
@@ -13,6 +13,7 @@ import { NearbyHikes } from './NearbyHikes';
 type Panel = 'explore' | 'bivouac' | 'layers' | 'options' | null;
 
 const PACES: HikerPace[] = ['strolling', 'steady', 'sporty', 'athletic'];
+const MODES: TravelMode[] = ['hike', 'run'];
 
 const OPTION_ROWS: { key: keyof Overlays; labelKey: MsgKey }[] = [
   { key: 'km', labelKey: 'opt_km' },
@@ -271,6 +272,18 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
           ))}
           {overlays.refuges && <p className="mc-hint">{t('opt_poi_hint')}</p>}
           <h2 className="mc-subhead">{t('hiker_profile')}</h2>
+          <div className="segmented">
+            {MODES.map(mode => (
+              <button
+                key={mode}
+                type="button"
+                className={profile.mode === mode ? 'on' : ''}
+                onClick={() => usePlanner.getState().setProfile({ ...profile, mode })}
+              >
+                {t(`mode_${mode}` as MsgKey)}
+              </button>
+            ))}
+          </div>
           <div className="segmented wrap">
             {PACES.map(pace => (
               <button
@@ -279,10 +292,14 @@ export function MapControls({ onPanelOpen }: { onPanelOpen?: () => void } = {}) 
                 className={profile.pace === pace ? 'on' : ''}
                 onClick={() => usePlanner.getState().setProfile({ ...profile, pace })}
               >
-                {t(`pace_${pace}` as MsgKey)}
+                {t(profile.mode === 'run' ? (`pace_run_${pace}` as MsgKey) : (`pace_${pace}` as MsgKey))}
               </button>
             ))}
           </div>
+          {/* the pace names are relative; the speed they buy is the thing the hiker can judge */}
+          <p className="mc-hint">
+            {((speedMs(0, profile) * 3600) / 1000).toFixed(1)} km/h {t('profile_flat')}
+          </p>
           <div className="profile-fields">
             <label>
               {t('profile_weight')}

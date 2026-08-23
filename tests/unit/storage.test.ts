@@ -94,6 +94,25 @@ describe('saved routes', () => {
   it('returns an empty list when nothing is stored', () => {
     expect(loadRoutes()).toEqual([]);
   });
+
+  it('carries the collection, and treats a blank one as none', () => {
+    const base: SavedRoute = {
+      id: 'r1',
+      name: '62 km',
+      collection: 'Trail des Crêtes',
+      updatedAt: '2026-08-23T08:00:00.000Z',
+      distanceM: 62_000,
+      gainM: 3200,
+      anchors: [anchor(6.5, 44.6), anchor(6.51, 44.6)],
+      legs: [leg()],
+      offRoutePoints: [],
+    };
+    persistRoutes([base, { ...base, id: 'r2', name: 'Sans projet', collection: '' }]);
+    const restored = loadRoutes();
+    expect(restored[0].collection).toBe('Trail des Crêtes');
+    // routes saved before collections existed have no field at all: the same as an empty one
+    expect(restored[1].collection).toBeUndefined();
+  });
 });
 
 describe('legacy data migration', () => {

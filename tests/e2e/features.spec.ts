@@ -218,6 +218,68 @@ test.describe('saved routes', () => {
   });
 });
 
+test.describe('gallery thumbnails', () => {
+  test('a card is drawn once, and reopening the gallery asks for no tile again', async ({ page }) => {
+    await openPlanner(page);
+    await page.evaluate(() => {
+      (window as unknown as TestHandles).__planner.setState({ manualMode: true });
+    });
+    // three routes far enough apart that no two cards could share a tile
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(
+        ({ center, index }) => {
+          const state = (window as unknown as TestHandles).__planner.getState();
+          state.clear();
+          state.addAnchor([center[0] - index * 0.9, center[1] - index * 0.35]);
+          state.addAnchor([center[0] - index * 0.9 + 0.05, center[1] - index * 0.35 + 0.03]);
+        },
+        { center: CEILLAC, index: i },
+      );
+      await waitForRouting(page, 1);
+      await page.evaluate(index => {
+        (window as unknown as TestHandles).__planner.getState().saveCurrentRoute(`route ${index}`);
+      }, i);
+    }
+
+    let tiles = 0;
+    page.on('request', request => {
+      if (request.url().includes('geopf.fr/wmts')) tiles++;
+    });
+    const openGallery = () => page.locator('.topbar button', { hasText: /itinéraires|routes/i }).click();
+    const drawn = () => page.locator('canvas.route-thumb:not(.loading)');
+
+    await openGallery();
+    await expect(drawn()).toHaveCount(3);
+    expect(tiles).toBeGreaterThan(0);
+
+    // second open: the thumbnails come back from the cache, and the network is left alone
+    await page.keyboard.press('Escape');
+    tiles = 0;
+    await openGallery();
+    await expect(drawn()).toHaveCount(3);
+    expect(tiles).toBe(0);
+
+    // re-saving a route redraws it: a thumbnail must never outlive the geometry it shows
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => {
+      const state = (window as unknown as TestHandles).__planner.getState();
+      state.loadRoute(state.savedRoutes[0].id);
+    });
+    await page.evaluate(center => {
+      (window as unknown as TestHandles).__planner.getState().addAnchor([center[0] + 0.06, center[1] + 0.04]);
+    }, CEILLAC);
+    await waitForRouting(page, 2);
+    await page.evaluate(() => {
+      const state = (window as unknown as TestHandles).__planner.getState();
+      state.saveCurrentRoute(state.savedRoutes[0].name);
+    });
+    tiles = 0;
+    await openGallery();
+    await expect(drawn()).toHaveCount(3);
+    expect(tiles).toBeGreaterThan(0);
+  });
+});
+
 test.describe('hiker profile fields', () => {
   test('weight and pack change the energy estimate', async ({ page }) => {
     await drawManualRoute(page);
@@ -228,5 +290,80 @@ test.describe('hiker profile fields', () => {
     await weight.fill('95');
     await weight.blur();
     await expect.poll(energyText).not.toBe(before);
+  });
+});
+
+test.describe('walking or running', () => {
+  test('switching to running speeds up every estimate and follows the roadbook', async ({ page }) => {
+    await drawManualRoute(page);
+    // by its label, since a duration can read "45 min" or "2 h 10" and every stat is a number
+    const estimate = page.locator('.stat').filter({ hasText: /Est\. time|Durée est/ });
+    const hiking = await estimate.textContent();
+    await page.locator('[data-control="options"]').click();
+    await page.locator('.mc-panel .segmented button', { hasText: /Course|Running/ }).click();
+
+    // the panel names the speed the pace buys, since the labels alone say nothing
+    await expect(page.locator('.mc-panel .mc-hint', { hasText: 'km/h' })).toBeVisible();
+    await expect.poll(async () => estimate.textContent()).not.toBe(hiking);
+    // the pace names change with the mode: nobody strolls a trail race
+    await expect(page.locator('.mc-panel .segmented.wrap')).toContainText(/Élite|Elite/);
+  });
+});
+
+test.describe('roadbook', () => {
+  test('the export menu prints the route point by point', async ({ page }) => {
+    await drawManualRoute(page);
+    // a named landmark in the middle, which is what a roadbook is made of
+    await page.evaluate(() => {
+      const state = (window as unknown as TestHandles).__planner.getState();
+      state.setEditing(state.anchors[1].id);
+      state.updateEditingPoint('water', 'Fontaine du Cure');
+    });
+    await page.locator('.topbar button.primary', { hasText: /Export/ }).click();
+    await page.locator('[data-control="export-roadbook"]').click();
+
+    const sheet = page.locator('[data-control="roadbook"]');
+    await expect(sheet).toBeVisible();
+    await expect(sheet.locator('.roadbook-table tbody tr')).toHaveCount(2);
+    await expect(sheet).toContainText('Fontaine du Cure');
+    // the clock column follows the departure time, and the shape of the route comes with it
+    await expect(sheet.locator('.roadbook-table')).toContainText('07:00');
+    await expect(sheet.locator('.roadbook-profile')).toBeVisible();
+    // printing is the point, so the sheet must survive outside the app it is rendered from
+    expect(await sheet.evaluate(el => el.closest('.app') === null)).toBe(true);
+  });
+});
+
+test.describe('collections', () => {
+  test('courses of one project are grouped, and the siblings show on the map', async ({ page }) => {
+    await drawManualRoute(page);
+    await page.evaluate(() => {
+      const state = (window as unknown as TestHandles).__planner.getState();
+      state.saveCurrentRoute('62 km', 'Trail des Cretes');
+      state.clear();
+    });
+    await clickAt(page, CEILLAC);
+    await clickAt(page, [CEILLAC[0] + 0.008, CEILLAC[1] + 0.004]);
+    await waitForRouting(page, 1);
+    await page.evaluate(() => (window as unknown as TestHandles).__planner.getState().saveCurrentRoute('21 km', 'Trail des Cretes'));
+
+    await page.locator('.topbar button', { hasText: /itinéraires|routes/i }).click();
+    await expect(page.locator('.routes-group h4').first()).toContainText('Trail des Cretes');
+    // the heading counts the project rather than making the reader add up its cards
+    await expect(page.locator('.routes-group h4 span').first()).toContainText('2');
+
+    // the open course draws its sibling behind it, in the layer built for that
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            (
+              (window as unknown as TestHandles).__map.getStyle() as unknown as {
+                sources: Record<string, { data?: { features?: unknown[] } }>;
+              }
+            ).sources['collection-siblings']?.data?.features?.length ?? 0,
+        ),
+      )
+      .toBe(1);
   });
 });

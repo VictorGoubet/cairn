@@ -164,9 +164,11 @@ export function scoreBivouac(probe: BivouacProbe, context: BivouacContext): Bivo
  *   profile: the hiker, so a heavy pack lengthens the walk.
  */
 export function waterMinutes(from: LonLatEle, waters: LonLatEle[], profile?: HikerProfile): number | null {
+  // fetching water is walked whoever you are: nobody runs a scramble holding two bottles
+  const onFoot: HikerProfile | undefined = profile && { ...profile, mode: 'hike' };
   let best: number | null = null;
   for (const water of waters) {
-    const minutes = durationH([from, water], profile) * 60;
+    const minutes = durationH([from, water], onFoot) * 60;
     if (best === null || minutes < best) best = minutes;
   }
   return best;

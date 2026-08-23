@@ -1514,6 +1514,162 @@ body {
   cursor: pointer;
 }
 
+/* a thumbnail draws real tiles: until they land the card reads as loading, not as broken */
+.route-thumb.loading {
+  background: var(--accent-soft);
+  animation: thumb-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes thumb-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.routes-group h4 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 14px 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.routes-group h4 span {
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+
+/* --- roadbook --- */
+
+.roadbook {
+  width: min(760px, calc(100vw - 24px));
+  max-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgb(0 0 0 / 30%);
+  overflow: hidden;
+}
+
+.roadbook-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.roadbook-bar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.roadbook-bar .primary {
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.roadbook-sheet {
+  padding: 18px 22px 22px;
+  overflow-y: auto;
+}
+
+.roadbook-sheet h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.roadbook-summary {
+  margin: 4px 0 16px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.roadbook-profile {
+  display: block;
+  width: 100%;
+  height: 110px;
+  margin-bottom: 14px;
+}
+
+.roadbook-profile polygon {
+  fill: var(--accent-soft);
+}
+
+.roadbook-profile polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.roadbook-profile .rb-mark {
+  stroke: var(--accent-line);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.roadbook-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.roadbook-table th {
+  text-align: left;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--ink-2);
+  padding: 0 8px 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.roadbook-table td {
+  padding: 7px 8px 7px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+
+.roadbook-table td:first-child {
+  font-weight: 600;
+  font-variant-numeric: normal;
+}
+
+.rb-icon {
+  margin-right: 6px;
+}
+
+.roadbook-table small {
+  display: block;
+  font-size: 10.5px;
+  color: var(--ink-2);
+}
+
+.roadbook-foot {
+  margin: 14px 0 0;
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
 /* --- offline areas --- */
 
 .offline-areas {
@@ -2815,5 +2971,54 @@ body {
   .segmented button,
   .leg-row button {
     min-height: 38px;
+  }
+}
+
+/* a roadbook is carried on paper: printing keeps the sheet alone, which is also how it becomes
+   a pdf, since every browser prints to one */
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  /* the whole app root, not just .app: a hidden child still leaves its 100%-high parent behind,
+     and the sheet would print on the second page */
+  #root {
+    display: none;
+  }
+
+  .roadbook-overlay {
+    position: static;
+    display: block;
+    background: none;
+    padding: 0;
+  }
+
+  .roadbook {
+    width: auto;
+    max-height: none;
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  .roadbook-bar {
+    display: none;
+  }
+
+  .roadbook-sheet {
+    padding: 0;
+    overflow: visible;
+  }
+
+  .roadbook-table tr {
+    break-inside: avoid;
+  }
+
+  .roadbook-table thead {
+    display: table-header-group;
   }
 }

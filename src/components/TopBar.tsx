@@ -14,6 +14,7 @@ import { useEscapeKey } from '../lib/useEscapeKey';
 import { useIsMobile } from '../lib/useMediaQuery';
 import { routeCoords, routeDistanceM, routePois, usePlanner } from '../store';
 import { QrPanel } from './QrPanel';
+import { RoadbookSheet } from './RoadbookSheet';
 import { RoutesPanel } from './RoutesPanel';
 import { SearchBox } from './SearchBox';
 import { SharePanel } from './SharePanel';
@@ -47,6 +48,7 @@ export function TopBar() {
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [showShareImage, setShowShareImage] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [showRoadbook, setShowRoadbook] = useState(false);
   useClickOutside(routesWrapRef, closeRoutesPanel, showRoutes);
   useClickOutside(exportWrapRef, () => setShowExport(false), showExport);
   useClickOutside(shareWrapRef, () => setShowShareMenu(false), showShareMenu);
@@ -272,6 +274,17 @@ export function TopBar() {
                   <span>{t(`fmt_${format}` as MsgKey)}</span>
                 </button>
               ))}
+              <button
+                type="button"
+                data-control="export-roadbook"
+                onClick={() => {
+                  setShowExport(false);
+                  setShowRoadbook(true);
+                }}
+              >
+                <strong>{t('roadbook')}</strong>
+                <span>{t('fmt_roadbook')}</span>
+              </button>
             </div>
           )}
         </div>
@@ -279,6 +292,7 @@ export function TopBar() {
 
       {showShareImage && <SharePanel onClose={() => setShowShareImage(false)} />}
       {showQr && <QrPanel onClose={() => setShowQr(false)} />}
+      {showRoadbook && <RoadbookSheet onClose={() => setShowRoadbook(false)} />}
 
       <input
         ref={fileRef}

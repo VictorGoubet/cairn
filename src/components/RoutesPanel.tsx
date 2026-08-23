@@ -5,11 +5,57 @@ import { dateLocale } from '../lib/lang';
 import { downloadRouteOffline, markOfflineSaved, offlineSavedAt, releaseOfflineRoute } from '../lib/offline';
 import { renderShareImage } from '../lib/shareImage';
 import { useEscapeKey } from '../lib/useEscapeKey';
-import { routeCoords, type SavedRoute, usePlanner } from '../store';
+import { byCollection, routeCoords, type SavedRoute, usePlanner } from '../store';
 import { OfflineAreas } from './OfflineAreas';
+
+/**
+ * Thumbnails already drawn, so reopening the gallery costs nothing.
+ *
+ * Each card renders real map tiles, which is a handful of requests per route: measured at 66 for
+ * eight routes on first open and still 44 on the second, since every canvas was redrawn from
+ * scratch. Kept as jpeg data urls rather than canvases, which is 30 kB against 420 kB of bitmap
+ * apiece and lets the cache hold a whole gallery instead of a screenful. Keyed by `updatedAt` as
+ * well as id, so re-saving a route redraws it.
+ */
+const thumbCache = new Map<string, string>();
+const THUMB_CACHE_MAX = 60;
 
 function close() {
   usePlanner.setState({ showRoutes: false });
+}
+
+async function paintThumb(target: HTMLCanvasElement, route: SavedRoute): Promise<void> {
+  const key = `${route.id}@${route.updatedAt}`;
+  const cached = thumbCache.get(key);
+  if (cached) return drawDataUrl(target, cached);
+
+  const coords = routeCoords(route.legs);
+  if (coords.length < 2) return;
+  await renderShareImage(target, coords, {
+    format: 'square',
+    background: 'plan',
+    showStats: false,
+    showProfile: false,
+    title: '',
+    scale: 0.3,
+  });
+  // a tile server that ever answers without cors headers taints the canvas: then there is nothing
+  // to keep, and the card is still drawn
+  try {
+    if (thumbCache.size >= THUMB_CACHE_MAX) thumbCache.delete(thumbCache.keys().next().value as string);
+    thumbCache.set(key, target.toDataURL('image/jpeg', 0.82));
+  } catch {
+    thumbCache.delete(key);
+  }
+}
+
+async function drawDataUrl(target: HTMLCanvasElement, dataUrl: string): Promise<void> {
+  const image = new Image();
+  image.src = dataUrl;
+  await image.decode();
+  target.width = image.width;
+  target.height = image.height;
+  target.getContext('2d')?.drawImage(image, 0, 0);
 }
 
 /** saved routes as a gallery of map cards, drawn by the share-tile renderer */
@@ -20,6 +66,7 @@ export function RoutesPanel() {
   const currentRouteId = usePlanner(s => s.currentRouteId);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   useEscapeKey(close, showRoutes);
+  const groups = byCollection(savedRoutes).length;
 
   if (!showRoutes) return null;
 
@@ -49,18 +96,32 @@ export function RoutesPanel() {
         </div>
         <div className="routes-panel">
           {savedRoutes.length === 0 && <p className="routes-empty">{t('no_routes')}</p>}
-          <ul className="routes-grid">
-            {savedRoutes.map(r => (
-              <li key={r.id} className={r.id === currentRouteId ? 'active' : undefined}>
-                <RouteCard
-                  route={r}
-                  confirming={confirmId === r.id}
-                  onRemove={() => remove(r.id)}
-                  onDisarm={() => setConfirmId(null)}
-                />
-              </li>
-            ))}
-          </ul>
+          {byCollection(savedRoutes).map(group => (
+            <section key={group.name || 'loose'} className="routes-group">
+              {/* a named project always says its name; "no project" only when something else has one */}
+              {(group.name !== '' || groups > 1) && (
+                <h4>
+                  {group.name || t('collection_none')}
+                  <span>
+                    {group.routes.length} · {formatDistance(group.routes.reduce((sum, r) => sum + r.distanceM, 0))} · +
+                    {Math.round(group.routes.reduce((sum, r) => sum + r.gainM, 0))} m
+                  </span>
+                </h4>
+              )}
+              <ul className="routes-grid">
+                {group.routes.map(r => (
+                  <li key={r.id} className={r.id === currentRouteId ? 'active' : undefined}>
+                    <RouteCard
+                      route={r}
+                      confirming={confirmId === r.id}
+                      onRemove={() => remove(r.id)}
+                      onDisarm={() => setConfirmId(null)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
           <OfflineAreas />
         </div>
       </div>
@@ -82,20 +143,24 @@ function RouteCard({
   const t = useT();
   const lang = usePlanner(s => s.lang);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [painted, setPainted] = useState(false);
 
+  // a card out of sight costs tiles for nothing: twenty saved routes would fetch for all twenty.
+  // the frame that decides what is visible is the modal itself, the only bounded scroller here
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const coords = routeCoords(route.legs);
-    if (coords.length < 2) return;
-    void renderShareImage(canvas, coords, {
-      format: 'square',
-      background: 'plan',
-      showStats: false,
-      showProfile: false,
-      title: '',
-      scale: 0.3,
-    });
+    setPainted(false);
+    const observer = new IntersectionObserver(
+      entries => {
+        if (!entries.some(entry => entry.isIntersecting)) return;
+        observer.disconnect();
+        void paintThumb(canvas, route).then(() => setPainted(true));
+      },
+      { root: canvas.closest('.share-panel'), rootMargin: '150px' },
+    );
+    observer.observe(canvas);
+    return () => observer.disconnect();
   }, [route]);
 
   return (
@@ -106,7 +171,7 @@ function RouteCard({
         title={t('load')}
         onClick={() => usePlanner.getState().loadRoute(route.id)}
       >
-        <canvas ref={canvasRef} className="route-thumb" />
+        <canvas ref={canvasRef} className={painted ? 'route-thumb' : 'route-thumb loading'} />
         <span className="route-name">{route.name}</span>
         <span className="route-meta">
           {formatDistance(route.distanceM)} · {Math.round(route.gainM)} m D+ ·{' '}

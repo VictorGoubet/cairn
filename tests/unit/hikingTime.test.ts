@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LonLatEle } from '../../src/lib/geo';
-import { DEFAULT_PROFILE, durationH, energyKcal, speedMs } from '../../src/lib/hikingTime';
+import { DEFAULT_PROFILE, durationH, energyKcal, type HikerProfile, speedMs } from '../../src/lib/hikingTime';
 
 /** a track of `steps` segments of `runM` horizontal metres each, climbing `risePerStep` */
 function track(steps: number, runM: number, risePerStep: number): LonLatEle[] {
@@ -42,6 +42,57 @@ describe('speedMs', () => {
   });
 });
 
+describe('speedMs in running mode', () => {
+  const RUNNER: HikerProfile = { ...DEFAULT_PROFILE, mode: 'run', packKg: 2 };
+  const kmh = (slope: number, profile: HikerProfile = RUNNER) => (speedMs(slope, profile) * 3600) / 1000;
+  /** metres of ascent per hour, which is how a trail runner reads a climb */
+  const vertical = (slope: number, profile: HikerProfile = RUNNER) => kmh(slope, profile) * 1000 * slope;
+
+  it('runs the flat at the pace it was calibrated on, well above a hiker', () => {
+    expect(kmh(0)).toBeGreaterThan(9.5);
+    expect(kmh(0)).toBeLessThan(11);
+    expect(kmh(0)).toBeGreaterThan(kmh(0, DEFAULT_PROFILE) * 2);
+  });
+
+  it('walks the steep climbs, which is what the two cost curves are there for', () => {
+    // running stops paying somewhere above a tenth of gradient: past it the speed follows the
+    // walking curve, so it drops below what running the same power would predict
+    expect(kmh(0.25)).toBeLessThan(kmh(0.08));
+    // and the vertical rate lands where a good club runner lands, not where a hiker does
+    expect(vertical(0.25)).toBeGreaterThan(700);
+    expect(vertical(0.25)).toBeLessThan(1100);
+    expect(vertical(0.25)).toBeGreaterThan(vertical(0.25, DEFAULT_PROFILE) * 2);
+  });
+
+  it('power-hikes no faster than its own running speed, whatever the cost curve says', () => {
+    // on the flat the walking curve is the cheaper gait: only the ceilings make running win
+    expect(kmh(0.02)).toBeGreaterThan(8);
+    const slow: HikerProfile = { ...RUNNER, pace: 'strolling' };
+    const fast: HikerProfile = { ...RUNNER, pace: 'athletic' };
+    expect(kmh(0.15, slow)).toBeLessThan(kmh(0.15, fast));
+  });
+
+  it('gains on a gentle descent and gives it back on a steep one', () => {
+    expect(kmh(-0.08)).toBeGreaterThan(kmh(0));
+    expect(kmh(-0.35)).toBeLessThan(kmh(-0.08));
+    // braking, not breath: even the free part of a descent stays within reach of the flat pace
+    expect(kmh(-0.08)).toBeLessThan(kmh(0) * 1.4);
+  });
+
+  it('keeps a bogus elevation point out of the estimate here too', () => {
+    expect(kmh(3)).toBeGreaterThan(0);
+    expect(kmh(3)).toBeLessThan(kmh(0.4));
+  });
+
+  it('slows under a race vest, and prices the run in calories', () => {
+    expect(speedMs(0, { ...RUNNER, packKg: 8 })).toBeLessThan(speedMs(0, { ...RUNNER, packKg: 0 }));
+    // 4 km with 800 m of climb, run: a hard hour, not a coffee break
+    const kcal = energyKcal(track(40, 100, 20), RUNNER);
+    expect(kcal).toBeGreaterThan(400);
+    expect(kcal).toBeLessThan(1500);
+  });
+});
+
 describe('durationH', () => {
   it('gives 5 km on the flat in about 1h10, the SAC pace', () => {
     expect(durationH(track(50, 100, 0))).toBeCloseTo(5 / 4.2, 1);
@@ -69,6 +120,12 @@ describe('durationH', () => {
     const hours = durationH(spiked);
     expect(hours).toBeGreaterThan(durationH(track(50, 100, 0)));
     expect(hours).toBeLessThan(3);
+  });
+
+  it('brings a runner home before a hiker on the same route', () => {
+    const route = track(60, 100, 10); // 6 km, +600 m
+    const running = durationH(route, { ...DEFAULT_PROFILE, mode: 'run', packKg: 2 });
+    expect(running).toBeLessThan(durationH(route) / 1.5);
   });
 
   it('is monotonic in distance and returns nothing for a single point', () => {

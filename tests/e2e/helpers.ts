@@ -37,7 +37,8 @@ interface PlannerHandle {
   redo(): void;
   toggleOverlay(name: string): void;
   setBaseLayerId(id: string): void;
-  saveCurrentRoute(name: string): void;
+  saveCurrentRoute(name: string, collection?: string): void;
+  loadRoute(id: string): void;
 }
 
 /** Ceillac, Queyras: real trails around, so routing has something to snap onto */

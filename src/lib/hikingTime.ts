@@ -25,13 +25,29 @@
  * Energy is a separate question, and the one where body mass genuinely belongs: the Pandolf
  * equation (1977) predicts the metabolic rate from mass, load, speed and grade. Pace, not sex or
  * age, is what the literature ties to hiking speed, so the profile keeps them apart.
+ *
+ * **Running is not walking scaled up**, so it gets its own model rather than a bigger pace
+ * factor. Minetti et al. (2002) measured the energy cost of walking and of running from -45% to
+ * +45% of gradient, in joules per kilogram per metre. At a sustained power, speed is that power
+ * divided by the cost, which gives two speeds at every gradient: one running, one walking. Take
+ * the faster and the trail runner's own behaviour falls out of the physics: on the flat running
+ * wins easily, and somewhere around a quarter of gradient walking takes over, because walking is
+ * the cheaper gait uphill. Two ceilings keep the curve honest, since neither gait is limited by
+ * energy alone: nobody walks faster than about 6.5 km/h without race technique, and a descent is
+ * limited by braking and footing rather than by breath, more so the steeper it gets. That second
+ * ceiling is a shape, not a measurement: it says a fast runner descends faster than a slow one
+ * and that steep ground costs speed, which is what a trail runner recognises, and it makes no
+ * claim about how technical the ground actually is.
  */
 
 import { haversineM, type LonLatEle } from './geo';
 
 export type HikerPace = 'strolling' | 'steady' | 'sporty' | 'athletic';
+/** on foot, but a hiker and a trail runner do not obey the same curve */
+export type TravelMode = 'hike' | 'run';
 
 export interface HikerProfile {
+  mode: TravelMode;
   pace: HikerPace;
   /** body mass in kg, used by the energy estimate */
   weightKg: number;
@@ -39,7 +55,7 @@ export interface HikerProfile {
   packKg: number;
 }
 
-export const DEFAULT_PROFILE: HikerProfile = { pace: 'steady', weightKg: 72, packKg: 8 };
+export const DEFAULT_PROFILE: HikerProfile = { mode: 'hike', pace: 'steady', weightKg: 72, packKg: 8 };
 
 /**
  * Pace factors applied to Tobler's speed.
@@ -54,6 +70,32 @@ const PACE_FACTORS: Record<HikerPace, number> = {
   sporty: 1.12,
   athletic: 1.28,
 };
+
+/**
+ * Flat trail speed of a runner, in km/h, one per pace.
+ *
+ * This is the calibration point of the running model, the way `steady` is for walking: everything
+ * else follows from the cost curves. Read it as the speed held on a flat trail, not on a track.
+ */
+const RUN_FLAT_KMH: Record<HikerPace, number> = {
+  strolling: 8.5,
+  steady: 10.5,
+  sporty: 12.5,
+  athletic: 15,
+};
+
+/** the gradient range Minetti measured: beyond it the polynomials are extrapolation, not data */
+const MAX_MINETTI_SLOPE = 0.45;
+/** fast hiking, above which walking needs race technique nobody uses on a trail */
+const WALK_CEILING_MS = 6.5 / 3.6;
+/** and nobody power-hikes near their own running speed: the ceiling follows the athlete too */
+const WALK_SHARE = 0.62;
+/** how much faster than the flat a runner descends when the slope does the work */
+const DESCENT_GAIN = 1.3;
+/** below this the descent is free; past it braking and footing take the speed back */
+const FREE_DESCENT = 0.1;
+/** how fast that ceiling closes with steepness: a shape a runner recognises, not a measurement */
+const BRAKING = 3;
 
 /** a pack costs speed too: ~1% per 1% of body mass carried, the load-carriage rule of thumb */
 const LOAD_SPEED_PENALTY = 1;
@@ -76,8 +118,23 @@ const MAX_SLOPE = 0.8;
  */
 export function speedMs(slope: number, profile: HikerProfile): number {
   const clamped = Math.max(-MAX_SLOPE, Math.min(MAX_SLOPE, slope));
+  if (profile.mode === 'run') return runStep(clamped, profile).speedMs;
   const tobler = 6 * Math.exp(-3.5 * Math.abs(clamped + 0.05));
   return (tobler * 1000 * paceFactor(profile)) / 3600;
+}
+
+/**
+ * Energy cost of a gait on a gradient, in J/kg/m (Minetti et al., 2002).
+ *
+ * Args:
+ *   slope: rise over run, negative downhill.
+ *   gait: which of the two curves.
+ */
+export function gaitCost(slope: number, gait: 'walk' | 'run'): number {
+  const i = Math.max(-MAX_MINETTI_SLOPE, Math.min(MAX_MINETTI_SLOPE, slope));
+  return gait === 'run'
+    ? 155.4 * i ** 5 - 30.4 * i ** 4 - 43.3 * i ** 3 + 46.3 * i ** 2 + 19.5 * i + 3.6
+    : 280.5 * i ** 5 - 58.7 * i ** 4 - 76.8 * i ** 3 + 51.9 * i ** 2 + 19.6 * i + 2.5;
 }
 
 /**
@@ -101,16 +158,19 @@ export function durationH(coords: LonLatEle[], profile: HikerProfile = DEFAULT_P
 }
 
 /**
- * Energy spent walking a track, in kcal.
+ * Energy spent covering a track, in kcal.
  *
- * Pandolf et al. (1977) for the metabolic rate, with Santee's correction so that a descent
- * costs less than the flat rather than a negative amount.
+ * Walking: Pandolf et al. (1977) for the metabolic rate, with Santee's correction so that a
+ * descent costs less than the flat rather than a negative amount. Running gets the Minetti cost
+ * of the gait actually used at that gradient, since Pandolf is a load-carriage walking equation
+ * and says nothing about running.
  *
  * Args:
  *   coords: geometry with elevations.
  *   profile: the hiker, whose mass and pack drive the result.
  */
 export function energyKcal(coords: LonLatEle[], profile: HikerProfile = DEFAULT_PROFILE): number {
+  if (profile.mode === 'run') return runEnergyKcal(coords, profile);
   const mass = profile.weightKg;
   const load = profile.packKg;
   let joules = 0;
@@ -135,8 +195,51 @@ export function energyKcal(coords: LonLatEle[], profile: HikerProfile = DEFAULT_
   return (joules / 1000) * KCAL_PER_KJ;
 }
 
+/** the cost of the gait the runner would actually use, plus what the body burns just standing */
+function runEnergyKcal(coords: LonLatEle[], profile: HikerProfile): number {
+  const mass = profile.weightKg + profile.packKg;
+  let joules = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const runM = haversineM([coords[i - 1][0], coords[i - 1][1]], [coords[i][0], coords[i][1]]);
+    if (runM < 0.5) continue;
+    const rise = coords[i][2] - coords[i - 1][2];
+    const slope = rise / runM;
+    const coveredM = Math.hypot(runM, rise);
+    const step = runStep(slope, profile);
+    joules += step.costJPerKgM * mass * coveredM + 1.5 * profile.weightKg * (coveredM / step.speedMs);
+  }
+  return (joules / 1000) * KCAL_PER_KJ;
+}
+
+/**
+ * What a trail runner does on that gradient: the faster gait, under both ceilings.
+ *
+ * Speed and cost come out together on purpose. Deciding the gait on the cost alone would answer
+ * "walk" everywhere, since walking is the cheaper gait per metre even on the flat; it is the
+ * ceilings that make running the faster choice, so the energy estimate has to follow the gait the
+ * speed actually picked.
+ */
+function runStep(slope: number, profile: HikerProfile): { speedMs: number; costJPerKgM: number } {
+  const flat = (RUN_FLAT_KMH[profile.pace] * 1000) / 3600;
+  const power = flat * gaitCost(0, 'run');
+  const running = power / gaitCost(slope, 'run');
+  const walking = Math.min(power / gaitCost(slope, 'walk'), WALK_CEILING_MS, flat * WALK_SHARE);
+  const gait = walking > running ? 'walk' : 'run';
+  const speed = Math.min(Math.max(running, walking), descentCeilingMs(flat, slope)) * loadFactor(profile);
+  return { speedMs: speed, costJPerKgM: gaitCost(slope, gait) };
+}
+
+/** uphill and on the flat this is inert; downhill it is what actually limits the pace */
+function descentCeilingMs(flatMs: number, slope: number): number {
+  const steepness = Math.max(0, -slope - FREE_DESCENT);
+  return (flatMs * DESCENT_GAIN) / (1 + BRAKING * steepness);
+}
+
 function paceFactor(profile: HikerProfile): number {
+  return PACE_FACTORS[profile.pace] * loadFactor(profile);
+}
+
+function loadFactor(profile: HikerProfile): number {
   const loadRatio = profile.weightKg > 0 ? profile.packKg / profile.weightKg : 0;
-  const loadFactor = Math.max(1 - LOAD_SPEED_PENALTY * loadRatio, MIN_LOAD_FACTOR);
-  return PACE_FACTORS[profile.pace] * loadFactor;
+  return Math.max(1 - LOAD_SPEED_PENALTY * loadRatio, MIN_LOAD_FACTOR);
 }

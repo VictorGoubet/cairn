@@ -76,6 +76,8 @@ type ProfileSelection = { fromM: number; toM: number };
 export interface SavedRoute {
   id: string;
   name: string;
+  /** the project this course belongs to: the four distances of a race, a trek and its variants */
+  collection?: string;
   updatedAt: string;
   distanceM: number;
   gainM: number;
@@ -189,7 +191,7 @@ interface PlannerState {
   bumpOfflineVersion: () => void;
   updateEditingPoint: (kind: PointKind, name: string) => void;
   removeEditingPoint: () => void;
-  saveCurrentRoute: (name: string) => boolean;
+  saveCurrentRoute: (name: string, collection?: string) => boolean;
   loadRoute: (id: string) => void;
   deleteRoute: (id: string) => void;
   toggleRoutesPanel: () => void;
@@ -877,13 +879,14 @@ export const usePlanner = create<PlannerState>((set, get) => {
       else get().removeOffRoutePoint(editing);
     },
 
-    saveCurrentRoute: name => {
+    saveCurrentRoute: (name, collection) => {
       const { anchors, legs, offRoutePoints, currentRouteId, savedRoutes } = get();
       const coords = routeCoords(legs);
       if (coords.length < 2) return false;
       const route: SavedRoute = {
         id: currentRouteId ?? crypto.randomUUID(),
         name,
+        collection: collection?.trim() || undefined,
         updatedAt: new Date().toISOString(),
         distanceM: routeDistanceM(legs),
         gainM: elevationStats(coords).gainM,
@@ -1093,6 +1096,9 @@ export function bivouacKey(anchors: Anchor[]): string {
 
 /** one shared instance: a zustand selector handing back a fresh [] re-renders forever */
 const NO_SPOTS: BivouacSpot[] = [];
+// same reason: a selector handing back a fresh array on every call re-renders for ever
+const NO_ROUTES: SavedRoute[] = [];
+const siblingsCache = new WeakMap<SavedRoute[], Map<string, SavedRoute[]>>();
 
 /** the suggestions still standing: a search made for another route is dropped, never shown stale */
 export function liveBivouacSpots(state: {
@@ -1124,6 +1130,46 @@ export function routeCoords(legs: LegSlot[]): LonLatEle[] {
 
 export function routeDistanceM(legs: LegSlot[]): number {
   return legs.reduce((sum, l) => sum + (l.leg?.distanceM ?? 0), 0);
+}
+
+/**
+ * The other courses of the collection the open one belongs to.
+ *
+ * A race is several distances over the same ground: seeing them at once is the point of a
+ * collection, so the map draws them behind the one being edited.
+ *
+ * Memoised on the identity of the saved list, because this is read as a zustand selector: handing
+ * back a fresh array on every call is a render loop, and guarding the empty case alone is not
+ * enough (it was not, the first time).
+ */
+export function collectionSiblings(state: { savedRoutes: SavedRoute[]; currentRouteId: string | null }): SavedRoute[] {
+  const byRoute = siblingsCache.get(state.savedRoutes) ?? new Map<string, SavedRoute[]>();
+  siblingsCache.set(state.savedRoutes, byRoute);
+  const key = state.currentRouteId ?? '';
+  const cached = byRoute.get(key);
+  if (cached) return cached;
+
+  const current = state.savedRoutes.find(r => r.id === state.currentRouteId);
+  const siblings = current?.collection
+    ? state.savedRoutes.filter(r => r.collection === current.collection && r.id !== current.id)
+    : [];
+  const answer = siblings.length > 0 ? siblings : NO_ROUTES;
+  byRoute.set(key, answer);
+  return answer;
+}
+
+/** grouped for the gallery: named collections first, then whatever belongs to none */
+export function byCollection(routes: SavedRoute[]): { name: string; routes: SavedRoute[] }[] {
+  const groups = new Map<string, SavedRoute[]>();
+  for (const route of routes) {
+    const key = route.collection ?? '';
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(route);
+    else groups.set(key, [route]);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)))
+    .map(([name, grouped]) => ({ name, routes: grouped }));
 }
 
 export function routePois(anchors: Anchor[]): Anchor[] {
