@@ -44,6 +44,7 @@ const MAX_ZOOM = 14;
  * so it goes one level deeper than the context layers */
 const RASTER_ZOOMS: Record<string, [number, number]> = {
   scan25: [8, 15],
+  s2cloudless: [8, 15],
   ortho: [10, 14],
   osm: [8, 14],
   opentopo: [8, 14],

@@ -32,7 +32,7 @@ waypoints, bivouac spots scored for each night, multi-day stages with weather, h
 the trail, offline once visited (PWA), GPX/KML/TCX export, share by link, QR or social image. Built entirely on open data (IGN Géoplateforme, OpenStreetMap, refuges.info)
 and queried straight from your browser: no account, no personal tracking, and everything but the
 short share link works with no backend at all. France-first (IGN maps), usable worldwide
-(OpenTopoMap, swisstopo, NGI Belgium, OSM geocoding).
+(OpenTopoMap, swisstopo, NGI Belgium, worldwide Sentinel-2 imagery, OSM geocoding).
 
 ## Quick start
 
@@ -49,7 +49,7 @@ make dev     # http://localhost:5173
 |---|---|
 | App | Vite + React + TypeScript, zustand |
 | Map | MapLibre GL JS |
-| Base maps | IGN Géoplateforme (Plan IGN, SCAN 25, ortho), OpenStreetMap |
+| Base maps | IGN Géoplateforme (Plan IGN, SCAN 25, ortho), OpenStreetMap, OpenTopoMap, swisstopo, NGI Belgium, Sentinel-2 cloudless |
 | Routing | BRouter public server, custom mountain hiking profile |
 | Geocoding and elevation | IGN Géoplateforme APIs |
 | Terrain (3D, slopes, client-side elevations) | Terrarium DEM tiles (AWS Open Data) |
@@ -101,4 +101,4 @@ MIT, see [LICENSE](LICENSE).
 
 ## Data and credits
 
-[IGN Géoplateforme](https://geoservices.ign.fr) • [OpenStreetMap](https://www.openstreetmap.org) • [BRouter](https://brouter.de) • [refuges.info](https://www.refuges.info) • [Panoramax](https://panoramax.fr) • [Terrarium DEM](https://registry.opendata.aws/terrain-tiles/) • [Waymarked Trails](https://hiking.waymarkedtrails.org)
+[IGN Géoplateforme](https://geoservices.ign.fr) • [OpenStreetMap](https://www.openstreetmap.org) • [BRouter](https://brouter.de) • [refuges.info](https://www.refuges.info) • [Panoramax](https://panoramax.fr) • [Sentinel-2 cloudless by EOX](https://cloudless.eox.at) • [Terrarium DEM](https://registry.opendata.aws/terrain-tiles/) • [Waymarked Trails](https://hiking.waymarkedtrails.org)

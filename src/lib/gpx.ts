@@ -1,12 +1,14 @@
 import { downloadTextFile, escXml as esc } from './exportFormats';
 import type { LonLatEle } from './geo';
-import { haversineM } from './geo';
+import { elevationStats, formatDistance, haversineM, pathDistanceM } from './geo';
 import { kindFromGarminSym, type PointKind, parseKind } from './points';
 
 /** one <trk> of the file: a day of a trek, a course of a project, a route on its own */
 export interface GpxTrack {
   name: string;
   coords: LonLatEle[];
+  /** shown on the device's track page: what this day or course is, in one line */
+  desc?: string;
 }
 
 export interface GpxWaypoint {
@@ -15,10 +17,29 @@ export interface GpxWaypoint {
   name: string;
   kind?: PointKind;
   sym?: string;
+  /** the kind in the reader's language, for the device's own waypoint page */
+  desc?: string;
 }
 
 /** a waypoint this close to the track inherits the track's elevation */
 const WPT_ELEVATION_MAX_M = 120;
+
+/**
+ * Garmin's own GPX extensions (GpxExtensions v3), whose element order the schema fixes.
+ *
+ * Three of them earn their place for a planned walk. `DisplayMode` puts the waypoint's *name* on
+ * the device map beside its pictogram instead of leaving a row of anonymous icons. `Proximity`
+ * asks the device to speak up as you come within reach of the things you would regret walking
+ * past, so it is set on water, huts and camps and on nothing else. `DisplayColor` gives each track
+ * its own colour, which is what tells four courses of one project, or five days of one trek, apart
+ * on a small screen.
+ */
+const GPXX_NS = 'http://www.garmin.com/xmlschemas/GpxExtensions/v3';
+/** the kinds worth a nudge when they come within reach, and how far that reach is */
+const PROXIMITY_KINDS: PointKind[] = ['water', 'hut', 'camp'];
+const PROXIMITY_M = 200;
+/** Garmin's named colours, in the order tracks take them */
+const TRACK_COLORS = ['Red', 'Blue', 'DarkGreen', 'Magenta', 'DarkYellow', 'Cyan'];
 
 /**
  * GPX 1.1 document for the route.
@@ -31,23 +52,20 @@ const WPT_ELEVATION_MAX_M = 120;
  *     watches and other planners read natively, so a trek arrives already split into days.
  */
 export function buildGpx(name: string, coords: LonLatEle[], waypoints: GpxWaypoint[], tracks: GpxTrack[] = []): string {
-  const wpts = waypoints
-    .map(w => {
-      // devices show richer waypoint pages when elevation is present; a marker close to the
-      // track borrows the track's elevation, a distant one honestly carries none
-      const nearest = nearestTrackPoint(coords, w.lon, w.lat);
-      const ele = nearest && nearest.distM <= WPT_ELEVATION_MAX_M ? `<ele>${nearest.ele.toFixed(1)}</ele>` : '';
-      const sym = w.sym ? `<sym>${esc(w.sym)}</sym>` : '';
-      const type = w.kind ? `<type>${esc(w.kind)}</type>` : '';
-      return `  <wpt lat="${w.lat.toFixed(6)}" lon="${w.lon.toFixed(6)}">${ele}<name>${esc(w.name)}</name>${sym}${type}</wpt>`;
-    })
-    .join('\n');
+  const wpts = waypoints.map(w => waypoint(w, coords)).join('\n');
   // one <trk> per given track, named by the caller: days of a trek, courses of a project, or the
   // route itself when nothing is split
-  const written = tracks.length > 0 ? tracks.map(t => track(t.name, t.coords)) : [track(name, coords)];
+  const written =
+    tracks.length > 0 ? tracks.map((t, i) => track(t, i)) : [track({ name, coords, desc: summary(coords) }, 0)];
   return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="cairn" xmlns="http://www.topografix.com/GPX/1/1">
-  <metadata><name>${esc(name)}</name><time>${new Date().toISOString()}</time></metadata>
+<gpx version="1.1" creator="cairn" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxx="${GPXX_NS}">
+  <metadata>
+    <name>${esc(name)}</name>
+    <desc>${esc(summary(coords))}</desc>
+    <author><name>cairn</name><link href="https://cairn-swart-gamma.vercel.app"><text>cairn</text></link></author>
+    <time>${new Date().toISOString()}</time>
+    ${bounds(coords)}
+  </metadata>
 ${wpts}
 ${written.join('\n')}
 </gpx>
@@ -176,20 +194,69 @@ function onEarth(lon: number, lat: number): boolean {
   return Number.isFinite(lon) && Number.isFinite(lat) && Math.abs(lon) <= 180 && Math.abs(lat) <= 90;
 }
 
-function track(name: string, coords: LonLatEle[]): string {
-  const trkpts = coords
+/**
+ * One `<trk>`, in the element order GPX 1.1 fixes: name, desc, number, type, extensions, trkseg.
+ *
+ * No `<time>` on the points, deliberately: timestamps turn a plan into a recording, and an
+ * importer that sees them files the file as a past activity rather than as a course to follow.
+ */
+function track(t: GpxTrack, index: number): string {
+  const trkpts = t.coords
     .map(
       ([lon, lat, ele]) =>
         `      <trkpt lat="${lat.toFixed(6)}" lon="${lon.toFixed(6)}"><ele>${ele.toFixed(1)}</ele></trkpt>`,
     )
     .join('\n');
+  const desc = t.desc ? `\n    <desc>${esc(t.desc)}</desc>` : '';
+  const colour = TRACK_COLORS[index % TRACK_COLORS.length];
   return `  <trk>
-    <name>${esc(name)}</name>
+    <name>${esc(t.name)}</name>${desc}
+    <number>${index + 1}</number>
     <type>hiking</type>
+    <extensions><gpxx:TrackExtension><gpxx:DisplayColor>${colour}</gpxx:DisplayColor></gpxx:TrackExtension></extensions>
     <trkseg>
 ${trkpts}
     </trkseg>
   </trk>`;
+}
+
+/**
+ * One `<wpt>`: what it is, what it looks like on the map, and whether to speak up nearby.
+ *
+ * GPX 1.1 fixes this order too (ele, name, desc, sym, type, extensions), and a device that finds
+ * them out of order rejects the file rather than the element.
+ */
+function waypoint(w: GpxWaypoint, coords: LonLatEle[]): string {
+  // devices show richer waypoint pages when elevation is present; a marker close to the track
+  // borrows the track's elevation, a distant one honestly carries none
+  const nearest = nearestTrackPoint(coords, w.lon, w.lat);
+  const ele = nearest && nearest.distM <= WPT_ELEVATION_MAX_M ? `<ele>${nearest.ele.toFixed(1)}</ele>` : '';
+  const desc = w.desc ? `<desc>${esc(w.desc)}</desc>` : '';
+  const sym = w.sym ? `<sym>${esc(w.sym)}</sym>` : '';
+  const type = w.kind ? `<type>${esc(w.kind)}</type>` : '';
+  const proximity = w.kind && PROXIMITY_KINDS.includes(w.kind) ? `<gpxx:Proximity>${PROXIMITY_M}</gpxx:Proximity>` : '';
+  const extensions =
+    `<extensions><gpxx:WaypointExtension>${proximity}` +
+    `<gpxx:DisplayMode>SymbolAndName</gpxx:DisplayMode></gpxx:WaypointExtension></extensions>`;
+  return `  <wpt lat="${w.lat.toFixed(6)}" lon="${w.lon.toFixed(6)}">${ele}<name>${esc(w.name)}</name>${desc}${sym}${type}${extensions}</wpt>`;
+}
+
+/** distance and climb in one line, for the pages that show a description */
+function summary(coords: LonLatEle[]): string {
+  const { gainM, lossM } = elevationStats(coords);
+  const drop = lossM >= 1 ? ` · -${Math.round(lossM)} m` : '';
+  return `${formatDistance(pathDistanceM(coords))} · +${Math.round(gainM)} m${drop}`;
+}
+
+/** the box the geometry fits in, which importers use to frame it without reading every point */
+function bounds(coords: LonLatEle[]): string {
+  if (coords.length === 0) return '';
+  const lons = coords.map(c => c[0]);
+  const lats = coords.map(c => c[1]);
+  return (
+    `<bounds minlat="${Math.min(...lats).toFixed(6)}" minlon="${Math.min(...lons).toFixed(6)}" ` +
+    `maxlat="${Math.max(...lats).toFixed(6)}" maxlon="${Math.max(...lons).toFixed(6)}"/>`
+  );
 }
 
 function attrNumber(el: Element, name: string): number {

@@ -2,9 +2,14 @@
  * Where the French maps stop, and what covers the ground beyond them.
  *
  * The Plan IGN, the SCAN 25 and the orthophotos are national: past the border their tiles come
- * back empty or missing, and a white screen reads as a broken app rather than as "this map ends
- * here". Knowing the extents lets the map say so and offer the base that does cover the place: the
- * neighbour's own national map where there is one, the global topo otherwise.
+ * back empty or missing (checked: the ortho answers 404 over Zermatt), and a white screen reads as
+ * a broken app rather than as "this map ends here". Knowing the extents lets the map say so and
+ * offer the base that does cover the place: the neighbour's own national map where there is one,
+ * the global topo otherwise.
+ *
+ * The offer stays in the family it was asked in, or says that it cannot. Aerial photographs and a
+ * drawn map are not interchangeable, and proposing a neighbour's topographic sheet to somebody
+ * looking at imagery reads as a non sequitur — which is exactly how it read.
  *
  * The outline is deliberately coarse, and deliberately generous: it answers "should this map have
  * data here", not "which commune is this". The two mistakes are not symmetrical, which is what the
@@ -14,6 +19,7 @@
  * A single rectangle cannot do it, which the first attempt proved by declaring Zermatt French.
  */
 
+import { RASTER_BASE_LAYERS } from '../config/layers';
 import { type LonLat, pointInRing } from './geo';
 
 /** bases served by the Géoplateforme, whose data stops at the French border */
@@ -78,14 +84,29 @@ export function baseCoversView(baseId: string, lon: number, lat: number): boolea
 }
 
 /**
- * The base to offer instead: a neighbour's national map when it applies, the global topo otherwise.
+ * What to offer instead of a base that has run out of ground.
  *
  * Args:
+ *   baseId: the base on screen, whose family the offer tries to keep.
  *   lon: longitude of the view centre.
  *   lat: latitude of the view centre.
+ *
+ * Returns:
+ *   The base to switch to, and whether it shows the same kind of thing. A false `sameFamily` is
+ *   not a failure: it is the notice's cue to say "here is a map instead" rather than pretend.
  */
-export function baseCovering(lon: number, lat: number): string {
-  return NEIGHBOUR_BASES.find(candidate => inside(candidate.box, lon, lat))?.id ?? GLOBAL_BASE;
+export function baseCovering(baseId: string, lon: number, lat: number): { id: string; sameFamily: boolean } {
+  if (isImagery(baseId)) {
+    const worldImagery = RASTER_BASE_LAYERS.find(layer => layer.imagery && !FRENCH_BASES.has(layer.id));
+    if (worldImagery) return { id: worldImagery.id, sameFamily: true };
+    return { id: GLOBAL_BASE, sameFamily: false };
+  }
+  const neighbour = NEIGHBOUR_BASES.find(candidate => inside(candidate.box, lon, lat));
+  return { id: neighbour?.id ?? GLOBAL_BASE, sameFamily: true };
+}
+
+function isImagery(baseId: string): boolean {
+  return RASTER_BASE_LAYERS.some(layer => layer.id === baseId && layer.imagery === true);
 }
 
 function inside(box: Box, lon: number, lat: number): boolean {

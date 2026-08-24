@@ -142,6 +142,15 @@ test.describe('where the maps stop', () => {
     await expect.poll(async () => (await planner(page).state()).baseLayerId).toBe('swisstopo');
     await expect(notice).toHaveCount(0);
 
+    // on the aerial photos the answer is photographs, not a topographic sheet
+    await page.evaluate(() => {
+      (window as unknown as TestHandles).__planner.getState().setBaseLayerId('ortho');
+    });
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText(/satellite/i);
+    await notice.click();
+    await expect.poll(async () => (await planner(page).state()).baseLayerId).toBe('s2cloudless');
+
     // back over France, nothing to say
     await page.evaluate(() => {
       const state = (window as unknown as TestHandles).__planner.getState();
@@ -153,6 +162,25 @@ test.describe('where the maps stop', () => {
 });
 
 test.describe('international bases', () => {
+  test('the world satellite draws real tiles where the french one has none', async ({ page }) => {
+    await openPlanner(page);
+    // the Dolomites: no IGN photo, no neighbour's national map either
+    await page.evaluate(() => {
+      (window as unknown as TestHandles).__map.jumpTo({ center: [11.8, 46.5], zoom: 12 });
+    });
+    await page.locator('[data-control="layers"]').click();
+    await page.locator('.layer-card', { hasText: /Satellite monde|World satellite/ }).click();
+    expect(
+      await page.evaluate(() =>
+        (window as unknown as TestHandles).__map.getLayoutProperty('s2cloudless', 'visibility'),
+      ),
+    ).toBe('visible');
+    const gotTile = page.waitForResponse(res => res.url().includes('tiles.maps.eox.at') && res.ok(), {
+      timeout: 20_000,
+    });
+    await expect(gotTile).resolves.toBeTruthy();
+  });
+
   test('swisstopo draws real tiles over Zermatt', async ({ page }) => {
     await openPlanner(page);
     await page.evaluate(() => {

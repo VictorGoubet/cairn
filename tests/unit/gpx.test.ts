@@ -188,3 +188,59 @@ describe('mergeTracks', () => {
     expect(mergeTracks([])).toEqual([]);
   });
 });
+
+describe('what a device can read from our gpx', () => {
+  const COORDS: LonLatEle[] = Array.from({ length: 40 }, (_, i) => [6.7 + i * 0.001, 44.6 + i * 0.0004, 1500 + i * 9]);
+  const WPTS = [
+    { lon: 6.705, lat: 44.602, name: 'Source', kind: 'water' as const, sym: 'Drinking Water', desc: "Point d'eau" },
+    { lon: 6.73, lat: 44.612, name: 'Col', kind: 'summit' as const, sym: 'Summit', desc: 'Sommet' },
+  ];
+  const GPXX = 'http://www.garmin.com/xmlschemas/GpxExtensions/v3';
+  const parse = (xml: string) => new DOMParser().parseFromString(xml, 'application/xml');
+
+  it('names the map marker and describes the point, not just its symbol', () => {
+    const doc = parse(buildGpx('Tour', COORDS, WPTS));
+    expect(doc.querySelector('parsererror')).toBeNull();
+    const water = doc.querySelectorAll('wpt')[0];
+    expect(water.querySelector('desc')?.textContent).toBe("Point d'eau");
+    // the device draws the name beside the pictogram instead of a row of anonymous icons
+    expect(water.getElementsByTagNameNS(GPXX, 'DisplayMode')[0]?.textContent).toBe('SymbolAndName');
+  });
+
+  it('asks to be warned near water, and stays quiet near a col', () => {
+    const doc = parse(buildGpx('Tour', COORDS, WPTS));
+    const [water, col] = [...doc.querySelectorAll('wpt')];
+    expect(water.getElementsByTagNameNS(GPXX, 'Proximity')[0]?.textContent).toBe('200');
+    expect(col.getElementsByTagNameNS(GPXX, 'Proximity')).toHaveLength(0);
+  });
+
+  it('gives each track its own colour, number and description', () => {
+    const doc = parse(
+      buildGpx('Trek', COORDS, [], [
+        { name: 'J1', coords: COORDS.slice(0, 20), desc: '5 km · +90 m' },
+        { name: 'J2', coords: COORDS.slice(19), desc: '5 km · +80 m' },
+      ]),
+    );
+    const tracks = [...doc.querySelectorAll('trk')];
+    expect(tracks.map(t => t.getElementsByTagNameNS(GPXX, 'DisplayColor')[0]?.textContent)).toEqual(['Red', 'Blue']);
+    expect(tracks.map(t => t.querySelector('number')?.textContent)).toEqual(['1', '2']);
+    expect(tracks[0].querySelector('desc')?.textContent).toBe('5 km · +90 m');
+  });
+
+  it('frames the file for an importer, and carries no timestamps on the points', () => {
+    const doc = parse(buildGpx('Tour', COORDS, WPTS));
+    const box = doc.querySelector('bounds');
+    expect(Number(box?.getAttribute('minlat'))).toBeCloseTo(44.6, 3);
+    expect(Number(box?.getAttribute('maxlon'))).toBeCloseTo(6.739, 3);
+    expect(doc.querySelector('metadata > desc')?.textContent).toMatch(/km/);
+    // timestamps would file the plan as a past activity rather than as a course to follow
+    expect(doc.querySelectorAll('trkpt > time')).toHaveLength(0);
+  });
+
+  it('still reads back what it writes, extensions and all', () => {
+    const parsed = parseGpx(buildGpx('Tour', COORDS, WPTS));
+    expect(parsed.name).toBe('Tour');
+    expect(parsed.tracks[0]).toHaveLength(COORDS.length);
+    expect(parsed.waypoints.map(w => w.kind)).toEqual(['water', 'summit']);
+  });
+});

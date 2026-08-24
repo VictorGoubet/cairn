@@ -25,6 +25,8 @@ export interface RasterLayer {
   tiles: string;
   maxzoom: number;
   attribution: string;
+  /** photographs of the ground rather than a drawn map: the two are not interchangeable */
+  imagery?: boolean;
 }
 
 export const RASTER_BASE_LAYERS: RasterLayer[] = [
@@ -41,6 +43,7 @@ export const RASTER_BASE_LAYERS: RasterLayer[] = [
     tiles: `${GEOPF_WMTS}&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&FORMAT=image/jpeg`,
     maxzoom: 19,
     attribution: '© IGN / Géoplateforme',
+    imagery: true,
   },
   {
     id: 'osm',
@@ -49,7 +52,21 @@ export const RASTER_BASE_LAYERS: RasterLayer[] = [
     maxzoom: 19,
     attribution: '© OpenStreetMap contributors',
   },
-  // the world beyond the IGN coverage: a global topo, and the national maps of the neighbours
+  // the world beyond the IGN coverage: a global topo, a global imagery, and the national maps of
+  // the neighbours
+  {
+    id: 's2cloudless',
+    labelKey: 'layer_s2cloudless',
+    // row before column, like the other WMTS neighbours. free tier: CC BY-NC-SA 4.0, which the
+    // attribution below carries and which fits a free planner with nothing to sell
+    tiles: 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{z}/{y}/{x}.jpg',
+    // the data is Sentinel-2, ten metres a pixel: the server upscales past this, we would rather
+    // stretch the last honest tile than fetch blur
+    maxzoom: 15,
+    attribution:
+      'EOxCloudless 2024 (contains modified Copernicus Sentinel data) © EOX IT Services GmbH · CC BY-NC-SA 4.0',
+    imagery: true,
+  },
   {
     id: 'opentopo',
     labelKey: 'layer_opentopo',
@@ -99,6 +116,8 @@ const THUMB_TILE = { z: 12, x: 2117, y: 1458 };
 const THUMB_TILE_BY_LAYER: Record<string, { z: number; x: number; y: number }> = {
   swisstopo: { z: 12, x: 2150, y: 1452 },
   'ngi-be': { z: 12, x: 2105, y: 1385 },
+  // snowy alpine peaks: a satellite thumbnail has to read as one at 128 pixels
+  s2cloudless: { z: 11, x: 1063, y: 729 },
 };
 
 export function layerThumbUrl(id: string): string {

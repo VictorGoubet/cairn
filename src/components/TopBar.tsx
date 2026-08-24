@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { track } from '../lib/analytics';
 import { sampleElevations } from '../lib/demElevation';
 import { buildKml, buildTcx, downloadBlob, downloadTextFile, type ExportPoint } from '../lib/exportFormats';
-import { type LonLat, type LonLatEle, pointToPathDistanceM } from '../lib/geo';
+import { formatDistance, formatDuration, type LonLat, type LonLatEle, pointToPathDistanceM } from '../lib/geo';
 import { buildGpx, downloadGpx, type GpxTrack, type GpxWaypoint, mergeTracks, parseGpx } from '../lib/gpx';
 import { type MsgKey, tNow, useT } from '../lib/i18n';
 import type { Lang } from '../lib/lang';
@@ -100,13 +100,20 @@ export function TopBar() {
     return computeStages(anchors, legs, usePlanner.getState().profile).map((stage, i) => ({
       name: `${tNow('day_prefix')}${i + 1}${stage.name ? ` · ${stage.name}` : ''}`,
       coords: stage.coords,
+      desc: `${formatDistance(stage.distanceM)} · +${Math.round(stage.gainM)} m · ${formatDuration(stage.hours)}`,
     }));
   }
 
   function exportRoute(format: ExportFormat) {
     setShowExport(false);
     track('export', { format, distanceKm: Math.round(routeDistanceM(legs) / 1000) });
-    const named = (point: ExportPoint) => ({ ...point, name: point.name || tNow(kindLabelKey(point.kind)) });
+    // the kind rides in <desc> as well as in <type>: that is the line a device shows on the
+    // point's own page, where "water" would mean nothing to the reader
+    const named = (point: ExportPoint) => ({
+      ...point,
+      name: point.name || tNow(kindLabelKey(point.kind)),
+      desc: tNow(kindLabelKey(point.kind)),
+    });
     const pois = routePois(anchors).map(named);
     const allPoints = [...pois, ...offRoutePoints.map(named)];
     const name = currentRouteName || `cairn-${new Date().toISOString().slice(0, 10)}`;

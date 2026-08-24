@@ -805,7 +805,7 @@ export function MapView() {
   // a national map past its border draws nothing, which reads as a broken app rather than as the
   // edge of its data: say where the ground is mapped instead, and switch there in one tap
   const uncovered = centre !== null && !baseCoversView(baseLayerId, centre[0], centre[1]);
-  const elsewhere = uncovered && centre !== null ? baseCovering(centre[0], centre[1]) : null;
+  const elsewhere = uncovered && centre !== null ? baseCovering(baseLayerId, centre[0], centre[1]) : null;
 
   return (
     <div ref={containerRef} className="map">
@@ -815,9 +815,10 @@ export function MapView() {
           type="button"
           className="coverage-hint"
           data-control="coverage-switch"
-          onClick={() => usePlanner.getState().setBaseLayerId(elsewhere)}
+          onClick={() => usePlanner.getState().setBaseLayerId(elsewhere.id)}
         >
-          {t('coverage_outside')} <strong>{t(baseLabelKey(elsewhere))}</strong>
+          {t(elsewhere.sameFamily ? 'coverage_outside' : 'coverage_outside_imagery')}{' '}
+          <strong>{t(baseLabelKey(elsewhere.id))}</strong>
         </button>
       )}
     </div>

@@ -256,7 +256,11 @@ function GroupHead({ group, named }: { group: { name: string; routes: SavedRoute
 
   function exportProject() {
     const tracks = group.routes
-      .map(route => ({ name: route.name, coords: routeCoords(route.legs) }))
+      .map(route => ({
+        name: route.name,
+        coords: routeCoords(route.legs),
+        desc: `${formatDistance(route.distanceM)} · +${Math.round(route.gainM)} m`,
+      }))
       .filter(track => track.coords.length >= 2);
     if (tracks.length === 0) return;
     const name = group.name || t('my_routes');

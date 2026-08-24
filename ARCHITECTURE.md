@@ -77,6 +77,19 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   way to settle any doubt about an export. `tcxName` collapses whitespace, truncates, drops a lone
   surrogate left by cutting an emoji in half, and falls back to the Garmin point type rather than
   emit nothing.
+- **The GPX carries what a device can act on**, checked against the published schemas with
+  `xmllint` (GPX 1.1 and Garmin's GpxExtensions v3, which also fix the element order — a device
+  rejects a file whose children are out of order, not just the element). Beyond the geometry: a
+  `<desc>` per waypoint holding the kind in the reader's language, since a page saying "water"
+  helps nobody; `gpxx:DisplayMode` so the map draws the *name* beside the pictogram instead of a
+  row of anonymous icons; `gpxx:Proximity` on water, huts and camps only, the three you would
+  regret walking past, and on nothing else so the device does not become a metronome;
+  `gpxx:DisplayColor` per track, which is what tells four courses of a project or five days of a
+  trek apart on a small screen; `<number>` and a `<desc>` of distance, climb and duration per
+  track; and `<bounds>` plus an author link in the metadata for the planners that read them.
+  Two deliberate absences: no `<time>` on the points, because timestamps turn a plan into a
+  recording and an importer files it as a past activity, and no `<rte>` beside the `<trk>`, because
+  a file carrying both leaves the importer to guess which one is the course.
 - **Exports carry everything a Garmin can read**: GPX waypoints get `<sym>` (the watch's
   pictogram), `<type>` (our kind, read back first on import) and the track's elevation when the
   point sits within 120 m of it; the track is typed `hiking`. TCX CoursePoints get the altitude
@@ -146,7 +159,15 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   islands and the overseas departments, deliberately generous: claiming coverage a few kilometres
   past the border costs a hint nobody sees, while claiming a hole inside France would put a notice
   over a working map. A single rectangle cannot do it, which a first attempt proved by declaring
-  Zermatt French. Inside France there is nothing to fix: measured z13 to z19 on the three IGN
+  Zermatt French. The offer also stays in the family it was asked in: aerial photographs and a
+  drawn map are not interchangeable, so somebody looking at the orthophotos past the border is not
+  handed a neighbour's topographic sheet as if it answered the same question. What belongs there is
+  imagery, so the world gets its own: Sentinel-2 cloudless from EOX, ten metres a pixel, declared at
+  `maxzoom: 15` because the server upscales past what the data holds and stretching the last honest
+  tile beats fetching blur. Its free tier is CC BY-NC-SA 4.0, which fits a planner with nothing to
+  sell and is carried in the layer's attribution; a commercial cairn would have to drop it or licence
+  it. When no imagery covers a place at all, the notice changes its wording rather than pretend a
+  map answers the same question. Inside France there is nothing to fix: measured z13 to z19 on the three IGN
   bases, zero tiles missing, since each raster source declares its `maxzoom` and MapLibre stretches
   the last one it has rather than asking for a tile nobody serves.
 - **A zoom is fast because of a knob, not a rewrite.** Measured per basemap, the time from a zoom

@@ -18,9 +18,18 @@ describe('where the french maps stop', () => {
   });
 
   it('offers the neighbour national map where there is one, the world topo otherwise', () => {
-    expect(baseCovering(7.75, 46.02)).toBe('swisstopo'); // Zermatt
-    expect(baseCovering(5.5, 50.3)).toBe('ngi-be'); // Ardennes
-    expect(baseCovering(11.8, 46.5)).toBe('opentopo'); // Dolomites
-    expect(baseCovering(-3.2, 40.4)).toBe('opentopo'); // Madrid
+    expect(baseCovering('plan-ign', 7.75, 46.02)).toEqual({ id: 'swisstopo', sameFamily: true }); // Zermatt
+    expect(baseCovering('scan25', 5.5, 50.3)).toEqual({ id: 'ngi-be', sameFamily: true }); // Ardennes
+    expect(baseCovering('plan-ign', 11.8, 46.5)).toEqual({ id: 'opentopo', sameFamily: true }); // Dolomites
+    expect(baseCovering('scan25', -3.2, 40.4)).toEqual({ id: 'opentopo', sameFamily: true }); // Madrid
+  });
+
+  it('answers a request for photographs with photographs', () => {
+    // aerial photos and a topographic sheet are not interchangeable: offering swisstopo to somebody
+    // looking at imagery was a non sequitur, and the world imagery is what belongs there
+    expect(baseCovering('ortho', 7.75, 46.02)).toEqual({ id: 's2cloudless', sameFamily: true });
+    expect(baseCovering('ortho', 11.8, 46.5)).toEqual({ id: 's2cloudless', sameFamily: true });
+    // and the world imagery is never itself out of its element
+    expect(baseCoversView('s2cloudless', 11.8, 46.5)).toBe(true);
   });
 });

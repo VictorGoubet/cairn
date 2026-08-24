@@ -35,6 +35,7 @@ const TILE_HOSTS = [
   'maps.mail.ru',
   'wmts.geo.admin.ch',
   'cartoweb.wmts.ngi.be',
+  'tiles.maps.eox.at',
   'api.panoramax.xyz',
   'panoramax.openstreetmap.fr',
   'a.tile.opentopomap.org',
