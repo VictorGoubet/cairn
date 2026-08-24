@@ -73,6 +73,8 @@ const REFUGES_SOURCE = 'refuge-points';
 const OFFLINE_ZONES_SOURCE = 'offline-zones';
 const FOLLOW_SOURCE = 'follow-position';
 const SIBLINGS_SOURCE = 'collection-siblings';
+/** short enough to read as instant, long enough to hide the seam between two zoom levels */
+const FADE_MS = 80;
 const EMPTY_ROUTE: GeoJSON.GeoJSON = { type: 'FeatureCollection', features: [] };
 
 export function MapView() {
@@ -122,6 +124,13 @@ export function MapView() {
         center: [2.4, 46.6],
         zoom: 5.5,
         maxZoom: 19,
+        // a tile appears the moment it arrives instead of fading in over 300 ms, twice over when
+        // a parent tile fades too: measured at 600 ms of pure animation to a complete map after a
+        // zoom, with nothing fetched at all
+        fadeDuration: FADE_MS,
+        // these tiles are photographs of the ground and never change under us; refetching them
+        // because a cache header expired is a zoom that redisplays for nothing
+        refreshExpiredTiles: false,
       });
       if (import.meta.env.DEV) (window as unknown as { __map: MapLibreMap }).__map = map;
       // a phone zooms by pinching: the buttons only steal room from geolocate and the controls

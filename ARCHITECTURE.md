@@ -138,6 +138,14 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   again (`openLoop`), which drops the closing leg and the duplicate of the start that created it,
   leaving the real start and finish alone. Removing a leg in the *middle* would split the route in
   two, which the one-route model cannot hold, so it is not offered.
+- **A zoom is fast because of a knob, not a rewrite.** Measured per basemap, the time from a zoom
+  to a complete map was a flat ~600 ms *with nothing fetched at all*: MapLibre's default 300 ms
+  cross-fade, twice over between zoom levels. At `fadeDuration: 80` the same cached zoom takes
+  ~170 ms, on every base. `refreshExpiredTiles: false` goes with it, since these tiles are
+  photographs of ground that does not move and a cache header should not cost a redisplay. What the
+  same measurements exonerate: frame times (median 8 ms zooming, on every base and with every
+  overlay), the HTML markers (a 120 km route draws 24 km badges, the step widening past 30 km), and
+  switching basemaps, which only toggles visibility since `buildStyle` runs once.
 - **Map controls carry `data-tip`**, a CSS-only tooltip on hover and keyboard focus: the native
   `title` waits a second and wears the operating system's looks. Behind `@media (hover: hover)`,
   so a finger never triggers a label it cannot dismiss.
@@ -209,6 +217,11 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   once per opening. Measured after: a reload then an open costs 0 tile requests and 7 ms a card.
   Careful with what a profiler says here: the boot cost that remains is the map's own first render,
   which a headless browser inflates to seconds through software rendering while a real GPU does not.
+  Two things made the caching a lie on the deployed site, both invisible in dev. The worker's
+  `activate` deletes every cache it does not name, so each deploy threw the thumbnails away: the
+  worker now names `cairn-thumbs-v1` and a unit test reads `sw.js` to keep the two sides in step.
+  And one throttled tile used to reject the whole render through `Promise.all`, leaving a card blank
+  *and* uncached, asking again on every open; a missing tile is now a gap in the picture.
 - **The first payload carries only what is on screen.** The three panels nobody has open on arrival
   (share studio, qr, roadbook) are `lazy` chunks, which took the entry from 388 to 352 kB gzipped,
   the qr encoder alone being 24 kB of it. They are then warmed on `requestIdleCallback`, and that

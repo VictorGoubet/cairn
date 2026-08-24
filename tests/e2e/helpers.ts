@@ -32,6 +32,7 @@ interface PlannerHandle {
   clear(): void;
   addAnchor(p: [number, number]): void;
   setEditing(id: string | null): void;
+  importRoute(coords: [number, number, number][], waypoints: unknown[]): void;
   updateEditingPoint(kind: string, name: string): void;
   undo(): void;
   redo(): void;

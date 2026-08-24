@@ -14,6 +14,10 @@ const ASSET_CACHE = 'cairn-assets-v1';
 const TILE_CACHE = 'cairn-tiles-v1';
 /** filled by the in-app "download for offline": never trimmed, checked before everything */
 const OFFLINE_CACHE = 'cairn-offline-v1';
+/** the gallery's own thumbnails (see components/RoutesPanel): the worker never serves them, it
+    only has to leave them alone, since activate deletes every cache it does not name and a deploy
+    would otherwise throw away every thumbnail the hiker had already waited for */
+const THUMB_CACHE = 'cairn-thumbs-v1';
 const TILE_MAX_ENTRIES = 4000;
 
 /** hosts whose answers are worth keeping for the trail: tiles, DEM, POIs */
@@ -55,7 +59,7 @@ async function precache() {
 }
 
 self.addEventListener('activate', event => {
-  const keep = [SHELL_CACHE, ASSET_CACHE, TILE_CACHE, OFFLINE_CACHE];
+  const keep = [SHELL_CACHE, ASSET_CACHE, TILE_CACHE, OFFLINE_CACHE, THUMB_CACHE];
   event.waitUntil(
     caches
       .keys()

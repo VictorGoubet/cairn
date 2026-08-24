@@ -357,6 +357,18 @@ test.describe('gallery thumbnails', () => {
     await expect(drawn()).toHaveCount(3);
     expect(tiles).toBe(0);
 
+    // a tile server that refuses must cost a gap in the picture, not the picture: a card that
+    // throws is a card that stays blank and caches nothing, asking again on every single open
+    await page.route('**data.geopf.fr/wmts**', route => route.abort());
+    await page.evaluate(async () => {
+      await caches.delete('cairn-thumbs-v1');
+    });
+    await page.reload();
+    await page.waitForFunction(() => '__planner' in window);
+    await openGallery();
+    await expect(drawn()).toHaveCount(3);
+    await page.unroute('**data.geopf.fr/wmts**');
+
     // re-saving a route redraws it: a thumbnail must never outlive the geometry it shows
     await page.keyboard.press('Escape');
     await page.evaluate(() => {

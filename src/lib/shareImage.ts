@@ -226,15 +226,19 @@ async function drawTiles(
         .replace('{x}', String(((tx % tiles) + tiles) % tiles))
         .replace('{y}', String(ty));
       jobs.push(
-        loadImage(url).then(img => {
-          ctx.drawImage(
-            img,
-            (tx / tiles - view.originX) * view.scale,
-            (ty / tiles - view.originY) * view.scale,
-            tilePx + 0.5,
-            tilePx + 0.5,
-          );
-        }),
+        loadImage(url)
+          .then(img => {
+            ctx.drawImage(
+              img,
+              (tx / tiles - view.originX) * view.scale,
+              (ty / tiles - view.originY) * view.scale,
+              tilePx + 0.5,
+              tilePx + 0.5,
+            );
+          })
+          // a throttled or missing tile leaves a gap; losing the whole image over one of them is
+          // how a gallery card ends up blank and uncached, asking again on every open
+          .catch(() => {}),
       );
     }
   }
