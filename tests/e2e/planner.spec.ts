@@ -197,7 +197,7 @@ test.describe('saving without an account', () => {
     await expect(page.locator('.save-btn.saved')).toBeVisible();
     await expect(page.locator('.save-btn.saved')).toContainText(/Enregistré|Saved/);
     await expect(page.locator('.save-btn.saved')).toBeHidden({ timeout: 4_000 });
-    await expect(page.locator('.routes-wrap > button')).toContainText('(1)');
+    await expect(page.locator('.topbar button', { hasText: /itinéraires|routes/i })).toContainText('(1)');
 
     await page.reload();
     await page.waitForFunction(() => '__planner' in window);
@@ -206,7 +206,7 @@ test.describe('saving without an account', () => {
     const state = await planner(page).state();
     expect(state.savedRouteNames).toContain('Tour du Mélezet');
 
-    await page.locator('.routes-wrap > button').click();
+    await page.locator('.topbar button', { hasText: /itinéraires|routes/i }).click();
     await page.locator('.route-load').first().click();
     await expect(page.locator('.routes-panel')).toBeHidden();
   });
@@ -224,7 +224,7 @@ test.describe('saving without an account', () => {
 
   test('the routes gallery is a modal: the backdrop closes it and keeps the click', async ({ page }) => {
     await openPlanner(page);
-    await page.locator('.routes-wrap > button').click();
+    await page.locator('.topbar button', { hasText: /itinéraires|routes/i }).click();
     await expect(page.locator('.routes-panel')).toBeVisible();
 
     // a click on the backdrop, well clear of the centered panel

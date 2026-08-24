@@ -194,6 +194,10 @@ interface PlannerState {
   saveCurrentRoute: (name: string, collection?: string) => boolean;
   loadRoute: (id: string) => void;
   deleteRoute: (id: string) => void;
+  /** renames a project, carrying every course that belongs to it; an empty name unfiles them */
+  renameCollection: (from: string, to: string) => void;
+  /** drops several courses in one write, so a project leaves in one go */
+  deleteRoutes: (ids: string[]) => void;
   toggleRoutesPanel: () => void;
   retryLegs: () => void;
   focusRoute: () => void;
@@ -929,6 +933,27 @@ export const usePlanner = create<PlannerState>((set, get) => {
             : null,
       });
       ensureLegs();
+    },
+
+    renameCollection: (from, to) => {
+      const next = to.trim();
+      if (from === next) return;
+      const routes = get().savedRoutes.map(r => (r.collection === from ? { ...r, collection: next || undefined } : r));
+      if (!persistRoutes(routes)) {
+        set({ error: 'err_storage' });
+        return;
+      }
+      set({ savedRoutes: routes });
+    },
+
+    deleteRoutes: ids => {
+      const doomed = new Set(ids);
+      const routes = get().savedRoutes.filter(r => !doomed.has(r.id));
+      persistRoutes(routes);
+      set(s => ({
+        savedRoutes: routes,
+        ...(s.currentRouteId && doomed.has(s.currentRouteId) ? { currentRouteId: null, currentRouteName: '' } : {}),
+      }));
     },
 
     deleteRoute: id => {

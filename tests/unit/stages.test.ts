@@ -47,15 +47,19 @@ describe('computeStages', () => {
 });
 
 describe('buildGpx with stages', () => {
-  it('writes one named track per day, readable by any device', () => {
-    const stages = computeStages(ANCHORS, LEGS, DEFAULT_PROFILE);
+  it('writes one track per day, named by the caller, readable by any device', () => {
+    // the day label belongs to the caller, which is the only place that knows the language
+    const tracks = computeStages(ANCHORS, LEGS, DEFAULT_PROFILE).map((stage, i) => ({
+      name: `J${i + 1}${stage.name ? ` · ${stage.name}` : ''}`,
+      coords: stage.coords,
+    }));
     const doc = new DOMParser().parseFromString(
-      buildGpx('GR58', LEGS.flatMap(l => l.leg?.coords ?? []), [], stages),
+      buildGpx('GR58', LEGS.flatMap(l => l.leg?.coords ?? []), [], tracks),
       'application/xml',
     );
     expect(doc.querySelector('parsererror')).toBeNull();
     const names = [...doc.querySelectorAll('trk > name')].map(n => n.textContent);
-    expect(names).toEqual(['Jour 1 · Refuge du Lac', 'Jour 2', 'Jour 3']);
+    expect(names).toEqual(['J1 · Refuge du Lac', 'J2', 'J3']);
     expect(doc.querySelectorAll('trk trkpt').length).toBeGreaterThan(6);
   });
 

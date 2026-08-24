@@ -3,6 +3,12 @@ import type { LonLatEle } from './geo';
 import { haversineM } from './geo';
 import { kindFromGarminSym, type PointKind, parseKind } from './points';
 
+/** one <trk> of the file: a day of a trek, a course of a project, a route on its own */
+export interface GpxTrack {
+  name: string;
+  coords: LonLatEle[];
+}
+
 export interface GpxWaypoint {
   lon: number;
   lat: number;
@@ -21,15 +27,10 @@ const WPT_ELEVATION_MAX_M = 120;
  *   name: route name, written in the metadata and on the track.
  *   coords: full geometry with elevations.
  *   waypoints: markers to embed.
- *   stages: optional day cuts; each becomes its own named `<trk>` ("Jour 1 · Refuge X"), which
+ *   tracks: optional splits; each becomes its own named `<trk>`, named by the caller, which
  *     watches and other planners read natively, so a trek arrives already split into days.
  */
-export function buildGpx(
-  name: string,
-  coords: LonLatEle[],
-  waypoints: GpxWaypoint[],
-  stages: { name: string; coords: LonLatEle[] }[] = [],
-): string {
+export function buildGpx(name: string, coords: LonLatEle[], waypoints: GpxWaypoint[], tracks: GpxTrack[] = []): string {
   const wpts = waypoints
     .map(w => {
       // devices show richer waypoint pages when elevation is present; a marker close to the
@@ -41,15 +42,14 @@ export function buildGpx(
       return `  <wpt lat="${w.lat.toFixed(6)}" lon="${w.lon.toFixed(6)}">${ele}<name>${esc(w.name)}</name>${sym}${type}</wpt>`;
     })
     .join('\n');
-  const tracks =
-    stages.length > 0
-      ? stages.map((s, i) => track(`Jour ${i + 1}${s.name ? ` · ${s.name}` : ''}`, s.coords))
-      : [track(name, coords)];
+  // one <trk> per given track, named by the caller: days of a trek, courses of a project, or the
+  // route itself when nothing is split
+  const written = tracks.length > 0 ? tracks.map(t => track(t.name, t.coords)) : [track(name, coords)];
   return `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="cairn" xmlns="http://www.topografix.com/GPX/1/1">
   <metadata><name>${esc(name)}</name><time>${new Date().toISOString()}</time></metadata>
 ${wpts}
-${tracks.join('\n')}
+${written.join('\n')}
 </gpx>
 `;
 }
@@ -150,9 +150,9 @@ export function downloadGpx(
   name: string,
   coords: LonLatEle[],
   waypoints: GpxWaypoint[],
-  stages: { name: string; coords: LonLatEle[] }[] = [],
+  tracks: GpxTrack[] = [],
 ): void {
-  downloadTextFile(`${name}.gpx`, 'application/gpx+xml', buildGpx(name, coords, waypoints, stages));
+  downloadTextFile(`${name}.gpx`, 'application/gpx+xml', buildGpx(name, coords, waypoints, tracks));
 }
 
 function waypointKind(wpt: Element): PointKind {

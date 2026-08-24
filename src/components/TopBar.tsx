@@ -1,9 +1,9 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { track } from '../lib/analytics';
 import { sampleElevations } from '../lib/demElevation';
-import { buildKml, buildTcx, downloadTextFile, type ExportPoint } from '../lib/exportFormats';
-import type { LonLat } from '../lib/geo';
-import { downloadGpx, type GpxWaypoint, mergeTracks, parseGpx } from '../lib/gpx';
+import { buildKml, buildTcx, downloadBlob, downloadTextFile, type ExportPoint } from '../lib/exportFormats';
+import { type LonLat, type LonLatEle, pointToPathDistanceM } from '../lib/geo';
+import { buildGpx, downloadGpx, type GpxTrack, type GpxWaypoint, mergeTracks, parseGpx } from '../lib/gpx';
 import { type MsgKey, tNow, useT } from '../lib/i18n';
 import type { Lang } from '../lib/lang';
 import { kindDef, kindLabelKey } from '../lib/points';
@@ -12,8 +12,8 @@ import { computeStages } from '../lib/stages';
 import { useClickOutside } from '../lib/useClickOutside';
 import { useEscapeKey } from '../lib/useEscapeKey';
 import { useIsMobile } from '../lib/useMediaQuery';
+import { safeFileName, zipFiles } from '../lib/zip';
 import { routeCoords, routeDistanceM, routePois, usePlanner } from '../store';
-import { RoutesPanel } from './RoutesPanel';
 import { SearchBox } from './SearchBox';
 
 // three panels nobody has open on arrival, kept out of the first payload; the qr one drags a
@@ -41,11 +41,10 @@ function warmLazyPanels(): void {
   else window.setTimeout(warm, 2000);
 }
 
-type ExportFormat = 'gpx' | 'kml' | 'tcx';
+type ExportFormat = 'gpx' | 'gpx_days' | 'kml' | 'tcx';
 
-function closeRoutesPanel() {
-  usePlanner.setState({ showRoutes: false });
-}
+/** a marker further than this from a day's track belongs to another day's file */
+const DAY_WAYPOINT_MAX_M = 150;
 
 export function TopBar() {
   const t = useT();
@@ -62,9 +61,7 @@ export function TopBar() {
   const offRoutePoints = usePlanner(s => s.offRoutePoints);
   const savedRoutes = usePlanner(s => s.savedRoutes);
   const currentRouteName = usePlanner(s => s.currentRouteName);
-  const showRoutes = usePlanner(s => s.showRoutes);
   const fileRef = useRef<HTMLInputElement>(null);
-  const routesWrapRef = useRef<HTMLDivElement>(null);
   const exportWrapRef = useRef<HTMLDivElement>(null);
   const shareWrapRef = useRef<HTMLDivElement>(null);
   const [showExport, setShowExport] = useState(false);
@@ -72,14 +69,13 @@ export function TopBar() {
   const [showShareImage, setShowShareImage] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [showRoadbook, setShowRoadbook] = useState(false);
-  useClickOutside(routesWrapRef, closeRoutesPanel, showRoutes);
   useClickOutside(exportWrapRef, () => setShowExport(false), showExport);
   useClickOutside(shareWrapRef, () => setShowShareMenu(false), showShareMenu);
-  useEscapeKey(closeRoutesPanel, showRoutes);
   useEscapeKey(() => setShowExport(false), showExport);
   useEscapeKey(() => setShowShareMenu(false), showShareMenu);
 
   const coords = routeCoords(legs);
+  const hasStages = computeStages(anchors, legs, usePlanner.getState().profile).length > 1;
   const hasRoute = coords.length >= 2;
   const [copied, setCopied] = useState(false);
   const [linking, setLinking] = useState(false);
@@ -94,6 +90,19 @@ export function TopBar() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  /** close enough to a day's geometry to belong to that file rather than to the next */
+  function onTrack(point: { lon: number; lat: number }, dayCoords: LonLatEle[]): boolean {
+    return pointToPathDistanceM([point.lon, point.lat, 0], dayCoords) <= DAY_WAYPOINT_MAX_M;
+  }
+
+  /** the stages as gpx tracks, named in the language the app is showing */
+  function dayTracks(): GpxTrack[] {
+    return computeStages(anchors, legs, usePlanner.getState().profile).map((stage, i) => ({
+      name: `${tNow('day_prefix')}${i + 1}${stage.name ? ` · ${stage.name}` : ''}`,
+      coords: stage.coords,
+    }));
+  }
+
   function exportRoute(format: ExportFormat) {
     setShowExport(false);
     track('export', { format, distanceKm: Math.round(routeDistanceM(legs) / 1000) });
@@ -101,10 +110,29 @@ export function TopBar() {
     const pois = routePois(anchors).map(named);
     const allPoints = [...pois, ...offRoutePoints.map(named)];
     const name = currentRouteName || `cairn-${new Date().toISOString().slice(0, 10)}`;
-    if (format === 'gpx') {
+    if (format === 'gpx' || format === 'gpx_days') {
       const wpts: GpxWaypoint[] = allPoints.map(p => ({ ...p, sym: kindDef(p.kind).garminSym ?? undefined }));
+      const days = dayTracks();
+      // one file per day, for a watch that only reads the first track of a course
+      if (format === 'gpx_days' && days.length > 1) {
+        downloadBlob(
+          `${name}.zip`,
+          zipFiles(
+            days.map(day => ({
+              name: `${safeFileName(day.name)}.gpx`,
+              // each day carries the markers standing on it, and not tomorrow's
+              text: buildGpx(
+                day.name,
+                day.coords,
+                wpts.filter(w => onTrack(w, day.coords)),
+              ),
+            })),
+          ),
+        );
+        return;
+      }
       // a trek cut into days exports one named track per stage, which watches read natively
-      downloadGpx(name, coords, wpts, computeStages(anchors, legs, usePlanner.getState().profile));
+      downloadGpx(name, coords, wpts, days);
     } else if (format === 'kml') {
       downloadTextFile(`${name}.kml`, 'application/vnd.google-earth.kml+xml', buildKml(name, coords, allPoints));
     } else {
@@ -207,13 +235,10 @@ export function TopBar() {
             </button>
           ))}
         </div>
-        <div className="routes-wrap" ref={routesWrapRef}>
-          <button type="button" onClick={() => usePlanner.getState().toggleRoutesPanel()}>
-            {t('my_routes')}
-            {savedRoutes.length > 0 ? ` (${savedRoutes.length})` : ''}
-          </button>
-          <RoutesPanel />
-        </div>
+        <button type="button" onClick={() => usePlanner.getState().toggleRoutesPanel()}>
+          {t('my_routes')}
+          {savedRoutes.length > 0 ? ` (${savedRoutes.length})` : ''}
+        </button>
         <button type="button" title={t('import_hint')} onClick={() => fileRef.current?.click()}>
           {t('import')}
         </button>
@@ -292,11 +317,23 @@ export function TopBar() {
           {showExport && (
             <div className="export-menu">
               {(['gpx', 'kml', 'tcx'] as ExportFormat[]).map(format => (
-                <button key={format} type="button" onClick={() => exportRoute(format)}>
+                <button
+                  key={format}
+                  type="button"
+                  data-control={`export-${format}`}
+                  onClick={() => exportRoute(format)}
+                >
                   <strong>{format.toUpperCase()}</strong>
                   <span>{t(`fmt_${format}` as MsgKey)}</span>
                 </button>
               ))}
+              {/* offered only when there are days to split: a single-day walk has nothing to zip */}
+              {hasStages && (
+                <button type="button" data-control="export-gpx-days" onClick={() => exportRoute('gpx_days')}>
+                  <strong>ZIP</strong>
+                  <span>{t('fmt_gpx_days')}</span>
+                </button>
+              )}
               <button
                 type="button"
                 data-control="export-roadbook"

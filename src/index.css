@@ -437,8 +437,12 @@ body {
   top: calc(100% + 6px);
   right: 0;
   z-index: 20;
+  /* a column since the projects joined: the name, the project, then the confirmation */
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
   gap: 6px;
+  width: 244px;
   padding: 8px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -447,7 +451,7 @@ body {
 }
 
 .save-pop input {
-  width: 210px;
+  width: auto;
   padding: 7px 9px;
   font-size: 13px;
   color: var(--ink);
@@ -978,17 +982,12 @@ body {
 
 /* --- routes panel --- */
 
-.routes-wrap,
 .menu-wrap {
   position: relative;
 }
 
 .routes-modal {
   width: min(860px, 100%);
-}
-
-.routes-panel {
-  overflow-y: auto;
 }
 
 .routes-grid {
@@ -1536,6 +1535,43 @@ body {
   font-size: 10.5px;
 }
 
+.save-projects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chip {
+  padding: 4px 9px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.chip.on {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.chip.new {
+  font-weight: 700;
+  padding: 4px 10px;
+}
+
 .routes-group h4 {
   display: flex;
   align-items: baseline;
@@ -1553,6 +1589,91 @@ body {
   text-transform: none;
   letter-spacing: 0;
   color: var(--ink-2);
+}
+
+/* the project's own actions, at the end of its heading */
+.group-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.group-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 22px;
+  padding: 3px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.group-actions button:hover {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+/* these buttons are sized by their text, so a drawn icon needs its own dimensions */
+.group-actions button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.group-actions .group-remove:hover {
+  color: #c0392b;
+  border-color: #f3b7ae;
+  background: #fff0ee;
+}
+
+.group-actions .group-remove.armed {
+  color: #fff;
+  background: #c0392b;
+  border-color: #c0392b;
+}
+
+/* a heading is three numbers and three actions: on a phone it takes the two lines it needs */
+@media (max-width: 560px) {
+  .routes-group h4 {
+    flex-wrap: wrap;
+  }
+
+  .group-actions {
+    margin-left: 0;
+  }
+}
+
+.routes-group h4.group-renaming {
+  gap: 6px;
+}
+
+.group-renaming input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.group-renaming .primary {
+  padding: 5px 12px;
+  font-size: 12px;
+  color: #fff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  cursor: pointer;
 }
 
 /* --- roadbook --- */
@@ -2158,6 +2279,8 @@ body {
   max-height: calc(100dvh - 32px);
   padding: 14px 16px;
   overflow: auto;
+  /* the overlay scrollbar of macos sits on the content otherwise, over the project's own numbers */
+  scrollbar-gutter: stable;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -2872,9 +2995,7 @@ body {
 /* every row of the menu shares one width and one height, the language picker included */
 .topbar-sheet.open > button,
 .topbar-sheet.open > .menu-wrap,
-.topbar-sheet.open > .routes-wrap,
-.topbar-sheet.open .menu-wrap > button,
-.topbar-sheet.open .routes-wrap > button {
+.topbar-sheet.open .menu-wrap > button {
   width: 100%;
   min-height: var(--menu-row);
 }

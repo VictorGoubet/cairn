@@ -215,12 +215,29 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   is not an optimisation but a correctness fix: a dynamic chunk is absent from the html the service
   worker's install parses, so without the warm-up the qr panel would be missing in a dead zone.
   `production.pwa.spec.ts` opens it offline for exactly that reason.
-- **Collections** (`collectionSiblings`, `byCollection`): a project is one optional name on a saved
-  route, so the four distances of a race group in the gallery (with their totals in the heading) and
+- **A project is a name, not a container** (`collectionSiblings`, `byCollection`): one optional name
+  on a saved so the four distances of a race group in the gallery (with their totals in the heading) and
   the siblings of the open course draw behind it as grey dashed lines. Nothing new is stored and
   routes saved before it simply belong to none. `collectionSiblings` is memoised on the identity of
   the saved list: it is read as a selector, and a fresh array on every call is a render loop —
-  guarding only the empty case was not enough, which the map proved by crashing.
+  guarding only the empty case was not enough, which the map proved by crashing. The projects
+  already used are chips in the save popover, since a project is typed once and reused often, and a
+  project can be renamed (carrying its courses), deleted whole (arming first, releasing each
+  course's offline corridor, in one storage write) or exported as **one gpx with a `<trk>` per
+  course**, which is the interchange format every planner and watch already reads.
+- **The gallery is a modal, so it hangs off the app, not off the topbar.** It used to live inside
+  the action group that a phone folds behind the menu button, which made its visibility depend on
+  that menu being open. Its own backdrop and Escape already close it, so the wrapper's
+  click-outside went with the move. Same reflex for the scrollbar: the modal reserves its gutter
+  (`scrollbar-gutter: stable`), because the overlay scrollbar of macOS was sitting on the project's
+  own numbers.
+- **Days of a trek are not courses of a project.** The question came up and the answer is no: a trek
+  is one continuous line whose shape, share link and offline bundle belong to it as a whole, and
+  moving a camp would mean editing two saved routes. What the splitting is actually wanted for is a
+  device that reads only the first track of a course, so it is an *export*: `gpx_days` writes one
+  file per day into a zip (`lib/zip.ts`, stored entries, no compressor pulled in, fixed timestamps
+  so the archive is reproducible), each day carrying the markers standing on it. A browser only lets
+  one download through at a time, which is why it is an archive and not a handful of files.
 - **Stages** (`lib/stages.ts`): derived, never stored: a stage is what lies between two `camp`
   points. GPX export writes one named `<trk>` per day. With a start date (`startDate`, in the
   draft), each stage shows its Open-Meteo forecast (`lib/weather.ts`, 16-day horizon, no key).

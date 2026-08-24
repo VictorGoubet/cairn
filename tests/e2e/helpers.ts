@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Download, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 
 /** the dev build exposes the map and the store so tests can drive them without guessing pixels */
@@ -27,7 +27,7 @@ interface PlannerHandle {
   legs: { leg: { coords: [number, number, number][]; distanceM: number } | null }[];
   offRoutePoints: { id: string; kind: string; name: string }[];
   overlays: Record<string, boolean>;
-  savedRoutes: { id: string; name: string }[];
+  savedRoutes: { id: string; name: string; collection?: string }[];
   bivouacSpots: { point: [number, number]; total: number; campId: string }[];
   clear(): void;
   addAnchor(p: [number, number]): void;
@@ -65,6 +65,20 @@ export async function plantCamp(page: Page, anchorIndex: number, name: string): 
       state.updateEditingPoint('camp', label);
     },
     { index: anchorIndex, label: name },
+  );
+}
+
+/** the bytes of a download, as text; stored zip entries read straight out of the archive */
+export function readDownload(download: Download): Promise<string> {
+  return download.createReadStream().then(
+    stream =>
+      new Promise<string>(resolve => {
+        let out = '';
+        stream.on('data', (chunk: Buffer) => {
+          out += chunk.toString('binary');
+        });
+        stream.on('end', () => resolve(out));
+      }),
   );
 }
 

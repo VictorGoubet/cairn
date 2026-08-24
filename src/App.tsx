@@ -8,6 +8,7 @@ import { MapControls } from './components/MapControls';
 import { MapView } from './components/MapView';
 import { PointEditor } from './components/PointEditor';
 import { RouteStats } from './components/RouteStats';
+import { RoutesPanel } from './components/RoutesPanel';
 import { Sidebar } from './components/Sidebar';
 import { StatsCard } from './components/StatsCard';
 import { TopBar } from './components/TopBar';
@@ -114,6 +115,7 @@ export default function App() {
           <PointEditor />
           <LegEditor />
           <BivouacCard />
+          <RoutesPanel />
           <FollowBar />
           {toast}
         </div>
@@ -145,6 +147,7 @@ export default function App() {
           <PointEditor />
           <LegEditor />
           <BivouacCard />
+          <RoutesPanel />
           <FollowBar />
           <BottomPanel />
           {toast}

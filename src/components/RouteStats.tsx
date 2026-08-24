@@ -22,6 +22,7 @@ export function RouteStats() {
   const [justSaved, setJustSaved] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [collection, setCollection] = useState('');
+  const [typingProject, setTypingProject] = useState(false);
   const savedRoutes = usePlanner(s => s.savedRoutes);
   const collections = useMemo(
     () => [...new Set(savedRoutes.map(r => r.collection).filter((c): c is string => !!c))],
@@ -39,6 +40,7 @@ export function RouteStats() {
     const state = usePlanner.getState();
     setSaveName(currentRouteName || `${t('route_of')} ${new Date().toLocaleDateString(dateLocale(lang))}`);
     setCollection(state.savedRoutes.find(r => r.id === state.currentRouteId)?.collection ?? '');
+    setTypingProject(false);
     setSaveOpen(true);
   }
 
@@ -104,24 +106,49 @@ export function RouteStats() {
                 if (e.key === 'Escape') setSaveOpen(false);
               }}
             />
-            {/* the list already used is the only suggestion worth making: a project is typed once */}
-            <input
-              type="text"
-              list="cairn-collections"
-              className="save-collection"
-              value={collection}
-              placeholder={t('collection_placeholder')}
-              onChange={e => setCollection(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') confirmSave();
-                if (e.key === 'Escape') setSaveOpen(false);
-              }}
-            />
-            <datalist id="cairn-collections">
-              {collections.map(name => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
+            {/* a project is typed once and reused often, so the ones that exist are one tap away */}
+            {collections.length > 0 && !typingProject && (
+              <div className="save-projects">
+                {['', ...collections].map(name => (
+                  <button
+                    key={name || 'none'}
+                    type="button"
+                    className={collection === name ? 'chip on' : 'chip'}
+                    onClick={() => setCollection(name)}
+                  >
+                    {name || t('collection_none')}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="chip new"
+                  data-control="project-new"
+                  title={t('collection_new')}
+                  onClick={() => {
+                    setCollection('');
+                    setTypingProject(true);
+                  }}
+                >
+                  +
+                </button>
+              </div>
+            )}
+            {(typingProject || collections.length === 0) && (
+              <input
+                type="text"
+                className="save-collection"
+                ref={el => {
+                  if (typingProject) el?.focus();
+                }}
+                value={collection}
+                placeholder={t('collection_placeholder')}
+                onChange={e => setCollection(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') confirmSave();
+                  if (e.key === 'Escape') setSaveOpen(false);
+                }}
+              />
+            )}
             <button type="button" className="primary" onClick={confirmSave}>
               {t('ok')}
             </button>

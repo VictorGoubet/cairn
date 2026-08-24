@@ -150,7 +150,11 @@ ${coursePoints}
  *   content: file content.
  */
 export function downloadTextFile(filename: string, mime: string, content: string): void {
-  const url = URL.createObjectURL(new Blob([content], { type: mime }));
+  downloadBlob(filename, new Blob([content], { type: mime }));
+}
+
+export function downloadBlob(filename: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;

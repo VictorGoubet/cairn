@@ -1,6 +1,6 @@
 // one lean test per feature that had none: the golden-version net against regressions
 import { expect, test } from '@playwright/test';
-import { CEILLAC, clickAt, openPlanner, planner, type TestHandles, waitForRouting } from './helpers';
+import { CEILLAC, clickAt, openPlanner, planner, readDownload, type TestHandles, waitForRouting } from './helpers';
 
 const FURTHER: [number, number] = [CEILLAC[0] + 0.016, CEILLAC[1] + 0.001];
 
@@ -88,18 +88,10 @@ test.describe('exports', () => {
       await drawManualRoute(page);
       await page.locator('.topbar button', { hasText: /Exporter|Export/ }).click();
       const downloadPromise = page.waitForEvent('download');
-      await page.locator('.export-menu button', { hasText: format }).click();
+      await page.locator(`[data-control="export-${format.toLowerCase()}"]`).click();
       const download = await downloadPromise;
       expect(download.suggestedFilename()).toContain(extension);
-      const body = await download
-        .createReadStream()
-        .then(stream => new Promise<string>(resolve => {
-          let out = '';
-          stream.on('data', (chunk: Buffer) => {
-            out += chunk.toString();
-          });
-          stream.on('end', () => resolve(out));
-        }));
+      const body = await readDownload(download);
       expect(body).toContain(marker);
     });
   }
@@ -215,6 +207,74 @@ test.describe('saved routes', () => {
       .toEqual([]);
     // the drawn route itself is untouched
     expect((await planner(page).state()).anchorCount).toBe(2);
+  });
+});
+
+test.describe('projects', () => {
+  test('a project is picked in one tap, renamed, exported as one gpx and deleted whole', async ({ page }) => {
+    await drawManualRoute(page);
+    await page.evaluate(() => {
+      (window as unknown as TestHandles).__planner.getState().saveCurrentRoute('62 km', 'Trail des Cretes');
+    });
+
+    // the second course reuses the project by tapping its chip, no typing
+    await page.evaluate(() => (window as unknown as TestHandles).__planner.getState().clear());
+    await clickAt(page, CEILLAC);
+    await clickAt(page, [CEILLAC[0] + 0.008, CEILLAC[1] + 0.004]);
+    await waitForRouting(page, 1);
+    await page.locator('.save-btn').click();
+    await page.locator('.save-name').fill('21 km');
+    await page.locator('.chip', { hasText: 'Trail des Cretes' }).click();
+    await page.locator('.save-pop .primary').click();
+    await expect
+      .poll(async () => (await planner(page).state()).savedRouteNames.length)
+      .toBe(2);
+
+    await page.locator('.topbar button', { hasText: /itinéraires|routes/i }).click();
+    await expect(page.locator('.routes-group h4').first()).toContainText('Trail des Cretes');
+
+    // one gpx for the whole project, one <trk> per course, which every planner reads
+    const download = page.waitForEvent('download');
+    await page.locator('[data-control="project-export"]').first().click();
+    const file = await download;
+    expect(file.suggestedFilename()).toBe('Trail des Cretes.gpx');
+    const body = await readDownload(file);
+    expect(body).toContain('<name>62 km</name>');
+    expect(body).toContain('<name>21 km</name>');
+
+    // the whole project leaves in one go, arming first: no native dialog anywhere in this app
+    await page.locator('[data-control="project-remove"]').first().click();
+    await expect(page.locator('.group-remove.armed')).toHaveCount(1);
+    // and it stays until confirmed, so a stray tap costs nothing
+    await expect
+      .poll(async () => (await planner(page).state()).savedRouteNames.length)
+      .toBe(2);
+
+    // renaming carries every course of the project with it
+    await page.locator('[data-control="project-rename"]').first().click();
+    await page.locator('.group-renaming input').fill('Cretes 2027');
+    await page.locator('[data-control="project-rename-ok"]').click();
+    await expect(page.locator('.routes-group h4').first()).toContainText('Cretes 2027');
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            (window as unknown as TestHandles).__planner
+              .getState()
+              .savedRoutes.filter(r => r.collection === 'Cretes 2027').length,
+        ),
+      )
+      .toBe(2);
+
+    // confirmed: the courses of the project go, the ones outside it stay
+    await page.evaluate(() => {
+      (window as unknown as TestHandles).__planner.getState().saveCurrentRoute('Queyras');
+    });
+    await page.locator('[data-control="project-remove"]').first().click();
+    await page.locator('[data-control="project-remove"]').first().click();
+    await expect
+      .poll(async () => (await planner(page).state()).savedRouteNames)
+      .toEqual(['Queyras']);
   });
 });
 

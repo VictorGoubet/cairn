@@ -1,6 +1,6 @@
 // the trek features: multi-day stages, weather, qr handoff, offline shell
 import { expect, type Page, test } from '@playwright/test';
-import { CEILLAC, clickAt, openPlanner, plantCamp, type TestHandles, waitForRouting } from './helpers';
+import { CEILLAC, clickAt, openPlanner, plantCamp, readDownload, type TestHandles, waitForRouting } from './helpers';
 
 // all three inside the z14 viewport: a click projected past its edge lands on nothing
 const FURTHER: [number, number] = [CEILLAC[0] + 0.008, CEILLAC[1] + 0.001];
@@ -49,7 +49,7 @@ test.describe('multi-day stages', () => {
     await drawTrek(page);
     await page.locator('.topbar button', { hasText: /Exporter|Export/ }).click();
     const downloadPromise = page.waitForEvent('download');
-    await page.locator('.export-menu button', { hasText: 'GPX' }).click();
+    await page.locator('[data-control="export-gpx"]').click();
     const body = await (await downloadPromise)
       .createReadStream()
       .then(stream => new Promise<string>(resolve => {
@@ -59,8 +59,29 @@ test.describe('multi-day stages', () => {
         });
         stream.on('end', () => resolve(out));
       }));
-    expect(body).toContain('<name>Jour 1 · Bivouac du lac</name>');
-    expect(body).toContain('<name>Jour 2</name>');
+    // named in the language the app is showing, since that is where the day prefix now lives
+    expect(body).toMatch(/<name>[JD]1 · Bivouac du lac<\/name>/);
+    expect(body).toMatch(/<name>[JD]2<\/name>/);
+  });
+
+  test('a trek can also leave as one file per day, zipped', async ({ page }) => {
+    await drawTrek(page);
+    await page.locator('.topbar button.primary', { hasText: /Exporter|Export/ }).click();
+    const downloading = page.waitForEvent('download');
+    await page.locator('[data-control="export-gpx-days"]').click();
+    const file = await downloading;
+    expect(file.suggestedFilename()).toMatch(/\.zip$/);
+
+    // entries are stored, not deflated, so the archive carries its gpx in plain sight
+    const bytes = await readDownload(file);
+    expect(bytes.slice(0, 2)).toBe('PK');
+    // read as raw bytes, so the separator between day and name is not compared
+    expect(bytes).toContain('Bivouac du lac.gpx');
+    expect(bytes).toMatch(/[JD]2\.gpx/);
+    // the marker of day one rides in day one's file, not in tomorrow's
+    expect(bytes.indexOf('<wpt')).toBeLessThan(bytes.indexOf('D2.gpx') > 0 ? bytes.indexOf('D2.gpx') : bytes.length);
+    // each day is a file with its own single track, not the whole trek repeated
+    expect(bytes.match(/<trk>/g)).toHaveLength(2);
   });
 
   test('a start date brings each day its forecast', async ({ page }) => {

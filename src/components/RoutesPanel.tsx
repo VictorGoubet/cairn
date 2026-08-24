@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { track } from '../lib/analytics';
 import { formatDistance } from '../lib/geo';
+import { downloadGpx } from '../lib/gpx';
 import { useT } from '../lib/i18n';
 import { dateLocale } from '../lib/lang';
 import { downloadRouteOffline, markOfflineSaved, offlineSavedAt, releaseOfflineRoute } from '../lib/offline';
@@ -149,15 +151,7 @@ export function RoutesPanel() {
           {byCollection(savedRoutes).map(group => (
             <section key={group.name || 'loose'} className="routes-group">
               {/* a named project always says its name; "no project" only when something else has one */}
-              {(group.name !== '' || groups > 1) && (
-                <h4>
-                  {group.name || t('collection_none')}
-                  <span>
-                    {group.routes.length} · {formatDistance(group.routes.reduce((sum, r) => sum + r.distanceM, 0))} · +
-                    {Math.round(group.routes.reduce((sum, r) => sum + r.gainM, 0))} m
-                  </span>
-                </h4>
-              )}
+              {(group.name !== '' || groups > 1) && <GroupHead group={group} named={group.name !== ''} />}
               <ul className="routes-grid">
                 {group.routes.map(r => (
                   <li key={r.id} className={r.id === currentRouteId ? 'active' : undefined}>
@@ -176,6 +170,110 @@ export function RoutesPanel() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * A project's heading: what it holds, and the two things a project can do as a whole.
+ *
+ * Renaming carries every course with it, and the export is one gpx with a `<trk>` per course,
+ * which is the format every planner and watch already reads: the courses of a race arrive as the
+ * courses of a race, not as five files to open one by one.
+ */
+function GroupHead({ group, named }: { group: { name: string; routes: SavedRoute[] }; named: boolean }) {
+  const t = useT();
+  const [renaming, setRenaming] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [draft, setDraft] = useState(group.name);
+
+  function rename() {
+    usePlanner.getState().renameCollection(group.name, draft);
+    setRenaming(false);
+  }
+
+  // first tap arms, second one deletes, like a single card: no native dialog anywhere in this app
+  function removeProject() {
+    if (!confirming) {
+      setConfirming(true);
+      return;
+    }
+    // the courses go and their downloaded corridors with them: nothing would point at them
+    for (const route of group.routes) void releaseOfflineRoute(route.id, routeCoords(route.legs));
+    usePlanner.getState().deleteRoutes(group.routes.map(route => route.id));
+    setConfirming(false);
+  }
+
+  function exportProject() {
+    const tracks = group.routes
+      .map(route => ({ name: route.name, coords: routeCoords(route.legs) }))
+      .filter(track => track.coords.length >= 2);
+    if (tracks.length === 0) return;
+    const name = group.name || t('my_routes');
+    track('export-project', { format: 'gpx', courses: tracks.length });
+    downloadGpx(name, tracks[0].coords, [], tracks);
+  }
+
+  if (renaming) {
+    return (
+      <h4 className="group-renaming">
+        <input
+          type="text"
+          ref={el => {
+            el?.focus();
+          }}
+          value={draft}
+          placeholder={t('collection_placeholder')}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') rename();
+            if (e.key === 'Escape') setRenaming(false);
+          }}
+        />
+        <button type="button" className="primary" data-control="project-rename-ok" onClick={rename}>
+          {t('ok')}
+        </button>
+      </h4>
+    );
+  }
+
+  return (
+    <h4>
+      {group.name || t('collection_none')}
+      <span>
+        {group.routes.length} · {formatDistance(group.routes.reduce((sum, r) => sum + r.distanceM, 0))} · +
+        {Math.round(group.routes.reduce((sum, r) => sum + r.gainM, 0))} m
+      </span>
+      <span className="group-actions">
+        {named && (
+          <button
+            type="button"
+            data-control="project-rename"
+            title={t('collection_rename')}
+            onClick={() => {
+              setDraft(group.name);
+              setRenaming(true);
+            }}
+            aria-label={t('collection_rename')}
+          >
+            <PencilIcon />
+          </button>
+        )}
+        <button type="button" data-control="project-export" title={t('collection_export')} onClick={exportProject}>
+          GPX
+        </button>
+        <button
+          type="button"
+          className={confirming ? 'group-remove armed' : 'group-remove'}
+          data-control="project-remove"
+          title={`${t('collection_delete')} (${group.routes.length})`}
+          aria-label={`${t('collection_delete')} (${group.routes.length})`}
+          onBlur={() => setConfirming(false)}
+          onClick={removeProject}
+        >
+          {confirming ? <CheckIcon /> : <TrashIcon />}
+        </button>
+      </span>
+    </h4>
   );
 }
 
@@ -238,37 +336,46 @@ function RouteCard({
           onBlur={onDisarm}
           onClick={onRemove}
         >
-          {confirming ? (
-            // a red check, not the word: a text pill gets clipped inside an icon bar
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.6"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <path d="m5 12 5 5L19 8" />
-            </svg>
-          ) : (
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" />
-            </svg>
-          )}
+          {/* a red check, not the word: a text pill gets clipped inside an icon bar */}
+          {confirming ? <CheckIcon /> : <TrashIcon />}
         </button>
       </div>
     </>
   );
 }
 
-/** downloads the route's corridor into the cache, and says so once it is there */
+/** the panel's two glyphs, drawn rather than typed: an emoji would not follow the button's colour */
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <path d="M4 20h4L20 8l-4-4L4 16v4M14 6l4 4" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.6"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="m5 12 5 5L19 8" />
+    </svg>
+  );
+}
+
 /** downloads the route's bundle, and takes it back off the device on the next tap */
 function OfflineButton({ route }: { route: SavedRoute }) {
   const t = useT();
