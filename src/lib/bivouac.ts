@@ -29,7 +29,7 @@
  */
 
 import { sampleElevations } from './demElevation';
-import { cumulativeDistancesM, haversineM, type LonLat, type LonLatEle } from './geo';
+import { cumulativeDistancesM, haversineM, type LonLat, type LonLatEle, pointInRing } from './geo';
 import { durationH, type HikerProfile } from './hikingTime';
 import { overpassQuery } from './overpass';
 
@@ -184,19 +184,6 @@ export function nearestDistanceM(from: LonLat, points: LonLat[]): number | null 
   return best;
 }
 
-/** ray casting on lon/lat: over a lake the projection error is far below a tent's width */
-export function isInsideRing(point: LonLat, ring: LonLat[]): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
-    if (yi > point[1] !== yj > point[1] && point[0] < xi + ((xj - xi) * (point[1] - yi)) / (yj - yi)) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
-
 /** the steepest gradient of the cross, in degrees */
 function slopeFromCross([north, east, south, west]: [number, number, number, number]): number {
   const dy = (north - south) / (2 * SLOPE_STEP_M);
@@ -305,7 +292,7 @@ export async function findBivouacSpots(
         waterMinutes: minutes,
         intrusionM: context ? nearestDistanceM(candidate.point, context.intrusions) : null,
         shiftM: candidate.shiftM,
-        inWater: context ? context.surfaces.some(ring => isInsideRing(candidate.point, ring)) : false,
+        inWater: context ? context.surfaces.some(ring => pointInRing(candidate.point, ring)) : false,
       });
       return {
         ...score,

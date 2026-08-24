@@ -74,6 +74,11 @@ export const RASTER_BASE_LAYERS: RasterLayer[] = [
   },
 ];
 
+/** the label of a base, for the rare places that name one outside the picker */
+export function baseLabelKey(id: string): MsgKey {
+  return BASE_LAYER_OPTIONS.find(option => option.id === id)?.labelKey ?? 'layer_plan';
+}
+
 export const BASE_LAYER_OPTIONS: { id: string; labelKey: MsgKey }[] = [
   { id: 'plan-ign', labelKey: 'layer_plan' },
   ...RASTER_BASE_LAYERS.map(l => ({ id: l.id, labelKey: l.labelKey })),

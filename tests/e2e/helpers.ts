@@ -27,6 +27,7 @@ interface PlannerHandle {
   legs: { leg: { coords: [number, number, number][]; distanceM: number } | null }[];
   offRoutePoints: { id: string; kind: string; name: string }[];
   overlays: Record<string, boolean>;
+  baseLayerId: string;
   savedRoutes: { id: string; name: string; collection?: string }[];
   bivouacSpots: { point: [number, number]; total: number; campId: string }[];
   clear(): void;
@@ -96,6 +97,7 @@ export function planner(page: Page) {
           totalDistanceM: s.legs.reduce((sum, l) => sum + (l.leg?.distanceM ?? 0), 0),
           overlays: s.overlays,
           savedRouteNames: s.savedRoutes.map(r => r.name),
+          baseLayerId: s.baseLayerId,
         };
       }),
     call: (method: keyof PlannerHandle, ...args: unknown[]) =>

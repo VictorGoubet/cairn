@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type BivouacProbe,
-  isInsideRing,
   nearestDistanceM,
   type PlannedCamp,
   RING_SAMPLES,
@@ -9,7 +8,7 @@ import {
   SHIFT_RADIUS_M,
   waterMinutes,
 } from '../../src/lib/bivouac';
-import type { LonLatEle } from '../../src/lib/geo';
+import { type LonLatEle, pointInRing } from '../../src/lib/geo';
 
 /** a probe on ground of a given slope, with a ring at a given height relative to the spot */
 function probe(slopeDeg: number, ringDelta: number | number[], elevation = 2000): BivouacProbe {
@@ -120,7 +119,7 @@ describe('waterMinutes', () => {
   });
 });
 
-describe('isInsideRing', () => {
+describe('pointInRing', () => {
   // a square kilometre of lake, and the shore itself, where camping is the whole point
   const LAKE: [number, number][] = [
     [6.7, 44.6],
@@ -131,9 +130,9 @@ describe('isInsideRing', () => {
   ];
 
   it('tells the middle of the water from the bank', () => {
-    expect(isInsideRing([6.705, 44.605], LAKE)).toBe(true);
-    expect(isInsideRing([6.6995, 44.605], LAKE)).toBe(false);
-    expect(isInsideRing([6.705, 44.62], LAKE)).toBe(false);
+    expect(pointInRing([6.705, 44.605], LAKE)).toBe(true);
+    expect(pointInRing([6.6995, 44.605], LAKE)).toBe(false);
+    expect(pointInRing([6.705, 44.62], LAKE)).toBe(false);
   });
 });
 

@@ -126,6 +126,32 @@ test.describe('map options', () => {
   });
 });
 
+test.describe('where the maps stop', () => {
+  test('a national map past its border says so, and switches in one tap', async ({ page }) => {
+    await openPlanner(page);
+    // Zermatt: the plan IGN draws nothing there, which looks broken rather than finished
+    await page.evaluate(() => {
+      (window as unknown as TestHandles).__map.jumpTo({ center: [7.75, 46.02], zoom: 13 });
+    });
+    const notice = page.locator('[data-control="coverage-switch"]');
+    await expect(notice).toBeVisible();
+    // it names the map that does cover the place, the neighbour's own rather than the world one
+    await expect(notice).toContainText(/swisstopo/i);
+
+    await notice.click();
+    await expect.poll(async () => (await planner(page).state()).baseLayerId).toBe('swisstopo');
+    await expect(notice).toHaveCount(0);
+
+    // back over France, nothing to say
+    await page.evaluate(() => {
+      const state = (window as unknown as TestHandles).__planner.getState();
+      state.setBaseLayerId('plan-ign');
+      (window as unknown as TestHandles).__map.jumpTo({ center: [6.87, 45.92], zoom: 13 });
+    });
+    await expect(notice).toHaveCount(0);
+  });
+});
+
 test.describe('international bases', () => {
   test('swisstopo draws real tiles over Zermatt', async ({ page }) => {
     await openPlanner(page);

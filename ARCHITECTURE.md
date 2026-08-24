@@ -138,6 +138,17 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   again (`openLoop`), which drops the closing leg and the duplicate of the start that created it,
   leaving the real start and finish alone. Removing a leg in the *middle* would split the route in
   two, which the one-route model cannot hold, so it is not offered.
+- **A national map ends at its border, and says so** (`lib/coverage.ts`): past it the Géoplateforme
+  answers empty or 404 and the screen goes white, which reads as a broken app rather than as the
+  edge of a dataset. A notice over the map names the base that does cover the place, the
+  neighbour's own where there is one (swisstopo, NGI Belgium) and the global topo otherwise, and
+  switches in one tap. The extent is a coarse outline of metropolitan France plus boxes for the
+  islands and the overseas departments, deliberately generous: claiming coverage a few kilometres
+  past the border costs a hint nobody sees, while claiming a hole inside France would put a notice
+  over a working map. A single rectangle cannot do it, which a first attempt proved by declaring
+  Zermatt French. Inside France there is nothing to fix: measured z13 to z19 on the three IGN
+  bases, zero tiles missing, since each raster source declares its `maxzoom` and MapLibre stretches
+  the last one it has rather than asking for a tile nobody serves.
 - **A zoom is fast because of a knob, not a rewrite.** Measured per basemap, the time from a zoom
   to a complete map was a flat ~600 ms *with nothing fetched at all*: MapLibre's default 300 ms
   cross-fade, twice over between zoom levels. At `fadeDuration: 80` the same cached zoom takes

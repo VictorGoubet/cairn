@@ -47,6 +47,24 @@ export function formatDuration(hours: number): string {
   return h === 0 ? `${m} min` : `${h} h ${String(m).padStart(2, '0')}`;
 }
 
+/**
+ * Whether a point falls inside a ring of lon/lat vertices.
+ *
+ * Ray casting: over a lake or a country the projection error is far below what either question
+ * cares about, and no projection makes an edge case at a vertex behave better.
+ */
+export function pointInRing(point: LonLat, ring: LonLat[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > point[1] !== yj > point[1] && point[0] < xi + ((xj - xi) * (point[1] - yi)) / (yj - yi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 export function nearestIndex(sorted: number[], value: number): number {
   let lo = 0;
   let hi = sorted.length - 1;

@@ -12,6 +12,7 @@ import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import { useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {
+  baseLabelKey,
   FALLBACK_BASE_LAYER,
   FLYOVER_BASE_LAYER,
   GR_TILES,
@@ -20,9 +21,11 @@ import {
   SLOPES_TILES,
   TERRARIUM_TILES,
 } from '../config/layers';
+import { baseCovering, baseCoversView } from '../lib/coverage';
 import { fetchDrinkingWater } from '../lib/drinkingWater';
 import { FLYOVER_EXAGGERATION, type FlyoverPoi, startFlyover } from '../lib/flyover';
 import { onFollowFix } from '../lib/follow';
+import type { LonLat } from '../lib/geo';
 import { cumulativeDistancesM, haversineM, kmMarkerPoints, type LonLatEle, nearestIndex } from '../lib/geo';
 import { tNow, useT } from '../lib/i18n';
 import { bindLongPress, bindMiddleDragRotate, bindRotateCursor } from '../lib/mapGestures';
@@ -80,6 +83,7 @@ const EMPTY_ROUTE: GeoJSON.GeoJSON = { type: 'FeatureCollection', features: [] }
 export function MapView() {
   const t = useT();
   const [zoomLevel, setZoomLevel] = useState(0);
+  const [centre, setCentre] = useState<LonLat | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const vectorLayersRef = useRef<{ id: string; type: string; isContour: boolean; visible: boolean }[]>([]);
@@ -479,10 +483,16 @@ export function MapView() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    const onZoom = () => setZoomLevel(map.getZoom());
+    const onZoom = () => {
+      setZoomLevel(map.getZoom());
+      const at = map.getCenter();
+      setCentre([at.lng, at.lat]);
+    };
     onZoom();
+    map.on('moveend', onZoom);
     map.on('zoomend', onZoom);
     return () => {
+      map.off('moveend', onZoom);
       map.off('zoomend', onZoom);
     };
   }, [mapReady]);
@@ -792,10 +802,24 @@ export function MapView() {
   // an overlay waiting for zoom must say so: switched on over a wide view it shows nothing,
   // which reads as broken rather than as "come closer"
   const needsZoom = overlays.refuges && zoomLevel < REFUGES_MIN_ZOOM;
+  // a national map past its border draws nothing, which reads as a broken app rather than as the
+  // edge of its data: say where the ground is mapped instead, and switch there in one tap
+  const uncovered = centre !== null && !baseCoversView(baseLayerId, centre[0], centre[1]);
+  const elsewhere = uncovered && centre !== null ? baseCovering(centre[0], centre[1]) : null;
 
   return (
     <div ref={containerRef} className="map">
       {needsZoom && <span className="zoom-hint">{t('zoom_for_pois')}</span>}
+      {elsewhere && (
+        <button
+          type="button"
+          className="coverage-hint"
+          data-control="coverage-switch"
+          onClick={() => usePlanner.getState().setBaseLayerId(elsewhere)}
+        >
+          {t('coverage_outside')} <strong>{t(baseLabelKey(elsewhere))}</strong>
+        </button>
+      )}
     </div>
   );
 }
