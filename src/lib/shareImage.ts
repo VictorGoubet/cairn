@@ -24,6 +24,10 @@ export interface ShareImageOptions {
   title: string;
   /** shrinks the whole composition, for thumbnail previews; 1 is the shareable size */
   scale?: number;
+  /** stop waiting for tiles after this long, drawing whatever arrived; unset waits for them all */
+  deadlineMs?: number;
+  /** draw with whatever is already loaded rather than wait for it: for a preview, not a download */
+  instant?: boolean;
 }
 
 const SHARE_SIZES: Record<ShareFormat, { w: number; h: number }> = {
@@ -93,7 +97,7 @@ export async function renderShareImage(
 
   if (options.background === 'light') drawBackground(ctx, w, h);
   if (relief) await drawReliefScene(ctx, coords, w, h);
-  else if (onMap) await drawTiles(ctx, view, w, h, options.background === 'plan');
+  else if (onMap) await drawTiles(ctx, view, w, h, options.background === 'plan', options.deadlineMs);
   drawScrims(ctx, w, h, onMap);
   // a soft shadow keeps white ink readable on whatever story photo sits behind the tile
   if (options.background === 'transparent') {
@@ -104,7 +108,29 @@ export async function renderShareImage(
   if (!relief) drawTrace(ctx, coords, view, traceBox, onMap);
   if (options.showProfile) drawProfile(ctx, coords, w, h, options, lightInk);
   if (options.showStats) drawStats(ctx, coords, w, h, options, lightInk);
-  await drawBrand(ctx, w, lightInk);
+  await drawBrand(ctx, w, lightInk, options.instant === true);
+}
+
+/**
+ * The logo, loaded once for the whole session.
+ *
+ * It used to be a fresh `new Image()` per composition, which the gallery multiplies by its cards.
+ * Every one of those goes through the service worker, whose thread is busy writing the tiles of
+ * that same first visit, and cache storage serialises its writes: the wait was measured at 1.9
+ * seconds before a card drew anything at all, for a decoration.
+ */
+let brandLogo: Promise<HTMLImageElement | null> | null = null;
+let brandLogoReady: HTMLImageElement | null = null;
+
+function logo(): Promise<HTMLImageElement | null> {
+  brandLogo ??= loadImage(`${import.meta.env.BASE_URL}logo.png`).then(
+    img => {
+      brandLogoReady = img;
+      return img;
+    },
+    () => null,
+  );
+  return brandLogo;
 }
 
 /**
@@ -201,7 +227,9 @@ async function drawTiles(
   w: number,
   h: number,
   plan: boolean,
+  deadlineMs?: number,
 ): Promise<void> {
+  const expired = { done: false };
   let zoom = view.zoom;
   let tiles = 2 ** zoom;
   const range = () => {
@@ -226,24 +254,33 @@ async function drawTiles(
         .replace('{x}', String(((tx % tiles) + tiles) % tiles))
         .replace('{y}', String(ty));
       jobs.push(
-        loadImage(url)
-          .then(img => {
-            ctx.drawImage(
-              img,
-              (tx / tiles - view.originX) * view.scale,
-              (ty / tiles - view.originY) * view.scale,
-              tilePx + 0.5,
-              tilePx + 0.5,
-            );
-          })
-          // a throttled or missing tile leaves a gap; losing the whole image over one of them is
-          // how a gallery card ends up blank and uncached, asking again on every open
-          .catch(() => {}),
+        loadImage(url).then(img => {
+          // past the deadline the picture has already been handed over: a tile landing now would
+          // paint over the trace drawn on top of it
+          if (expired.done) return;
+          ctx.drawImage(
+            img,
+            (tx / tiles - view.originX) * view.scale,
+            (ty / tiles - view.originY) * view.scale,
+            tilePx + 0.5,
+            tilePx + 0.5,
+          );
+        }),
       );
     }
   }
-  // a missing tile keeps the background color, the image is still worth sharing
-  await Promise.allSettled(jobs);
+  // a missing tile keeps the background colour, the image is still worth sharing. with a deadline,
+  // so does a tile that is merely slow: a gallery card must not wait on the last of forty tiles
+  if (deadlineMs === undefined) {
+    await Promise.allSettled(jobs);
+    return;
+  }
+  await Promise.race([Promise.allSettled(jobs), sleep(deadlineMs)]);
+  expired.done = true;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function loadImage(url: string): Promise<HTMLImageElement> {
@@ -514,20 +551,20 @@ function drawStats(
   ctx.restore();
 }
 
-async function drawBrand(ctx: CanvasRenderingContext2D, w: number, lightInk: boolean): Promise<void> {
+async function drawBrand(ctx: CanvasRenderingContext2D, w: number, lightInk: boolean, instant: boolean): Promise<void> {
   ctx.save();
   const size = Math.round(w * 0.125);
   const x = w * 0.05;
   const y = w * 0.035;
   let textX = x;
-  // the wordmark survives a missing logo, the tile is still branded
-  await loadImage(`${import.meta.env.BASE_URL}logo.png`).then(
-    logo => {
-      ctx.drawImage(logo, x, y, size, size);
-      textX = x + size * 1.1;
-    },
-    () => undefined,
-  );
+  // the wordmark survives a missing logo, the tile is still branded. an instant caller takes the
+  // logo only if it is already decoded: waiting is for an image somebody will keep
+  const mark = instant ? brandLogoReady : await logo();
+  if (instant) void logo();
+  if (mark) {
+    ctx.drawImage(mark, x, y, size, size);
+    textX = x + size * 1.1;
+  }
   ctx.textAlign = 'left';
   ctx.fillStyle = lightInk ? '#ffffff' : '#212529';
   ctx.font = `800 ${Math.round(w * 0.075)}px -apple-system, 'Segoe UI', Roboto, sans-serif`;

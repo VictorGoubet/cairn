@@ -220,8 +220,23 @@ package manager underneath, lockfile `pnpm-lock.yaml`).
   Two things made the caching a lie on the deployed site, both invisible in dev. The worker's
   `activate` deletes every cache it does not name, so each deploy threw the thumbnails away: the
   worker now names `cairn-thumbs-v1` and a unit test reads `sw.js` to keep the two sides in step.
-  And one throttled tile used to reject the whole render through `Promise.all`, leaving a card blank
-  *and* uncached, asking again on every open; a missing tile is now a gap in the picture.
+  (A first attempt blamed a throttled tile for rejecting the whole render; it did not, `allSettled`
+  was already there. What tiles do cost is waiting for the slowest of them, hence a deadline past
+  which the picture is handed over and a late tile is dropped rather than painted over the trace.)
+- **What made the gallery feel slow was the offline panel, not the thumbnails.** Measured from a
+  click dispatched inside the page: 1.8 seconds before the first card had ink, of which the drawing
+  was 19 ms. `estimateArea` was building *every tile url* of the framed map, over a dozen zooms and
+  four bases with the Overpass queries included, to print "~3 Mo": hundreds of thousands of strings
+  for a label. A tile grid is a rectangle, so `countAreaResources` does arithmetic instead, pinned
+  by a test that compares it to `areaUrls().length` because a count that drifts from what the
+  download fetches is a lie told before every tap. First paint went from 1827 ms to 37 ms.
+  Three smaller things were in the same window, each worth knowing: the brand logo was re-fetched
+  per card and every one of those requests queues behind the worker's own tile writes, since cache
+  storage serialises per origin (1.9 s for one `caches.open` plus `match` during a first visit), so
+  it is memoised and a preview draws without waiting for it; the cards' map halves are drawn one at
+  a time, because eight of them decoding tiles together blocks the thread long enough that nothing
+  is painted at all; and a card lifts its own pulse by touching its class rather than through react
+  state, whose flush was landing 1.8 s after the trace was drawn.
 - **The first payload carries only what is on screen.** The three panels nobody has open on arrival
   (share studio, qr, roadbook) are `lazy` chunks, which took the entry from 388 to 352 kB gzipped,
   the qr encoder alone being 24 kB of it. They are then warmed on `requestIdleCallback`, and that

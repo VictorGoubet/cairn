@@ -48,7 +48,27 @@ test('thumbnails are drawn once and kept by the worker', async ({ page }) => {
   const openGallery = () => page.locator('.topbar button', { hasText: /itinéraires|routes/i }).click();
   const drawn = () => page.locator('canvas.route-thumb:not(.loading)');
 
-  await openGallery();
+  // the shape of a route needs no network and no storage, so it must be on screen at once. this
+  // used to take 1.8 s, spent by the offline panel listing every tile url of the framed map to
+  // print its weight; clicked from inside the page, since playwright's own waits hide the delay
+  const firstPaintMs = await page.evaluate(async () => {
+    const button = [...document.querySelectorAll('.topbar button')].find(b =>
+      /routes|itinéraires/i.test(b.textContent ?? ''),
+    ) as HTMLButtonElement;
+    const started = performance.now();
+    button.click();
+    return new Promise<number>(resolve => {
+      const tick = () => {
+        if (document.querySelector('canvas.route-thumb:not(.loading)')) resolve(Math.round(performance.now() - started));
+        else if (performance.now() - started > 10_000) resolve(-1);
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  });
+  expect(firstPaintMs).toBeGreaterThan(0);
+  expect(firstPaintMs).toBeLessThan(800);
+
   await expect(drawn()).toHaveCount(4, { timeout: 60_000 });
   expect(tiles).toBeGreaterThan(0);
 
@@ -64,7 +84,13 @@ test('thumbnails are drawn once and kept by the worker', async ({ page }) => {
       }
     }),
   ).toBe('readable');
-  expect(await page.evaluate(name => caches.open(name).then(c => c.keys()).then(k => k.length), THUMB_CACHE)).toBe(4);
+  // the map halves are drawn one after another, behind the shapes, and cached as they land
+  await expect
+    .poll(
+      async () => page.evaluate(name => caches.open(name).then(c => c.keys()).then(k => k.length), THUMB_CACHE),
+      { timeout: 60_000 },
+    )
+    .toBe(4);
 
   // reopening asks the tile server for nothing at all
   await page.keyboard.press('Escape');

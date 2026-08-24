@@ -5,6 +5,7 @@ import {
   areaUrls,
   boundsTiles,
   corridorTiles,
+  countAreaResources,
   corridorUrls,
   estimateArea,
 } from '../../src/lib/offline';
@@ -117,5 +118,27 @@ describe('areaThumbUrl', () => {
     expect(z).toBeLessThanOrEqual(14);
     // one tile, covering the frame: that zoom holds the whole box in a single tile
     expect(boundsTiles(VINCENNES, z)).toHaveLength(1);
+  });
+});
+
+describe('counting an area without listing it', () => {
+  const BOUNDS = { west: 2.39, south: 48.82, east: 2.47, north: 48.86 };
+
+  it('agrees with the urls the download would actually fetch', () => {
+    // the count is announced before every tap and the list is what gets fetched: they must match
+    expect(countAreaResources(BOUNDS)).toBe(areaUrls(BOUNDS).length);
+    expect(countAreaResources(BOUNDS, 'swisstopo')).toBe(areaUrls(BOUNDS, 'swisstopo').length);
+    const wide = { west: -1, south: 44, east: 3, north: 46 };
+    expect(countAreaResources(wide)).toBe(areaUrls(wide).length);
+  });
+
+  it('costs nothing on a geometry whose list would be enormous', () => {
+    // all of France at every zoom: the list is hundreds of thousands of strings, the count is maths
+    const france = { west: -5, south: 42, east: 8, north: 51 };
+    const started = performance.now();
+    const resources = countAreaResources(france);
+    expect(resources).toBeGreaterThan(100_000);
+    expect(performance.now() - started).toBeLessThan(20);
+    expect(estimateArea(france).tooLarge).toBe(true);
   });
 });

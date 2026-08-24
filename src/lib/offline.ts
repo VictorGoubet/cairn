@@ -32,6 +32,8 @@ const FONTSTACKS = [
   'Source Sans Pro Italic',
 ];
 const GLYPH_RANGES = ['0-255', '256-511'];
+/** the style, its metadata, four sprite files and the glyph ranges: what every bundle carries */
+const CHROME_RESOURCES = 6 + FONTSTACKS.length * GLYPH_RANGES.length;
 
 /** margin around the trace (~2 km): losing the path must not mean losing the map */
 const CORRIDOR_DEG = 0.02;
@@ -94,12 +96,24 @@ export function estimateArea(
   bounds: AreaBounds,
   activeBaseId?: string,
 ): { resources: number; megabytes: number; tooLarge: boolean } {
-  const resources = areaUrls(bounds, activeBaseId).length;
+  const resources = countAreaResources(bounds, activeBaseId);
   return {
     resources,
     megabytes: bundleMegabytes(resources),
     tooLarge: resources > MAX_AREA_RESOURCES,
   };
+}
+
+/**
+ * How many resources an area would hold, counted rather than listed.
+ *
+ * `areaUrls` builds a string per tile over a dozen zooms and four bases, Overpass queries
+ * included, which for a framed France is hundreds of thousands of them. Announcing a weight has no
+ * need of that: the tile grid is a rectangle, so its size is arithmetic. Measured, this is what put
+ * 1.8 seconds between opening the gallery and its first painted frame, for a "~3 Mo" label.
+ */
+export function countAreaResources(bounds: AreaBounds, activeBaseId?: string): number {
+  return countBundleResources(z => countBoundsTiles(bounds, z), activeBaseId);
 }
 
 /**
@@ -232,9 +246,17 @@ export function offlineBundles(): { id: string; kind: 'area' | 'trek'; name: str
  */
 export function offlineStorageReport(): { bundles: number; resources: number; megabytes: number } {
   const bundles = offlineBundles();
+  // counting the zones shared between bundles once needs the urls themselves, so the answer is
+  // remembered until a bundle is added or freed: the panel asks for it on every render
+  const signature = bundles.map(b => b.id).join('|');
+  if (reportMemo?.signature === signature) return reportMemo.report;
   const distinct = new Set(bundles.flatMap(b => b.urls));
-  return { bundles: bundles.length, resources: distinct.size, megabytes: bundleMegabytes(distinct.size) };
+  const report = { bundles: bundles.length, resources: distinct.size, megabytes: bundleMegabytes(distinct.size) };
+  reportMemo = { signature, report };
+  return report;
 }
+
+let reportMemo: { signature: string; report: { bundles: number; resources: number; megabytes: number } } | null = null;
 
 /** frees the urls of one bundle, keeping whatever the surviving bundles still need */
 async function releaseUrls(owned: string[], survivorsId: string): Promise<void> {
@@ -397,6 +419,33 @@ function bundleUrls(tilesAt: (z: number) => [number, number][], activeBaseId?: s
     urls.push(overpassUrl(OVERPASS_PRIMARY, fountainsCellQuery({ x, y })));
   }
   return [...new Set(urls)];
+}
+
+/**
+ * The same walk as `bundleUrls`, counting instead of concatenating.
+ *
+ * Kept beside it on purpose, and pinned by a test that compares the two: a count that drifts from
+ * what the download actually fetches is a lie told before every tap.
+ */
+function countBundleResources(tilesAt: (z: number) => number, activeBaseId?: string): number {
+  let total = CHROME_RESOURCES;
+  for (let z = MIN_ZOOM; z <= MAX_ZOOM; z++) total += tilesAt(z);
+  const layerIds = new Set(CORE_RASTERS);
+  if (activeBaseId && RASTER_ZOOMS[activeBaseId]) layerIds.add(activeBaseId);
+  for (const layer of RASTER_BASE_LAYERS) {
+    if (!layerIds.has(layer.id)) continue;
+    const [zMin, zMax] = RASTER_ZOOMS[layer.id];
+    for (let z = zMin; z <= zMax; z++) total += tilesAt(z);
+  }
+  return total + tilesAt(REFUGES_CELL_ZOOM) + tilesAt(FOUNTAINS_CELL_ZOOM);
+}
+
+/** the tiles of zoom `z` inside the bounds, counted from the rectangle they form */
+function countBoundsTiles(bounds: AreaBounds, z: number): number {
+  const n = 2 ** z;
+  const xs = Math.min(tileX(bounds.east, n), n - 1) - Math.max(tileX(bounds.west, n), 0) + 1;
+  const ys = Math.min(tileY(bounds.south, n), n - 1) - Math.max(tileY(bounds.north, n), 0) + 1;
+  return Math.max(0, xs) * Math.max(0, ys);
 }
 
 /** every tile of zoom `z` inside the bounds */

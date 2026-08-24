@@ -5,8 +5,8 @@ import { getMapInstance } from '../lib/mapHandle';
 import {
   type AreaBounds,
   areaThumbUrl,
-  areaUrls,
   bundleMegabytes,
+  countAreaResources,
   deleteOfflineArea,
   downloadAreaOffline,
   estimateArea,
@@ -137,7 +137,7 @@ export function OfflineAreas() {
                 {/* recomputed, never the count stored at download time: a stored number goes
                     stale the day the bundle's layers or zooms change, and then the per-area
                     sizes contradict the total underneath */}
-                ~{bundleMegabytes(areaUrls(area.bounds).length)} Mo ·{' '}
+                ~{bundleMegabytes(countAreaResources(area.bounds))} Mo ·{' '}
                 {new Date(area.savedAt).toLocaleDateString(dateLocale(lang))}
               </span>
               <button type="button" className="wp-remove" title={t('delete')} onClick={() => remove(area.id)}>

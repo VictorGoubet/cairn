@@ -341,6 +341,15 @@ test.describe('gallery thumbnails', () => {
     await openGallery();
     await expect(drawn()).toHaveCount(3);
     expect(tiles).toBeGreaterThan(0);
+    // the shapes show first and the map halves follow one at a time: the cache fills behind them
+    const cached = () =>
+      page.evaluate(() =>
+        caches
+          .open('cairn-thumbs-v1')
+          .then(c => c.keys())
+          .then(k => k.length),
+      );
+    await expect.poll(cached, { timeout: 60_000 }).toBe(3);
 
     // second open: the thumbnails come back from the cache, and the network is left alone
     await page.keyboard.press('Escape');
@@ -357,8 +366,7 @@ test.describe('gallery thumbnails', () => {
     await expect(drawn()).toHaveCount(3);
     expect(tiles).toBe(0);
 
-    // a tile server that refuses must cost a gap in the picture, not the picture: a card that
-    // throws is a card that stays blank and caches nothing, asking again on every single open
+    // a tile server that refuses must cost a gap in the picture, not the picture
     await page.route('**data.geopf.fr/wmts**', route => route.abort());
     await page.evaluate(async () => {
       await caches.delete('cairn-thumbs-v1');
