@@ -24,7 +24,7 @@
     "pre-commit": "pnpm exec biome check --staged --no-errors-on-unmatched"
   },
   "dependencies": {
-    "maplibre-gl": "^6.3.0",
+    "maplibre-gl": "^6.6.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
