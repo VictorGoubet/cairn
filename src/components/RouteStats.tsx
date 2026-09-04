@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { track } from '../lib/analytics';
 import { elevationStats, formatDistance } from '../lib/geo';
 import { useT } from '../lib/i18n';
@@ -28,6 +28,8 @@ export function RouteStats() {
     () => [...new Set(savedRoutes.map(r => r.collection).filter((c): c is string => !!c))],
     [savedRoutes],
   );
+  // stable identity: an inline ref callback re-runs on every render and steals the focus back
+  const focusOnMount = useCallback((el: HTMLInputElement | null) => el?.focus(), []);
   const saveWrapRef = useRef<HTMLDivElement>(null);
   useClickOutside(saveWrapRef, () => setSaveOpen(false), saveOpen);
   useEscapeKey(() => setSaveOpen(false), saveOpen);
@@ -97,7 +99,7 @@ export function RouteStats() {
             <input
               type="text"
               className="save-name"
-              ref={el => el?.focus()}
+              ref={focusOnMount}
               value={saveName}
               placeholder={t('route_name_placeholder')}
               onChange={e => setSaveName(e.target.value)}
@@ -137,9 +139,7 @@ export function RouteStats() {
               <input
                 type="text"
                 className="save-collection"
-                ref={el => {
-                  if (typingProject) el?.focus();
-                }}
+                ref={typingProject ? focusOnMount : undefined}
                 value={collection}
                 placeholder={t('collection_placeholder')}
                 onChange={e => setCollection(e.target.value)}

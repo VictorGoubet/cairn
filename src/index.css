@@ -3142,6 +3142,20 @@ body {
     overflow-y: auto;
   }
 
+  /* fixed so the sheet's overflow:hidden can neither clip it nor get scroll-forced by its focused input */
+  .save-pop {
+    position: fixed;
+    top: 58px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+
+  /* below 16px iOS zooms the whole page when an input takes focus */
+  .save-pop input {
+    font-size: 16px;
+  }
+
   .point-editor {
     width: min(340px, calc(100vw - 24px));
   }

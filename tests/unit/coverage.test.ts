@@ -17,11 +17,11 @@ describe('where the french maps stop', () => {
     expect(baseCoversView('swisstopo', 7.75, 46.02)).toBe(true);
   });
 
-  it('offers the neighbour national map where there is one, the world topo otherwise', () => {
+  it('offers the neighbour national map where there is one, osm otherwise', () => {
     expect(baseCovering('plan-ign', 7.75, 46.02)).toEqual({ id: 'swisstopo', sameFamily: true }); // Zermatt
     expect(baseCovering('scan25', 5.5, 50.3)).toEqual({ id: 'ngi-be', sameFamily: true }); // Ardennes
-    expect(baseCovering('plan-ign', 11.8, 46.5)).toEqual({ id: 'opentopo', sameFamily: true }); // Dolomites
-    expect(baseCovering('scan25', -3.2, 40.4)).toEqual({ id: 'opentopo', sameFamily: true }); // Madrid
+    expect(baseCovering('plan-ign', 11.8, 46.5)).toEqual({ id: 'osm', sameFamily: true }); // Dolomites
+    expect(baseCovering('scan25', -3.2, 40.4)).toEqual({ id: 'osm', sameFamily: true }); // Madrid
   });
 
   it('answers a request for photographs with photographs', () => {

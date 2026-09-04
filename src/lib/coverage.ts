@@ -5,7 +5,7 @@
  * back empty or missing (checked: the ortho answers 404 over Zermatt), and a white screen reads as
  * a broken app rather than as "this map ends here". Knowing the extents lets the map say so and
  * offer the base that does cover the place: the neighbour's own national map where there is one,
- * the global topo otherwise.
+ * plain OSM otherwise.
  *
  * The offer stays in the family it was asked in, or says that it cannot. Aerial photographs and a
  * drawn map are not interchangeable, and proposing a neighbour's topographic sheet to somebody
@@ -67,8 +67,8 @@ const NEIGHBOUR_BASES: { id: string; box: Box }[] = [
   { id: 'ngi-be', box: { west: 2.5, south: 49.4, east: 6.5, north: 51.6 } },
 ];
 
-/** the world map to fall back on, which covers everywhere at hiking zooms */
-const GLOBAL_BASE = 'opentopo';
+/** the world map to fall back on: OSM covers everywhere and its tiles come fast, where OpenTopoMap's server crawls */
+const GLOBAL_BASE = 'osm';
 
 /**
  * Whether the base on screen has data where the map is looking.
